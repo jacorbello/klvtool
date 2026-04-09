@@ -4,21 +4,25 @@ import (
 	"fmt"
 	"io"
 	"os"
+
+	"github.com/jacorbello/klvtool/internal/version"
 )
 
 const usageExitCode = 2
 
 type RootCommand struct {
-	Use string
-	Out io.Writer
-	Err io.Writer
+	Use     string
+	Version string
+	Out     io.Writer
+	Err     io.Writer
 }
 
 func NewRootCommand() *RootCommand {
 	return &RootCommand{
-		Use: "klvtool",
-		Out: os.Stdout,
-		Err: os.Stderr,
+		Use:     "klvtool",
+		Version: version.String(),
+		Out:     os.Stdout,
+		Err:     os.Stderr,
 	}
 }
 
@@ -51,6 +55,8 @@ func (c *RootCommand) writeUsage(w io.Writer) {
 		return
 	}
 	fmt.Fprintf(w, "Usage: %s [--help|-h]\n", c.Use)
+	fmt.Fprintln(w)
+	fmt.Fprintf(w, "Version: %s\n", c.Version)
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "Baseline CLI for the klvtool repository.")
 }

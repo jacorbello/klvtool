@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"strings"
 	"testing"
+
+	"github.com/jacorbello/klvtool/internal/version"
 )
 
 func TestNewRootCommand(t *testing.T) {
@@ -13,6 +15,16 @@ func TestNewRootCommand(t *testing.T) {
 	}
 	if cmd.Use != "klvtool" {
 		t.Fatalf("expected command use klvtool, got %q", cmd.Use)
+	}
+}
+
+func TestNewRootCommandVersion(t *testing.T) {
+	cmd := NewRootCommand()
+	if cmd.Version == "" {
+		t.Fatal("expected root command version to be non-empty")
+	}
+	if cmd.Version != version.String() {
+		t.Fatalf("expected root command version %q, got %q", version.String(), cmd.Version)
 	}
 }
 
@@ -59,6 +71,9 @@ func TestHelpArgs(t *testing.T) {
 			}
 			if !strings.Contains(text, "klvtool") {
 				t.Fatalf("expected help text to include klvtool, got %q", text)
+			}
+			if !strings.Contains(text, version.String()) {
+				t.Fatalf("expected help text to include version %q, got %q", version.String(), text)
 			}
 		})
 	}
