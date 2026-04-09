@@ -38,12 +38,20 @@ func InstallGuidance(goos string, env map[string]string) Guidance {
 				"sudo apt update && sudo apt install ffmpeg gstreamer1.0-tools",
 			},
 		}
-	default:
+	case "debian_ubuntu":
 		return Guidance{
 			Platform: "debian_ubuntu",
 			Summary:  "Install the backend tools with apt.",
 			Steps: []string{
 				"sudo apt update && sudo apt install ffmpeg gstreamer1.0-tools",
+			},
+		}
+	default:
+		return Guidance{
+			Platform: "unsupported",
+			Summary:  "No automated install guidance is available for this platform.",
+			Steps: []string{
+				"Install ffmpeg and gstreamer using the platform's native package manager or manual binaries.",
 			},
 		}
 	}
@@ -59,7 +67,10 @@ func detectPlatform(goos string, env map[string]string) string {
 	if isWSL(env) {
 		return "wsl"
 	}
-	return "debian_ubuntu"
+	if isDebianUbuntu(env) {
+		return "debian_ubuntu"
+	}
+	return "unsupported"
 }
 
 func isWSL(env map[string]string) bool {
@@ -74,6 +85,19 @@ func isWSL(env map[string]string) bool {
 	}
 	if v := strings.ToLower(env["WSLENV"]); strings.Contains(v, "wsl") {
 		return true
+	}
+	return false
+}
+
+func isDebianUbuntu(env map[string]string) bool {
+	if len(env) == 0 {
+		return false
+	}
+	for _, key := range []string{"DISTRO_FAMILY", "ID", "ID_LIKE"} {
+		value := strings.ToLower(env[key])
+		if strings.Contains(value, "debian") || strings.Contains(value, "ubuntu") {
+			return true
+		}
 	}
 	return false
 }

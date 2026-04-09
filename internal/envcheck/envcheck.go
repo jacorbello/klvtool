@@ -99,7 +99,7 @@ func detectBackend(ctx context.Context, spec backendSpec, lookPath LookPathFunc,
 		}
 
 		tool.Path = path
-		version, err := run(ctx, toolName, "--version")
+		version, err := run(ctx, path, "--version")
 		if err != nil {
 			tool.Error = err.Error()
 			backend.Tools = append(backend.Tools, tool)

@@ -40,7 +40,7 @@ func TestDetectBackendsReportsToolHealth(t *testing.T) {
 	if got, want := ffmpeg.Tools[0].Name, "ffmpeg"; got != want {
 		t.Fatalf("expected first ffmpeg tool name %q, got %q", want, got)
 	}
-	if got, want := ffmpeg.Tools[0].Version, "ffmpeg 1.2.3"; got != want {
+	if got, want := ffmpeg.Tools[0].Version, "/usr/bin/ffmpeg 1.2.3"; got != want {
 		t.Fatalf("expected ffmpeg version %q, got %q", want, got)
 	}
 
@@ -79,6 +79,29 @@ func TestDetectBackendsReportsMissingTools(t *testing.T) {
 	}
 }
 
+func TestDetectUsesResolvedPathForVersionProbe(t *testing.T) {
+	var probed []string
+	lookPath := func(name string) (string, error) {
+		return "/opt/bin/" + name, nil
+	}
+	runVersion := func(ctx context.Context, name string, args ...string) (string, error) {
+		probed = append(probed, name)
+		return name + " 9.0", nil
+	}
+
+	report := Detect(context.Background(), "linux", map[string]string{"ID": "ubuntu"}, lookPath, runVersion)
+	ffmpeg := report.BackendsByName()["ffmpeg"]
+	if ffmpeg == nil {
+		t.Fatal("expected ffmpeg backend report")
+	}
+	if got, want := probed[0], "/opt/bin/ffmpeg"; got != want {
+		t.Fatalf("expected version probe to use resolved path %q, got %q", want, got)
+	}
+	if got, want := ffmpeg.Tools[0].Path, "/opt/bin/ffmpeg"; got != want {
+		t.Fatalf("expected resolved tool path %q, got %q", want, got)
+	}
+}
+
 func TestDetectPreservesGuidanceSummaryForUnsupportedOS(t *testing.T) {
 	report := Detect(context.Background(), "windows", nil, func(name string) (string, error) {
 		return "", errors.New("unexpected")
@@ -97,6 +120,21 @@ func TestDetectPreservesGuidanceSummaryForUnsupportedOS(t *testing.T) {
 	}
 }
 
+func TestDetectGenericLinuxDoesNotAssumeDebianUbuntu(t *testing.T) {
+	report := Detect(context.Background(), "linux", nil, func(name string) (string, error) {
+		return "", errors.New("unexpected")
+	}, func(ctx context.Context, name string, args ...string) (string, error) {
+		return "", errors.New("unexpected")
+	})
+
+	if report.Platform != "unsupported" {
+		t.Fatalf("expected unsupported platform for generic linux, got %q", report.Platform)
+	}
+	if containsString(report.Guidance, "apt install") {
+		t.Fatalf("expected generic linux guidance to avoid apt instructions, got %v", report.Guidance)
+	}
+}
+
 func TestDetectReportsVersionFailureWhenToolIsInstalled(t *testing.T) {
 	lookPath := func(name string) (string, error) {
 		switch name {
@@ -107,7 +145,7 @@ func TestDetectReportsVersionFailureWhenToolIsInstalled(t *testing.T) {
 		}
 	}
 	runVersion := func(ctx context.Context, name string, args ...string) (string, error) {
-		if name == "ffmpeg" {
+		if name == "/usr/bin/ffmpeg" {
 			return "", errors.New("exec failed")
 		}
 		return name + " 7.1", nil
@@ -143,9 +181,9 @@ func TestPlatformGuidance(t *testing.T) {
 		contains string
 	}{
 		{name: "macos", goos: "darwin", contains: "brew install ffmpeg gstreamer"},
-		{name: "debian ubuntu", goos: "linux", contains: "apt install ffmpeg gstreamer1.0-tools"},
 		{name: "wsl", goos: "linux", env: map[string]string{"WSL_DISTRO_NAME": "Ubuntu"}, contains: "WSL"},
 		{name: "unsupported", goos: "windows", contains: "native package manager"},
+		{name: "debian ubuntu", goos: "linux", env: map[string]string{"ID": "ubuntu"}, contains: "apt install ffmpeg gstreamer1.0-tools"},
 	}
 
 	for _, tt := range tests {
