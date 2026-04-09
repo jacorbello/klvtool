@@ -121,17 +121,54 @@ func TestDetectPreservesGuidanceSummaryForUnsupportedOS(t *testing.T) {
 }
 
 func TestDetectGenericLinuxDoesNotAssumeDebianUbuntu(t *testing.T) {
-	report := Detect(context.Background(), "linux", nil, func(name string) (string, error) {
-		return "", errors.New("unexpected")
-	}, func(ctx context.Context, name string, args ...string) (string, error) {
-		return "", errors.New("unexpected")
+	guidance := installGuidance("linux", nil, func() (string, error) {
+		return "NAME=\"Arch Linux\"\nID=arch\n", nil
 	})
 
-	if report.Platform != "unsupported" {
-		t.Fatalf("expected unsupported platform for generic linux, got %q", report.Platform)
+	if guidance.Platform != "unsupported" {
+		t.Fatalf("expected unsupported platform for generic linux, got %q", guidance.Platform)
 	}
-	if containsString(report.Guidance, "apt install") {
-		t.Fatalf("expected generic linux guidance to avoid apt instructions, got %v", report.Guidance)
+	if containsString(guidance.Steps, "apt install") {
+		t.Fatalf("expected generic linux guidance to avoid apt instructions, got %v", guidance.Steps)
+	}
+}
+
+func TestInstallGuidanceUsesOSReleaseEvidence(t *testing.T) {
+	guidance := installGuidance("linux", nil, func() (string, error) {
+		return "NAME=\"Ubuntu\"\nID=ubuntu\nID_LIKE=debian\n", nil
+	})
+
+	if guidance.Platform != "debian_ubuntu" {
+		t.Fatalf("expected debian_ubuntu platform, got %q", guidance.Platform)
+	}
+	if !containsString(guidance.Steps, "apt install ffmpeg gstreamer1.0-tools") {
+		t.Fatalf("expected apt guidance, got %v", guidance.Steps)
+	}
+}
+
+func TestInstallGuidanceUsesOSReleaseEvidenceForWSL(t *testing.T) {
+	guidance := installGuidance("linux", map[string]string{"WSL_INTEROP": "1"}, func() (string, error) {
+		return "NAME=\"Ubuntu\"\nID=ubuntu\nID_LIKE=debian\n", nil
+	})
+
+	if guidance.Platform != "wsl" {
+		t.Fatalf("expected wsl platform, got %q", guidance.Platform)
+	}
+	if !containsString(guidance.Steps, "apt install ffmpeg gstreamer1.0-tools") {
+		t.Fatalf("expected apt guidance, got %v", guidance.Steps)
+	}
+}
+
+func TestInstallGuidanceDoesNotUseAptForWSLWithoutOSReleaseEvidence(t *testing.T) {
+	guidance := installGuidance("linux", map[string]string{"WSL_INTEROP": "1"}, func() (string, error) {
+		return "NAME=\"Arch Linux\"\nID=arch\n", nil
+	})
+
+	if guidance.Platform != "unsupported" {
+		t.Fatalf("expected unsupported platform, got %q", guidance.Platform)
+	}
+	if containsString(guidance.Steps, "apt install") {
+		t.Fatalf("expected guidance to avoid apt instructions, got %v", guidance.Steps)
 	}
 }
 
@@ -178,19 +215,25 @@ func TestPlatformGuidance(t *testing.T) {
 		name        string
 		goos        string
 		env         map[string]string
+		osRelease   string
 		contains    string
 		notContains string
 	}{
 		{name: "macos", goos: "darwin", contains: "brew install ffmpeg gstreamer"},
-		{name: "wsl with distro evidence", goos: "linux", env: map[string]string{"WSL_INTEROP": "1", "ID": "ubuntu"}, contains: "apt install ffmpeg gstreamer1.0-tools"},
-		{name: "wsl without distro evidence", goos: "linux", env: map[string]string{"WSL_INTEROP": "1"}, contains: "native package manager", notContains: "apt install"},
+		{name: "wsl with distro evidence", goos: "linux", env: map[string]string{"WSL_INTEROP": "1"}, osRelease: "NAME=\"Ubuntu\"\nID=ubuntu\nID_LIKE=debian\n", contains: "apt install ffmpeg gstreamer1.0-tools"},
+		{name: "wsl without distro evidence", goos: "linux", env: map[string]string{"WSL_INTEROP": "1"}, osRelease: "NAME=\"Arch Linux\"\nID=arch\n", contains: "native package manager", notContains: "apt install"},
 		{name: "unsupported", goos: "windows", contains: "native package manager"},
-		{name: "debian ubuntu", goos: "linux", env: map[string]string{"ID": "ubuntu"}, contains: "apt install ffmpeg gstreamer1.0-tools"},
+		{name: "debian ubuntu", goos: "linux", osRelease: "NAME=\"Ubuntu\"\nID=ubuntu\nID_LIKE=debian\n", contains: "apt install ffmpeg gstreamer1.0-tools"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			guidance := InstallGuidance(tt.goos, tt.env)
+			if tt.osRelease != "" {
+				guidance = installGuidance(tt.goos, tt.env, func() (string, error) {
+					return tt.osRelease, nil
+				})
+			}
 			if len(guidance.Steps) == 0 {
 				t.Fatal("expected install guidance steps")
 			}
