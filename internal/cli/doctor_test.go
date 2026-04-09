@@ -162,3 +162,57 @@ func TestDoctorCommandResyncsCachedWritersAcrossInvocations(t *testing.T) {
 		t.Fatalf("expected doctor output to be stable across invocations, got first %q and second %q", firstStdout.String(), secondStdout.String())
 	}
 }
+
+func TestDoctorCommandHonorsNilRootStderrOnErrorPath(t *testing.T) {
+	var staleStdout bytes.Buffer
+	var staleStderr bytes.Buffer
+
+	cmd := NewRootCommand()
+	cmd.Out = &staleStdout
+	cmd.Err = nil
+	cmd.Doctor.Out = &staleStdout
+	cmd.Doctor.Err = &staleStderr
+
+	if got := cmd.Execute([]string{"doctor", "bogus"}); got != usageExitCode {
+		t.Fatalf("expected doctor error path to return usage exit code %d, got %d", usageExitCode, got)
+	}
+	if staleStdout.Len() != 0 {
+		t.Fatalf("expected nil root stderr to suppress doctor stdout, got %q", staleStdout.String())
+	}
+	if staleStderr.Len() != 0 {
+		t.Fatalf("expected nil root stderr to suppress doctor error output, got %q", staleStderr.String())
+	}
+}
+
+func TestDoctorCommandResyncsCachedStderrAcrossInvocations(t *testing.T) {
+	var firstStderr bytes.Buffer
+	var secondStderr bytes.Buffer
+
+	cmd := NewRootCommand()
+	cmd.Out = nil
+	cmd.Doctor.Out = nil
+	cmd.Doctor.Detect = func(ctx context.Context, goos string, env map[string]string) envcheck.Report {
+		t.Fatal("detect should not run for unsupported doctor arguments")
+		return envcheck.Report{}
+	}
+
+	cmd.Err = &firstStderr
+	if got := cmd.Execute([]string{"doctor", "bogus"}); got != usageExitCode {
+		t.Fatalf("expected first doctor error path to return usage exit code %d, got %d", usageExitCode, got)
+	}
+
+	cmd.Err = &secondStderr
+	if got := cmd.Execute([]string{"doctor", "bogus"}); got != usageExitCode {
+		t.Fatalf("expected second doctor error path to return usage exit code %d, got %d", usageExitCode, got)
+	}
+
+	if firstStderr.Len() == 0 {
+		t.Fatal("expected first invocation to write doctor error output")
+	}
+	if secondStderr.Len() == 0 {
+		t.Fatal("expected second invocation to write doctor error output to updated stderr")
+	}
+	if firstStderr.String() != secondStderr.String() {
+		t.Fatalf("expected doctor error output to stay stable across invocations, got first %q and second %q", firstStderr.String(), secondStderr.String())
+	}
+}
