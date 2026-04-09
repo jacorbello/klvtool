@@ -1,0 +1,21 @@
+# Go build outputs
+bin/
+build/
+dist/
+out/
+tmp/
+*.test
+*.exe
+*.dll
+*.so
+*.dylib
+coverage.out
+
+# Local test and fixture outputs
+testdata/output/
+testdata/tmp/
+
+# Editor and OS files
+.DS_Store
+.idea/
+.vscode/
