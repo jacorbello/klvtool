@@ -27,7 +27,8 @@ func (c *RootCommand) Execute(args []string) int {
 		return 1
 	}
 	if len(args) == 0 {
-		return 0
+		c.writeUsage(c.Err)
+		return usageExitCode
 	}
 	if len(args) == 1 && isHelpArg(args[0]) {
 		c.writeUsage(c.Out)
@@ -55,9 +56,9 @@ func (c *RootCommand) writeUsage(w io.Writer) {
 }
 
 func (c *RootCommand) writeUnsupportedArgs(args []string) {
-	c.writeUsage(c.Err)
 	if c.Err == nil {
 		return
 	}
+	c.writeUsage(c.Err)
 	fmt.Fprintf(c.Err, "error: unsupported arguments: %v\n", args)
 }

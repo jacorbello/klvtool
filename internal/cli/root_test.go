@@ -2,7 +2,6 @@ package cli
 
 import (
 	"bytes"
-	"os"
 	"strings"
 	"testing"
 )
@@ -18,55 +17,67 @@ func TestNewRootCommand(t *testing.T) {
 }
 
 func TestExecuteEmptyArgs(t *testing.T) {
-	if got := NewRootCommand().Execute(nil); got != 0 {
-		t.Fatalf("expected success exit code for empty args, got %d", got)
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	cmd := NewRootCommand()
+	cmd.Out = &stdout
+	cmd.Err = &stderr
+
+	if got := cmd.Execute(nil); got != usageExitCode {
+		t.Fatalf("expected usage exit code %d for empty args, got %d", usageExitCode, got)
 	}
-}
-
-func TestMainEmptyArgs(t *testing.T) {
-	origArgs := os.Args
-	t.Cleanup(func() {
-		os.Args = origArgs
-	})
-
-	os.Args = []string{"klvtool"}
-	if got := Main(); got != 0 {
-		t.Fatalf("expected Main to succeed for empty args, got %d", got)
+	if stdout.Len() != 0 {
+		t.Fatalf("expected empty args to keep stdout empty, got %q", stdout.String())
+	}
+	text := stderr.String()
+	if !strings.Contains(text, "Usage:") {
+		t.Fatalf("expected usage text on stderr for empty args, got %q", text)
+	}
+	if strings.Contains(text, "error:") {
+		t.Fatalf("expected no error prefix for empty args, got %q", text)
 	}
 }
 
 func TestHelpArgs(t *testing.T) {
 	for _, arg := range []string{"--help", "-h"} {
 		t.Run(arg, func(t *testing.T) {
-			var out bytes.Buffer
+			var stdout bytes.Buffer
+			var stderr bytes.Buffer
 			cmd := NewRootCommand()
-			cmd.Out = &out
-			cmd.Err = &out
+			cmd.Out = &stdout
+			cmd.Err = &stderr
 
 			if got := cmd.Execute([]string{arg}); got != 0 {
 				t.Fatalf("expected help exit code 0, got %d", got)
 			}
-			text := out.String()
-			if !strings.Contains(text, "klvtool") {
-				t.Fatalf("expected help text to include klvtool, got %q", text)
+			if stderr.Len() != 0 {
+				t.Fatalf("expected help to keep stderr empty, got %q", stderr.String())
 			}
+			text := stdout.String()
 			if !strings.Contains(text, "Usage:") {
 				t.Fatalf("expected help text to include usage text, got %q", text)
+			}
+			if !strings.Contains(text, "klvtool") {
+				t.Fatalf("expected help text to include klvtool, got %q", text)
 			}
 		})
 	}
 }
 
 func TestExecuteUnsupportedArgs(t *testing.T) {
-	var out bytes.Buffer
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
 	cmd := NewRootCommand()
-	cmd.Out = &out
-	cmd.Err = &out
+	cmd.Out = &stdout
+	cmd.Err = &stderr
 
 	if got := cmd.Execute([]string{"bogus"}); got != usageExitCode {
 		t.Fatalf("expected usage exit code %d for unsupported args, got %d", usageExitCode, got)
 	}
-	text := out.String()
+	if stdout.Len() != 0 {
+		t.Fatalf("expected unsupported args to keep stdout empty, got %q", stdout.String())
+	}
+	text := stderr.String()
 	if !strings.Contains(text, "error: unsupported arguments") {
 		t.Fatalf("expected unsupported-args diagnostic, got %q", text)
 	}
