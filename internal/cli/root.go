@@ -78,8 +78,19 @@ func (c *RootCommand) writeUnsupportedArgs(args []string) {
 }
 
 func (c *RootCommand) doctorCommand() *DoctorCommand {
-	if c != nil && c.Doctor != nil {
-		return c.Doctor
+	if c == nil {
+		return NewDoctorCommand()
 	}
-	return NewDoctorCommand()
+	doctor := c.Doctor
+	if doctor == nil {
+		doctor = NewDoctorCommand()
+		c.Doctor = doctor
+	}
+	if c.Out != nil {
+		doctor.Out = c.Out
+	}
+	if c.Err != nil {
+		doctor.Err = c.Err
+	}
+	return doctor
 }
