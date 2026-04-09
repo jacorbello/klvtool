@@ -12,9 +12,12 @@ func NewRootCommand() *RootCommand {
 	}
 }
 
-func (c *RootCommand) Execute(_ []string) int {
+func (c *RootCommand) Execute(args []string) int {
 	if c == nil {
 		return 1
+	}
+	if len(args) > 0 {
+		return 2
 	}
 	return 0
 }
