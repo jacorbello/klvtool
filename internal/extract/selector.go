@@ -4,8 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-
-	"github.com/jacorbello/klvtool/internal/envcheck"
 )
 
 var (
@@ -28,7 +26,7 @@ func (backendSelector) Select(req ExtractionRequest) (ExtractionResponse, error)
 
 // SelectBackend chooses the requested backend or resolves the best healthy backend for auto mode.
 func SelectBackend(req ExtractionRequest) (ExtractionResponse, error) {
-	catalog, backends := normalizedBackends(req.Report)
+	catalog, backends := normalizedBackends(req.Backends)
 
 	requested := normalizeBackendName(req.Backend)
 	switch requested {
@@ -54,23 +52,15 @@ func SelectBackend(req ExtractionRequest) (ExtractionResponse, error) {
 	}
 }
 
-func normalizedBackends(report envcheck.Report) ([]BackendDescriptor, map[BackendName]BackendDescriptor) {
-	catalog := make([]BackendDescriptor, 0, len(report.Backends))
-	backends := make(map[BackendName]BackendDescriptor, len(report.Backends))
-	for _, backend := range report.Backends {
-		name := normalizeBackendName(BackendName(backend.Name))
-		if name == "" {
-			continue
-		}
-		descriptor := BackendDescriptor{
-			Name:    name,
-			Healthy: backend.Healthy,
-			Tools:   backendToolNames(backend.Tools),
-		}
+func normalizedBackends(backends []BackendDescriptor) ([]BackendDescriptor, map[BackendName]BackendDescriptor) {
+	catalog := make([]BackendDescriptor, 0, len(backends))
+	index := make(map[BackendName]BackendDescriptor, len(backends))
+	for _, backend := range backends {
+		descriptor := normalizeBackendDescriptor(backend)
 		catalog = append(catalog, descriptor)
-		backends[name] = descriptor
+		index[descriptor.Name] = descriptor
 	}
-	return catalog, backends
+	return catalog, index
 }
 
 func pickHealthyBackend(backends map[BackendName]BackendDescriptor, name BackendName) (BackendDescriptor, bool) {
@@ -79,17 +69,6 @@ func pickHealthyBackend(backends map[BackendName]BackendDescriptor, name Backend
 		return BackendDescriptor{}, false
 	}
 	return backend, true
-}
-
-func backendToolNames(tools []envcheck.ToolHealth) []string {
-	names := make([]string, 0, len(tools))
-	for _, tool := range tools {
-		if tool.Name == "" {
-			continue
-		}
-		names = append(names, tool.Name)
-	}
-	return names
 }
 
 func normalizeBackendName(name BackendName) BackendName {
@@ -103,4 +82,9 @@ func normalizeBackendName(name BackendName) BackendName {
 	default:
 		return BackendName(strings.ToLower(strings.TrimSpace(string(name))))
 	}
+}
+
+func normalizeBackendDescriptor(backend BackendDescriptor) BackendDescriptor {
+	backend.Name = normalizeBackendName(backend.Name)
+	return backend
 }

@@ -1,14 +1,12 @@
 package extract
 
-import "github.com/jacorbello/klvtool/internal/envcheck"
-
 // BackendName is the normalized identifier for an extraction backend.
 type BackendName string
 
 const (
-	BackendAuto     BackendName = "auto"
+	BackendAuto      BackendName = "auto"
 	BackendGStreamer BackendName = "gstreamer"
-	BackendFFmpeg   BackendName = "ffmpeg"
+	BackendFFmpeg    BackendName = "ffmpeg"
 )
 
 // BackendDescriptor is the normalized, extract-layer view of a backend health report.
@@ -18,10 +16,10 @@ type BackendDescriptor struct {
 	Tools   []string
 }
 
-// ExtractionRequest captures the backend preference and environment snapshot used for selection.
+// ExtractionRequest captures the backend preference and backend catalog used for selection.
 type ExtractionRequest struct {
-	Backend BackendName
-	Report  envcheck.Report
+	Backend  BackendName
+	Backends []BackendDescriptor
 }
 
 // ExtractionResponse captures the selected backend and the normalized backend catalog.
@@ -39,4 +37,3 @@ type Backend interface {
 type Selector interface {
 	Select(ExtractionRequest) (ExtractionResponse, error)
 }
-
