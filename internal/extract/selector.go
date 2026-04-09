@@ -56,7 +56,13 @@ func normalizedBackends(backends []BackendDescriptor) ([]BackendDescriptor, map[
 	catalog := make([]BackendDescriptor, 0, len(backends))
 	index := make(map[BackendName]BackendDescriptor, len(backends))
 	for _, backend := range backends {
-		descriptor := normalizeBackendDescriptor(backend)
+		descriptor, ok := normalizeBackendDescriptor(backend)
+		if !ok {
+			continue
+		}
+		if _, exists := index[descriptor.Name]; exists {
+			continue
+		}
 		catalog = append(catalog, descriptor)
 		index[descriptor.Name] = descriptor
 	}
@@ -84,7 +90,22 @@ func normalizeBackendName(name BackendName) BackendName {
 	}
 }
 
-func normalizeBackendDescriptor(backend BackendDescriptor) BackendDescriptor {
-	backend.Name = normalizeBackendName(backend.Name)
-	return backend
+func normalizeBackendDescriptor(backend BackendDescriptor) (BackendDescriptor, bool) {
+	name, ok := normalizeCatalogBackendName(backend.Name)
+	if !ok {
+		return BackendDescriptor{}, false
+	}
+	backend.Name = name
+	return backend, true
+}
+
+func normalizeCatalogBackendName(name BackendName) (BackendName, bool) {
+	switch strings.ToLower(strings.TrimSpace(string(name))) {
+	case string(BackendGStreamer):
+		return BackendGStreamer, true
+	case string(BackendFFmpeg):
+		return BackendFFmpeg, true
+	default:
+		return "", false
+	}
 }

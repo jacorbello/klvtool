@@ -23,6 +23,23 @@ func TestSelectBackendAutoPrefersGStreamerWhenHealthy(t *testing.T) {
 	}
 }
 
+func TestSelectBackendAutoFallsBackToFfmpegWhenGStreamerUnavailable(t *testing.T) {
+	req := ExtractionRequest{
+		Backend: BackendAuto,
+		Backends: []BackendDescriptor{
+			{Name: BackendFFmpeg, Healthy: true},
+		},
+	}
+
+	resp, err := SelectBackend(req)
+	if err != nil {
+		t.Fatalf("expected auto selection to fall back to ffmpeg, got error: %v", err)
+	}
+	if got, want := resp.Selected.Name, BackendFFmpeg; got != want {
+		t.Fatalf("expected auto to fall back to %q, got %q", want, got)
+	}
+}
+
 func TestSelectBackendAutoFailsWhenNoBackendIsHealthy(t *testing.T) {
 	req := ExtractionRequest{
 		Backend: BackendAuto,
@@ -132,5 +149,47 @@ func TestSelectBackendNormalizesRequestAndBackendDescriptors(t *testing.T) {
 	}
 	if got, want := resp.Backends[1].Name, BackendGStreamer; got != want {
 		t.Fatalf("expected second backend to normalize to %q, got %q", want, got)
+	}
+	if got, want := resp.Backends[0].Healthy, true; got != want {
+		t.Fatalf("expected first valid descriptor to be kept, got healthy=%v", got)
+	}
+	if got, want := resp.Selected.Name, BackendGStreamer; got != want {
+		t.Fatalf("expected auto selection to prefer %q, got %q", want, got)
+	}
+}
+
+func TestSelectBackendIgnoresInvalidAndDuplicateDescriptors(t *testing.T) {
+	req := ExtractionRequest{
+		Backend: BackendAuto,
+		Backends: []BackendDescriptor{
+			{Name: BackendName(""), Healthy: true},
+			{Name: BackendName(" auto "), Healthy: true},
+			{Name: BackendGStreamer, Healthy: true},
+			{Name: BackendGStreamer, Healthy: false},
+			{Name: BackendFFmpeg, Healthy: false},
+		},
+	}
+
+	resp, err := SelectBackend(req)
+	if err != nil {
+		t.Fatalf("expected selection to succeed, got error: %v", err)
+	}
+	if got, want := len(resp.Backends), 2; got != want {
+		t.Fatalf("expected only valid unique descriptors in catalog, got %d", got)
+	}
+	if got, want := resp.Backends[0].Name, BackendGStreamer; got != want {
+		t.Fatalf("expected first unique descriptor to be kept, got %q", got)
+	}
+	if got, want := resp.Backends[0].Healthy, true; got != want {
+		t.Fatalf("expected first duplicate to win, got healthy=%v", got)
+	}
+	if got, want := resp.Backends[1].Name, BackendFFmpeg; got != want {
+		t.Fatalf("expected ffmpeg to remain in catalog, got %q", got)
+	}
+	if _, ok := map[BackendName]BackendDescriptor{
+		resp.Backends[0].Name: resp.Backends[0],
+		resp.Backends[1].Name: resp.Backends[1],
+	}[BackendAuto]; ok {
+		t.Fatal("expected auto to be excluded from the catalog and lookup behavior")
 	}
 }
