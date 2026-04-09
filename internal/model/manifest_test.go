@@ -55,6 +55,28 @@ func TestManifestMarshalJSON(t *testing.T) {
 	}
 }
 
+func TestManifestMarshalJSONZeroValues(t *testing.T) {
+	got, err := json.Marshal(Manifest{})
+	if err != nil {
+		t.Fatalf("marshal manifest: %v", err)
+	}
+
+	want := `{"schemaVersion":"","sourceInputPath":"","backendName":"","backendVersion":"","records":[]}`
+	if string(got) != want {
+		t.Fatalf("unexpected manifest json\nwant: %s\ngot:  %s", want, string(got))
+	}
+
+	got, err = json.Marshal(Record{})
+	if err != nil {
+		t.Fatalf("marshal record: %v", err)
+	}
+
+	want = `{"recordId":"","pid":0,"payloadPath":"","payloadSize":0,"payloadHash":"","warnings":[]}`
+	if string(got) != want {
+		t.Fatalf("unexpected record json\nwant: %s\ngot:  %s", want, string(got))
+	}
+}
+
 func TestErrorTyping(t *testing.T) {
 	cases := []struct {
 		name string
@@ -79,6 +101,9 @@ func TestErrorTyping(t *testing.T) {
 			}
 			if !errors.Is(tc.err, &Error{Code: tc.code}) {
 				t.Fatalf("expected errors.Is to match code %q", tc.code)
+			}
+			if !errors.Is(fmt.Errorf("wrap: %w", tc.err), &Error{Code: tc.code}) {
+				t.Fatalf("expected wrapped errors.Is to match code %q", tc.code)
 			}
 			var typed *Error
 			if !errors.As(tc.err, &typed) {

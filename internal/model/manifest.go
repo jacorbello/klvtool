@@ -1,5 +1,7 @@
 package model
 
+import "encoding/json"
+
 // Manifest captures the shared JSON output for an extraction run.
 type Manifest struct {
 	SchemaVersion   string   `json:"schemaVersion"`
@@ -7,6 +9,14 @@ type Manifest struct {
 	BackendName     string   `json:"backendName"`
 	BackendVersion  string   `json:"backendVersion"`
 	Records         []Record `json:"records"`
+}
+
+func (m Manifest) MarshalJSON() ([]byte, error) {
+	type alias Manifest
+	if m.Records == nil {
+		m.Records = []Record{}
+	}
+	return json.Marshal(alias(m))
 }
 
 // Record captures one extracted payload and the transport metadata needed to
@@ -24,4 +34,12 @@ type Record struct {
 	PayloadSize       int64    `json:"payloadSize"`
 	PayloadHash       string   `json:"payloadHash"`
 	Warnings          []string `json:"warnings"`
+}
+
+func (r Record) MarshalJSON() ([]byte, error) {
+	type alias Record
+	if r.Warnings == nil {
+		r.Warnings = []string{}
+	}
+	return json.Marshal(alias(r))
 }
