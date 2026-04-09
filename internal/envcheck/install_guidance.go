@@ -64,7 +64,7 @@ func detectPlatform(goos string, env map[string]string) string {
 	if goos != "linux" {
 		return "unsupported"
 	}
-	if isWSL(env) {
+	if isWSL(env) && isDebianUbuntu(env) {
 		return "wsl"
 	}
 	if isDebianUbuntu(env) {

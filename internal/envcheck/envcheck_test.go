@@ -175,13 +175,15 @@ func TestDetectReportsVersionFailureWhenToolIsInstalled(t *testing.T) {
 
 func TestPlatformGuidance(t *testing.T) {
 	tests := []struct {
-		name     string
-		goos     string
-		env      map[string]string
-		contains string
+		name        string
+		goos        string
+		env         map[string]string
+		contains    string
+		notContains string
 	}{
 		{name: "macos", goos: "darwin", contains: "brew install ffmpeg gstreamer"},
-		{name: "wsl", goos: "linux", env: map[string]string{"WSL_DISTRO_NAME": "Ubuntu"}, contains: "WSL"},
+		{name: "wsl with distro evidence", goos: "linux", env: map[string]string{"WSL_INTEROP": "1", "ID": "ubuntu"}, contains: "apt install ffmpeg gstreamer1.0-tools"},
+		{name: "wsl without distro evidence", goos: "linux", env: map[string]string{"WSL_INTEROP": "1"}, contains: "native package manager", notContains: "apt install"},
 		{name: "unsupported", goos: "windows", contains: "native package manager"},
 		{name: "debian ubuntu", goos: "linux", env: map[string]string{"ID": "ubuntu"}, contains: "apt install ffmpeg gstreamer1.0-tools"},
 	}
@@ -194,6 +196,9 @@ func TestPlatformGuidance(t *testing.T) {
 			}
 			if !containsString(guidance.Steps, tt.contains) {
 				t.Fatalf("expected guidance to contain %q, got %v", tt.contains, guidance.Steps)
+			}
+			if tt.notContains != "" && containsString(guidance.Steps, tt.notContains) {
+				t.Fatalf("expected guidance to avoid %q, got %v", tt.notContains, guidance.Steps)
 			}
 		})
 	}
