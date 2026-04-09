@@ -86,11 +86,7 @@ func (c *RootCommand) doctorCommand() *DoctorCommand {
 		doctor = NewDoctorCommand()
 		c.Doctor = doctor
 	}
-	if c.Out != nil {
-		doctor.Out = c.Out
-	}
-	if c.Err != nil {
-		doctor.Err = c.Err
-	}
+	doctor.Out = c.Out
+	doctor.Err = c.Err
 	return doctor
 }

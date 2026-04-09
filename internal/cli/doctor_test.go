@@ -84,3 +84,81 @@ func TestDoctorCommandRuns(t *testing.T) {
 		}
 	}
 }
+
+func TestDoctorCommandHonorsNilRootWriters(t *testing.T) {
+	var staleStdout bytes.Buffer
+	var staleStderr bytes.Buffer
+
+	cmd := NewRootCommand()
+	cmd.Out = nil
+	cmd.Err = nil
+	cmd.Doctor.Out = &staleStdout
+	cmd.Doctor.Err = &staleStderr
+	cmd.Doctor.Detect = func(ctx context.Context, goos string, env map[string]string) envcheck.Report {
+		return envcheck.Report{
+			Backends: []envcheck.BackendHealth{
+				{
+					Name:    "ffmpeg",
+					Healthy: true,
+				},
+			},
+		}
+	}
+
+	if got := cmd.Execute([]string{"doctor"}); got != 0 {
+		t.Fatalf("expected doctor command to succeed, got exit code %d", got)
+	}
+	if staleStdout.Len() != 0 {
+		t.Fatalf("expected nil root stdout to suppress doctor output, got %q", staleStdout.String())
+	}
+	if staleStderr.Len() != 0 {
+		t.Fatalf("expected nil root stderr to suppress doctor errors, got %q", staleStderr.String())
+	}
+}
+
+func TestDoctorCommandResyncsCachedWritersAcrossInvocations(t *testing.T) {
+	var firstStdout bytes.Buffer
+	var firstStderr bytes.Buffer
+	var secondStdout bytes.Buffer
+	var secondStderr bytes.Buffer
+
+	cmd := NewRootCommand()
+	cmd.Doctor.Detect = func(ctx context.Context, goos string, env map[string]string) envcheck.Report {
+		return envcheck.Report{
+			Backends: []envcheck.BackendHealth{
+				{
+					Name:    "ffmpeg",
+					Healthy: true,
+				},
+			},
+		}
+	}
+
+	cmd.Out = &firstStdout
+	cmd.Err = &firstStderr
+	if got := cmd.Execute([]string{"doctor"}); got != 0 {
+		t.Fatalf("expected first doctor invocation to succeed, got exit code %d", got)
+	}
+
+	cmd.Out = &secondStdout
+	cmd.Err = &secondStderr
+	if got := cmd.Execute([]string{"doctor"}); got != 0 {
+		t.Fatalf("expected second doctor invocation to succeed, got exit code %d", got)
+	}
+
+	if firstStdout.Len() == 0 {
+		t.Fatal("expected first invocation to write to first stdout")
+	}
+	if firstStderr.Len() != 0 {
+		t.Fatalf("expected first invocation to keep first stderr empty, got %q", firstStderr.String())
+	}
+	if secondStdout.Len() == 0 {
+		t.Fatal("expected second invocation to write to updated stdout")
+	}
+	if secondStderr.Len() != 0 {
+		t.Fatalf("expected second invocation to keep second stderr empty, got %q", secondStderr.String())
+	}
+	if secondStdout.String() != firstStdout.String() {
+		t.Fatalf("expected doctor output to be stable across invocations, got first %q and second %q", firstStdout.String(), secondStdout.String())
+	}
+}
