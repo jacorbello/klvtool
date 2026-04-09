@@ -21,6 +21,14 @@ func InstallGuidance(goos string, env map[string]string) Guidance {
 				"brew upgrade ffmpeg gstreamer",
 			},
 		}
+	case "unsupported":
+		return Guidance{
+			Platform: "unsupported",
+			Summary:  "No automated install guidance is available for this platform.",
+			Steps: []string{
+				"Install ffmpeg and gstreamer using the platform's native package manager or manual binaries.",
+			},
+		}
 	case "wsl":
 		return Guidance{
 			Platform: "wsl",
@@ -46,7 +54,7 @@ func detectPlatform(goos string, env map[string]string) string {
 		return "macos"
 	}
 	if goos != "linux" {
-		return "debian_ubuntu"
+		return "unsupported"
 	}
 	if isWSL(env) {
 		return "wsl"

@@ -79,6 +79,62 @@ func TestDetectBackendsReportsMissingTools(t *testing.T) {
 	}
 }
 
+func TestDetectPreservesGuidanceSummaryForUnsupportedOS(t *testing.T) {
+	report := Detect(context.Background(), "windows", nil, func(name string) (string, error) {
+		return "", errors.New("unexpected")
+	}, func(ctx context.Context, name string, args ...string) (string, error) {
+		return "", errors.New("unexpected")
+	})
+
+	if report.Platform != "unsupported" {
+		t.Fatalf("expected unsupported platform, got %q", report.Platform)
+	}
+	if report.GuidanceSummary == "" {
+		t.Fatal("expected guidance summary to be preserved")
+	}
+	if containsString(report.Guidance, "apt install") {
+		t.Fatalf("expected unsupported guidance to avoid apt instructions, got %v", report.Guidance)
+	}
+}
+
+func TestDetectReportsVersionFailureWhenToolIsInstalled(t *testing.T) {
+	lookPath := func(name string) (string, error) {
+		switch name {
+		case "ffmpeg", "ffprobe":
+			return "/usr/bin/" + name, nil
+		default:
+			return "", errors.New("missing")
+		}
+	}
+	runVersion := func(ctx context.Context, name string, args ...string) (string, error) {
+		if name == "ffmpeg" {
+			return "", errors.New("exec failed")
+		}
+		return name + " 7.1", nil
+	}
+
+	report := Detect(context.Background(), "linux", nil, lookPath, runVersion)
+	ffmpeg := report.BackendsByName()["ffmpeg"]
+	if ffmpeg == nil {
+		t.Fatal("expected ffmpeg backend report")
+	}
+	if ffmpeg.Healthy {
+		t.Fatal("expected ffmpeg backend to be unhealthy")
+	}
+	if len(ffmpeg.Tools) == 0 {
+		t.Fatal("expected ffmpeg tools to be reported")
+	}
+	if ffmpeg.Tools[0].Path != "/usr/bin/ffmpeg" {
+		t.Fatalf("expected installed tool path to be preserved, got %q", ffmpeg.Tools[0].Path)
+	}
+	if ffmpeg.Tools[0].Healthy {
+		t.Fatal("expected version failure to mark tool unhealthy")
+	}
+	if ffmpeg.Tools[0].Error == "" {
+		t.Fatal("expected version failure error to be recorded")
+	}
+}
+
 func TestPlatformGuidance(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -89,6 +145,7 @@ func TestPlatformGuidance(t *testing.T) {
 		{name: "macos", goos: "darwin", contains: "brew install ffmpeg gstreamer"},
 		{name: "debian ubuntu", goos: "linux", contains: "apt install ffmpeg gstreamer1.0-tools"},
 		{name: "wsl", goos: "linux", env: map[string]string{"WSL_DISTRO_NAME": "Ubuntu"}, contains: "WSL"},
+		{name: "unsupported", goos: "windows", contains: "native package manager"},
 	}
 
 	for _, tt := range tests {

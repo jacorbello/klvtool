@@ -32,9 +32,10 @@ type BackendHealth struct {
 
 // Report is the structured result of an environment check.
 type Report struct {
-	Platform string
-	Guidance []string
-	Backends []BackendHealth
+	Platform        string
+	GuidanceSummary string
+	Guidance        []string
+	Backends        []BackendHealth
 }
 
 // BackendsByName indexes backend health reports by backend name.
@@ -68,9 +69,10 @@ func Detect(ctx context.Context, goos string, env map[string]string, lookPath Lo
 
 	guidance := InstallGuidance(goos, env)
 	report := Report{
-		Platform: guidance.Platform,
-		Guidance: guidance.Steps,
-		Backends: make([]BackendHealth, 0, len(backendSpecs)),
+		Platform:        guidance.Platform,
+		GuidanceSummary: guidance.Summary,
+		Guidance:        guidance.Steps,
+		Backends:        make([]BackendHealth, 0, len(backendSpecs)),
 	}
 
 	for _, spec := range backendSpecs {
