@@ -1,7 +1,9 @@
 package cli
 
 import (
+	"bytes"
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -33,8 +35,42 @@ func TestMainEmptyArgs(t *testing.T) {
 	}
 }
 
+func TestHelpArgs(t *testing.T) {
+	for _, arg := range []string{"--help", "-h"} {
+		t.Run(arg, func(t *testing.T) {
+			var out bytes.Buffer
+			cmd := NewRootCommand()
+			cmd.Out = &out
+			cmd.Err = &out
+
+			if got := cmd.Execute([]string{arg}); got != 0 {
+				t.Fatalf("expected help exit code 0, got %d", got)
+			}
+			text := out.String()
+			if !strings.Contains(text, "klvtool") {
+				t.Fatalf("expected help text to include klvtool, got %q", text)
+			}
+			if !strings.Contains(text, "Usage:") {
+				t.Fatalf("expected help text to include usage text, got %q", text)
+			}
+		})
+	}
+}
+
 func TestExecuteUnsupportedArgs(t *testing.T) {
-	if got := NewRootCommand().Execute([]string{"bogus"}); got == 0 {
-		t.Fatal("expected non-zero exit code for unsupported args")
+	var out bytes.Buffer
+	cmd := NewRootCommand()
+	cmd.Out = &out
+	cmd.Err = &out
+
+	if got := cmd.Execute([]string{"bogus"}); got != usageExitCode {
+		t.Fatalf("expected usage exit code %d for unsupported args, got %d", usageExitCode, got)
+	}
+	text := out.String()
+	if !strings.Contains(text, "error: unsupported arguments") {
+		t.Fatalf("expected unsupported-args diagnostic, got %q", text)
+	}
+	if !strings.Contains(text, "Usage:") {
+		t.Fatalf("expected usage text for unsupported args, got %q", text)
 	}
 }
