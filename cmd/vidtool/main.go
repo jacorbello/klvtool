@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"example.com/vidtool/internal/cli"
+	"github.com/jacorbello/klvtool/internal/cli"
 )
 
 func main() {

@@ -8,7 +8,7 @@ type RootCommand struct {
 
 func NewRootCommand() *RootCommand {
 	return &RootCommand{
-		Use: "vidtool",
+		Use: "klvtool",
 	}
 }
 

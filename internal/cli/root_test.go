@@ -7,4 +7,7 @@ func TestNewRootCommand(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("expected root command")
 	}
+	if cmd.Use != "klvtool" {
+		t.Fatalf("expected command use klvtool, got %q", cmd.Use)
+	}
 }

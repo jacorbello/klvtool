@@ -1,6 +1,6 @@
-# vidtool
+# klvtool
 
-`vidtool` is a Go CLI for working with MPEG-TS video assets and KLV payloads.
+`klvtool` is a Go CLI for working with MPEG-TS video assets and KLV payloads.
 
 The initial roadmap is to ship two top-level commands:
 
