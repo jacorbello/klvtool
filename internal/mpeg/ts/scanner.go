@@ -1,7 +1,7 @@
 package ts
 
 import (
-	"bytes"
+	"bufio"
 	"fmt"
 	"io"
 )
@@ -13,7 +13,7 @@ type ScanConfig struct {
 
 // PacketScanner reads sequential MPEG-TS packets from a stream.
 type PacketScanner struct {
-	r           io.Reader
+	r           *bufio.Reader
 	cfg         ScanConfig
 	buf         [PacketSize]byte
 	offset      int64
@@ -23,23 +23,15 @@ type PacketScanner struct {
 
 // NewPacketScanner creates a scanner that reads TS packets from r.
 func NewPacketScanner(r io.Reader, cfg ScanConfig) *PacketScanner {
-	return &PacketScanner{r: r, cfg: cfg}
+	// Buffer big enough to hold a full packet plus the +188 lookahead
+	// byte used to verify sync recovery candidates.
+	return &PacketScanner{r: bufio.NewReaderSize(r, PacketSize*4), cfg: cfg}
 }
 
 // Next reads and parses the next TS packet. Returns io.EOF at end of stream.
 func (s *PacketScanner) Next() (Packet, error) {
-	n, err := io.ReadFull(s.r, s.buf[:])
-	if err != nil {
-		if err == io.EOF || (n == 0 && err == io.ErrUnexpectedEOF) {
-			return Packet{}, io.EOF
-		}
-		return Packet{}, fmt.Errorf("incomplete TS packet: read %d of %d bytes", n, PacketSize)
-	}
-
-	if s.buf[0] != SyncByte {
-		if err := s.recoverSync(); err != nil {
-			return Packet{}, err
-		}
+	if err := s.readAlignedPacket(); err != nil {
+		return Packet{}, err
 	}
 
 	var header [4]byte
@@ -76,46 +68,78 @@ func (s *PacketScanner) Diagnostics() []Diagnostic {
 	return d
 }
 
-// recoverSync attempts to resynchronize after a sync byte mismatch.
-// On entry, s.buf contains 188 bytes not starting with 0x47.
-// On success, s.buf is refilled starting at the next 0x47, a diagnostic is
-// recorded, and s.offset is advanced by the number of skipped bytes.
+// readAlignedPacket fetches the next 188-byte TS packet into s.buf. When
+// the scanner is already aligned (previous packet was clean) the fast
+// path simply reads 188 bytes whose first byte is 0x47. If the first
+// byte is not 0x47 the scanner is out of sync and recoverSync is
+// invoked; recoverSync uses a +188 verification check to avoid locking
+// onto spurious 0x47 bytes embedded in payload data.
+func (s *PacketScanner) readAlignedPacket() error {
+	peeked, err := s.r.Peek(PacketSize)
+	if err != nil {
+		if len(peeked) == 0 {
+			return io.EOF
+		}
+		return fmt.Errorf("incomplete TS packet: read %d of %d bytes", len(peeked), PacketSize)
+	}
+
+	if peeked[0] == SyncByte {
+		copy(s.buf[:], peeked)
+		if _, derr := s.r.Discard(PacketSize); derr != nil {
+			return fmt.Errorf("discard packet: %w", derr)
+		}
+		return nil
+	}
+
+	// Out of sync: resynchronize.
+	return s.recoverSync()
+}
+
+// recoverSync scans forward one byte at a time through the bufio.Reader
+// looking for a candidate sync byte whose +188 neighbor is also a sync
+// byte. This guards against locking onto spurious 0x47 bytes that occur
+// inside payload data. If fewer than 189 bytes remain in the stream, a
+// candidate 0x47 at the start of the final 188 bytes is accepted without
+// the +188 check (last-packet fallback). On success, s.buf holds the
+// recovered 188-byte packet and s.offset is advanced by the number of
+// skipped bytes.
 func (s *PacketScanner) recoverSync() error {
 	startOffset := s.offset
-	skipped := int64(0)
+	var skipped int64
 
-	// Search the current 188-byte buffer for a 0x47.
-	idx := bytes.IndexByte(s.buf[:], SyncByte)
-	if idx > 0 {
-		skipped = int64(idx)
-		// Shift buffer left by idx.
-		copy(s.buf[:], s.buf[idx:])
-		// Fill the remaining idx bytes.
-		if _, err := io.ReadFull(s.r, s.buf[PacketSize-idx:]); err != nil {
-			return fmt.Errorf("sync recovery: failed to refill buffer: %w", err)
-		}
-	} else if idx < 0 {
-		// No 0x47 in buffer: scan forward one byte at a time.
-		skipped = int64(PacketSize)
-		var one [1]byte
-		for {
-			n, err := io.ReadFull(s.r, one[:])
-			if err != nil {
-				if err == io.EOF || err == io.ErrUnexpectedEOF && n == 0 {
-					return fmt.Errorf("sync recovery: EOF while searching for sync byte")
-				}
-				return fmt.Errorf("sync recovery: %w", err)
+	for {
+		peeked, err := s.r.Peek(PacketSize + 1)
+		if err != nil {
+			// Fewer than 189 bytes remain.
+			if len(peeked) < PacketSize {
+				return fmt.Errorf("sync recovery: EOF while searching for sync byte")
 			}
-			if one[0] == SyncByte {
+			// Exactly 188 bytes left: last-packet fallback.
+			if peeked[0] == SyncByte {
+				copy(s.buf[:], peeked[:PacketSize])
+				if _, derr := s.r.Discard(PacketSize); derr != nil {
+					return fmt.Errorf("sync recovery: discard: %w", derr)
+				}
 				break
 			}
+			// Advance one byte and retry (will hit EOF quickly).
+			if _, derr := s.r.Discard(1); derr != nil {
+				return fmt.Errorf("sync recovery: discard: %w", derr)
+			}
 			skipped++
+			continue
 		}
-		// Place 0x47 at buf[0] and read the remaining 187 bytes.
-		s.buf[0] = SyncByte
-		if _, err := io.ReadFull(s.r, s.buf[1:]); err != nil {
-			return fmt.Errorf("sync recovery: failed to read packet body: %w", err)
+		if peeked[0] == SyncByte && peeked[PacketSize] == SyncByte {
+			copy(s.buf[:], peeked[:PacketSize])
+			if _, derr := s.r.Discard(PacketSize); derr != nil {
+				return fmt.Errorf("sync recovery: discard: %w", derr)
+			}
+			break
 		}
+		if _, derr := s.r.Discard(1); derr != nil {
+			return fmt.Errorf("sync recovery: discard: %w", derr)
+		}
+		skipped++
 	}
 
 	s.offset += skipped

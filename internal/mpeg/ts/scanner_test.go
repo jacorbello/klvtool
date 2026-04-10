@@ -192,6 +192,52 @@ func TestScannerParsesAdaptationField(t *testing.T) {
 	}
 }
 
+func TestScannerRejectsSpuriousSyncByteInPayload(t *testing.T) {
+	// Garbage payload: 188 bytes where a 0x47 appears early but the byte
+	// at +188 from that 0x47 is NOT 0x47. A naive scanner would lock on
+	// the spurious sync byte; a correct one must skip it and find the
+	// real packet that follows.
+	garbage := make([]byte, 188)
+	// Prefix a few non-sync bytes.
+	garbage[0] = 0x00
+	garbage[1] = 0x11
+	garbage[2] = 0x22
+	// Spurious sync at index 3.
+	garbage[3] = SyncByte
+	// Fill rest with non-sync bytes.
+	for i := 4; i < 188; i++ {
+		garbage[i] = 0xFF
+	}
+
+	// Real packet immediately follows. Its +188 byte must be 0x47 too,
+	// so tack another valid packet on as the "lookahead verifier".
+	real1 := buildPacket(0x100, 0, false, []byte{0xAA})
+	real2 := buildPacket(0x200, 1, false, []byte{0xBB})
+
+	var buf bytes.Buffer
+	buf.Write(garbage)
+	buf.Write(real1)
+	buf.Write(real2)
+
+	s := NewPacketScanner(&buf, ScanConfig{})
+
+	got1, err := s.Next()
+	if err != nil {
+		t.Fatalf("packet 1: %v", err)
+	}
+	if got1.PID != 0x100 {
+		t.Errorf("packet 1 PID = 0x%X, want 0x100 (scanner locked onto spurious 0x47)", got1.PID)
+	}
+
+	got2, err := s.Next()
+	if err != nil {
+		t.Fatalf("packet 2: %v", err)
+	}
+	if got2.PID != 0x200 {
+		t.Errorf("packet 2 PID = 0x%X, want 0x200", got2.PID)
+	}
+}
+
 func TestScannerRecoversSyncAfterGarbage(t *testing.T) {
 	p1 := buildPacket(0x100, 0, false, []byte{0xAA})
 	p2 := buildPacket(0x200, 1, false, []byte{0xBB})
