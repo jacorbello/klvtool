@@ -1,6 +1,7 @@
 package output
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"testing"
@@ -36,12 +37,21 @@ func TestReadRawPayloadManifestLoadsPayloadBytes(t *testing.T) {
 		},
 	}
 
-	manifestBytes, err := manifest.MarshalJSON()
+	manifestFile, err := os.Create(filepath.Join(root, "manifest.ndjson"))
 	if err != nil {
-		t.Fatalf("marshal manifest: %v", err)
+		t.Fatalf("create manifest: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(root, "manifest.ndjson"), append(manifestBytes, '\n'), 0o644); err != nil {
+	if err := NewManifestWriter(manifestFile).WriteManifest(manifest); err != nil {
+		_ = manifestFile.Close()
 		t.Fatalf("write manifest: %v", err)
+	}
+	if err := manifestFile.Close(); err != nil {
+		t.Fatalf("close manifest: %v", err)
+	}
+	if contents, err := os.ReadFile(filepath.Join(root, "manifest.ndjson")); err != nil {
+		t.Fatalf("read manifest: %v", err)
+	} else if !bytes.Contains(contents, []byte(`"payloads/klv-001.bin"`)) {
+		t.Fatalf("expected writer output to include payload path, got %s", contents)
 	}
 
 	records, err := ReadRawPayloadManifest(root)
