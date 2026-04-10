@@ -51,10 +51,11 @@ func (s *PacketScanner) Next() (Packet, error) {
 	pos := 4
 	if pkt.HasAdaptation {
 		af, err := parseAdaptationField(s.buf[pos:])
-		if err == nil {
-			pkt.Adaptation = &af
-			pos += 1 + int(af.Length)
+		if err != nil {
+			return Packet{}, fmt.Errorf("adaptation field at offset %d: %w", s.offset, err)
 		}
+		pkt.Adaptation = &af
+		pos += 1 + int(af.Length)
 	}
 
 	if pkt.HasPayload && s.shouldReadPayload(pkt.PID) && pos < PacketSize {

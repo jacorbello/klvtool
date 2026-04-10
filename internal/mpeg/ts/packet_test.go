@@ -14,41 +14,41 @@ func TestParseHeaderExtractsPIDAndFlags(t *testing.T) {
 			name:   "null packet PID 0x1FFF",
 			header: [4]byte{0x47, 0x1F, 0xFF, 0x10},
 			want: Packet{
-				PID:                0x1FFF,
-				ContinuityCounter:  0,
-				PayloadUnitStart:   false,
-				HasAdaptation:      false,
-				HasPayload:         true,
+				PID:               0x1FFF,
+				ContinuityCounter: 0,
+				PayloadUnitStart:  false,
+				HasAdaptation:     false,
+				HasPayload:        true,
 			},
 		},
 		{
 			name:   "PAT PID 0 with PUSI",
 			header: [4]byte{0x47, 0x40, 0x00, 0x10},
 			want: Packet{
-				PID:                0x0000,
-				ContinuityCounter:  0,
-				PayloadUnitStart:   true,
-				HasAdaptation:      false,
-				HasPayload:         true,
+				PID:               0x0000,
+				ContinuityCounter: 0,
+				PayloadUnitStart:  true,
+				HasAdaptation:     false,
+				HasPayload:        true,
 			},
 		},
 		{
 			name:   "PID 256 with adaptation and payload, CC=5",
 			header: [4]byte{0x47, 0x01, 0x00, 0x35},
 			want: Packet{
-				PID:                0x0100,
-				ContinuityCounter:  5,
-				HasAdaptation:      true,
-				HasPayload:         true,
+				PID:               0x0100,
+				ContinuityCounter: 5,
+				HasAdaptation:     true,
+				HasPayload:        true,
 			},
 		},
 		{
 			name:   "adaptation only no payload",
 			header: [4]byte{0x47, 0x01, 0x00, 0x20},
 			want: Packet{
-				PID:                0x0100,
-				HasAdaptation:      true,
-				HasPayload:         false,
+				PID:           0x0100,
+				HasAdaptation: true,
+				HasPayload:    false,
 			},
 		},
 	}
@@ -132,9 +132,9 @@ func TestParseAdaptationFieldBasic(t *testing.T) {
 
 func TestParseAdaptationFieldPCR(t *testing.T) {
 	data := []byte{
-		0x07,                                  // adaptation field length = 7
-		0x10,                                  // flags: PCR present
-		0x00, 0x00, 0x00, 0x00, 0x7E, 0x00,   // PCR bytes: base=0, ext=0
+		0x07,                               // adaptation field length = 7
+		0x10,                               // flags: PCR present
+		0x00, 0x00, 0x00, 0x00, 0x7E, 0x00, // PCR bytes: base=0, ext=0
 	}
 	got, err := parseAdaptationField(data)
 	if err != nil {

@@ -48,11 +48,11 @@ func parseHeader(header [4]byte) Packet {
 	cc := header[3] & 0x0F
 
 	return Packet{
-		PID:                pid,
-		PayloadUnitStart:   pusi,
-		HasAdaptation:      adaptationControl == 2 || adaptationControl == 3,
-		HasPayload:         adaptationControl == 1 || adaptationControl == 3,
-		ContinuityCounter:  cc,
+		PID:               pid,
+		PayloadUnitStart:  pusi,
+		HasAdaptation:     adaptationControl == 2 || adaptationControl == 3,
+		HasPayload:        adaptationControl == 1 || adaptationControl == 3,
+		ContinuityCounter: cc,
 	}
 }
 
@@ -91,4 +91,3 @@ func parsePCR(data []byte) int64 {
 	ext := int64(data[4]&0x01)<<8 | int64(data[5])
 	return base*300 + ext
 }
-
