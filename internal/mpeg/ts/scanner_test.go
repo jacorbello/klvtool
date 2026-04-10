@@ -153,3 +153,41 @@ func TestScannerEmptyPayloadPIDsReadsNone(t *testing.T) {
 		t.Error("payload is non-nil with empty PayloadPIDs, want nil")
 	}
 }
+
+// buildPacketWithAdaptation creates a 188-byte TS packet with an adaptation
+// field followed by payload. adaptationControl is set to 0x03 (both).
+func buildPacketWithAdaptation(pid uint16, cc uint8, af []byte, payload []byte) []byte {
+	pkt := make([]byte, PacketSize)
+	pkt[0] = SyncByte
+	pkt[1] = byte(pid>>8) & 0x1F
+	pkt[2] = byte(pid & 0xFF)
+	pkt[3] = 0x30 | (cc & 0x0F) // adaptation_control=11 (both)
+	copy(pkt[4:], af)
+	copy(pkt[4+len(af):], payload)
+	return pkt
+}
+
+func TestScannerParsesAdaptationField(t *testing.T) {
+	af := []byte{0x01, 0x80} // length=1, discontinuity=true
+	payload := []byte{0xDE, 0xAD}
+	pkt := buildPacketWithAdaptation(0x100, 7, af, payload)
+	r := bytes.NewReader(pkt)
+
+	s := NewPacketScanner(r, ScanConfig{})
+	got, err := s.Next()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.Adaptation == nil {
+		t.Fatal("Adaptation is nil, want non-nil")
+	}
+	if !got.Adaptation.Discontinuity {
+		t.Error("Discontinuity = false, want true")
+	}
+	if got.ContinuityCounter != 7 {
+		t.Errorf("ContinuityCounter = %d, want 7", got.ContinuityCounter)
+	}
+	if got.Payload == nil {
+		t.Fatal("Payload is nil, want non-nil")
+	}
+}
