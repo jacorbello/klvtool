@@ -76,7 +76,14 @@ func parseAdaptationField(data []byte) (AdaptationField, error) {
 	af.RandomAccess = flags&0x40 != 0
 
 	pcrFlag := flags&0x10 != 0
-	if pcrFlag && af.Length >= 7 {
+	if pcrFlag {
+		// The PCR field requires 6 bytes (base + reserved + extension),
+		// plus the 1-byte flags we've already consumed — minimum af.Length
+		// of 7. A set PCR_flag with insufficient length is a malformed
+		// packet and must be surfaced, not silently skipped.
+		if af.Length < 7 {
+			return af, fmt.Errorf("adaptation field length %d too short for PCR (need >= 7)", af.Length)
+		}
 		pcr := parsePCR(data[2:8])
 		af.PCR = &pcr
 	}

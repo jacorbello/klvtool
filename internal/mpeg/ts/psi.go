@@ -95,33 +95,55 @@ func (p *PSIParser) Feed(pkt Packet) bool {
 	return p.tryParseSection(pkt.PID)
 }
 
-// tryParseSection attempts to parse the accumulated section for pid. If
-// the section is not yet complete (fewer bytes buffered than
-// 3+section_length), it returns false and keeps buffering. If the section
-// is complete, it dispatches to the appropriate table parser and clears
-// the buffer.
+// tryParseSection attempts to parse all complete sections currently
+// buffered for pid. PSI payloads can legally contain multiple sections
+// back-to-back in a single TS packet; stuffing bytes (0xFF) terminate
+// the sequence. The loop parses one section per iteration, advances
+// past it, stops at stuffing bytes, and retains any trailing partial
+// section for the next packet.
+//
+// Returns true if any parsed section updated the StreamTable.
 func (p *PSIParser) tryParseSection(pid uint16) bool {
 	buf := p.sectionBufs[pid]
-	if len(buf) < 3 {
-		return false
-	}
-	sectionLength := int(binary.BigEndian.Uint16(buf[1:3]) & 0x0FFF)
-	total := 3 + sectionLength
-	if len(buf) < total {
-		return false
-	}
+	changed := false
 
-	section := buf[:total]
-	var changed bool
-	switch {
-	case pid == pidPAT:
-		changed = p.parsePAT(section)
-	case p.IsPMTPID(pid):
-		changed = p.parsePMT(pid, section)
-	}
+	for {
+		// Per ISO 13818-1, a table_id of 0xFF marks the start of stuffing —
+		// no further sections in this payload.
+		if len(buf) == 0 || buf[0] == 0xFF {
+			delete(p.sectionBufs, pid)
+			return changed
+		}
+		if len(buf) < 3 {
+			// Need more bytes for the section_length header.
+			p.sectionBufs[pid] = buf
+			return changed
+		}
+		sectionLength := int(binary.BigEndian.Uint16(buf[1:3]) & 0x0FFF)
+		total := 3 + sectionLength
+		if len(buf) < total {
+			// Section spans into a continuation packet — keep buffering.
+			p.sectionBufs[pid] = buf
+			return changed
+		}
 
-	delete(p.sectionBufs, pid)
-	return changed
+		section := buf[:total]
+		switch {
+		case pid == pidPAT:
+			if p.parsePAT(section) {
+				changed = true
+			}
+		case p.IsPMTPID(pid):
+			if p.parsePMT(pid, section) {
+				changed = true
+			}
+		}
+
+		// Advance past the just-parsed section and continue. If the
+		// remainder is empty or starts with stuffing, the next loop
+		// iteration will clean up the buffer.
+		buf = buf[total:]
+	}
 }
 
 // Table returns a copy of the current StreamTable.

@@ -133,11 +133,17 @@ func (s *PacketScanner) recoverSync() error {
 	for {
 		peeked, err := s.r.Peek(PacketSize + 1)
 		if err != nil {
-			// Fewer than 189 bytes remain.
+			// Non-EOF error is an I/O failure, not end-of-stream — preserve
+			// the underlying error and classify as TSRead rather than
+			// confusingly reporting "EOF while searching for sync byte".
+			if err != io.EOF {
+				return model.TSRead(fmt.Errorf("sync recovery peek: read %d of %d bytes: %w", len(peeked), PacketSize+1, err))
+			}
+			// True EOF: fewer than 189 bytes remain in the stream.
 			if len(peeked) < PacketSize {
 				return model.TSSync(fmt.Errorf("EOF while searching for sync byte"))
 			}
-			// Exactly 188 bytes left: last-packet fallback.
+			// At least 188 bytes left: last-packet fallback.
 			if peeked[0] == SyncByte {
 				copy(s.buf[:], peeked[:PacketSize])
 				if _, derr := s.r.Discard(PacketSize); derr != nil {

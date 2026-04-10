@@ -178,6 +178,56 @@ func TestDiscoverStreamsFromSyntheticFile(t *testing.T) {
 	}
 }
 
+// TestPSIParserParsesBackToBackSectionsInOnePayload verifies that a
+// single TS payload carrying multiple PSI sections (legal per
+// ISO 13818-1) is parsed completely — the parser must not stop at the
+// first section and discard the rest. Section 1 announces program 1,
+// section 2 announces program 2, and stuffing bytes (0xFF) fill the
+// remainder of the payload.
+func TestPSIParserParsesBackToBackSectionsInOnePayload(t *testing.T) {
+	parser := NewPSIParser()
+
+	// Each PAT section announces one program. section_length is the
+	// number of bytes after the length field itself, including CRC.
+	// Single-entry PAT: 5 header bytes (tsid+flags+sect+last_sect) + 4 entry + 4 CRC = 13 bytes.
+	section1 := []byte{
+		0x00,       // table_id = PAT
+		0xB0, 0x0D, // section_syntax=1, length=13
+		0x00, 0x01, 0xC1, 0x00, 0x00,
+		0x00, 0x01, 0xF0, 0x00, // program 1 → PMT PID 0x1000
+		0x00, 0x00, 0x00, 0x00, // CRC
+	}
+	section2 := []byte{
+		0x00,       // table_id = PAT
+		0xB0, 0x0D, // length=13
+		0x00, 0x02, 0xC1, 0x00, 0x00,
+		0x00, 0x02, 0xE2, 0x00, // program 2 → PMT PID 0x0200 (reserved=111, PID 0x0200)
+		0x00, 0x00, 0x00, 0x00, // CRC
+	}
+
+	// Assemble payload: pointer_field(0) + section1 + section2 + stuffing.
+	payload := []byte{0x00}
+	payload = append(payload, section1...)
+	payload = append(payload, section2...)
+	// Stuffing bytes to demonstrate the parser stops at 0xFF.
+	payload = append(payload, 0xFF, 0xFF, 0xFF, 0xFF)
+
+	changed := parser.Feed(Packet{
+		PID: pidPAT, PayloadUnitStart: true, HasPayload: true,
+		Payload: payload,
+	})
+	if !changed {
+		t.Fatal("Feed returned changed=false, want true")
+	}
+
+	if !parser.IsPMTPID(0x1000) {
+		t.Error("program 1 PMT PID 0x1000 not registered (first section missed)")
+	}
+	if !parser.IsPMTPID(0x0200) {
+		t.Error("program 2 PMT PID 0x0200 not registered (second section dropped)")
+	}
+}
+
 // TestDiscoverStreamsWaitsForValidPMTParse verifies that DiscoverStreams
 // does not terminate early when a payload-unit-start packet arrives on a
 // PMT PID with malformed contents. Only a Feed call that actually

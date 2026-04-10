@@ -155,3 +155,21 @@ func TestParseAdaptationFieldTooShort(t *testing.T) {
 		t.Fatal("expected error for truncated adaptation field")
 	}
 }
+
+// TestParseAdaptationFieldRejectsPCRFlagWithInsufficientLength verifies
+// that a set PCR flag combined with an af.Length too small to contain
+// the 6-byte PCR field returns an error rather than silently dropping
+// the PCR. A malformed packet should be surfaced, not papered over.
+func TestParseAdaptationFieldRejectsPCRFlagWithInsufficientLength(t *testing.T) {
+	// af.Length = 3 — enough for the flags byte plus 2 extras, but not
+	// enough for the 6-byte PCR field (requires length >= 7).
+	data := []byte{
+		0x03,             // adaptation field length = 3
+		0x10,             // flags: PCR_flag set
+		0x00, 0x00, 0x00, // filler — no valid PCR here
+	}
+	_, err := parseAdaptationField(data)
+	if err == nil {
+		t.Fatal("expected error when PCR_flag is set with insufficient length")
+	}
+}

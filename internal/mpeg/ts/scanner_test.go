@@ -36,6 +36,55 @@ func (errReader) Read(p []byte) (int, error) { return 0, errInjected }
 // TestScannerPeekIOErrorIsTSRead verifies that a non-EOF read failure
 // from the underlying reader is reported as a TSRead model error, not
 // swallowed as io.EOF or misclassified as a TSParse.
+// failAfterReader returns `data` on the first Read, then errInjected on
+// every subsequent Read. This lets tests position a reader such that
+// bufio.Reader.Peek can succeed with buffered content but fail when it
+// tries to refill — exactly the state needed to exercise recoverSync's
+// error path.
+type failAfterReader struct {
+	data []byte
+	pos  int
+}
+
+func (r *failAfterReader) Read(p []byte) (int, error) {
+	if r.pos >= len(r.data) {
+		return 0, errInjected
+	}
+	n := copy(p, r.data[r.pos:])
+	r.pos += n
+	return n, nil
+}
+
+// TestRecoverSyncPropagatesPeekIOError verifies that a non-EOF read
+// failure inside recoverSync is surfaced as a TSRead model error with
+// the underlying cause preserved, not misclassified as a TSSync EOF.
+func TestRecoverSyncPropagatesPeekIOError(t *testing.T) {
+	// 200 non-sync bytes — enough to make the initial Peek(188) succeed
+	// (so readAlignedPacket falls through to recoverSync) but small
+	// enough that the bufio.Reader refill hits errInjected before
+	// recoverSync can find 189 bytes of contiguous data.
+	garbage := make([]byte, 200)
+	for i := range garbage {
+		garbage[i] = 0xAA
+	}
+	s := NewPacketScanner(&failAfterReader{data: garbage}, ScanConfig{})
+
+	_, err := s.Next()
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	var typed *model.Error
+	if !errors.As(err, &typed) {
+		t.Fatalf("error is not *model.Error: %v", err)
+	}
+	if typed.Code != model.CodeTSRead {
+		t.Errorf("Code = %q, want %q (non-EOF Peek error should be TSRead)", typed.Code, model.CodeTSRead)
+	}
+	if !errors.Is(err, errInjected) {
+		t.Errorf("underlying error not preserved in chain: %v", err)
+	}
+}
+
 func TestScannerPeekIOErrorIsTSRead(t *testing.T) {
 	s := NewPacketScanner(errReader{}, ScanConfig{})
 	_, err := s.Next()
