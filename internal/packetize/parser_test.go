@@ -1,6 +1,7 @@
 package packetize
 
 import (
+	"bytes"
 	"encoding/json"
 	"testing"
 
@@ -73,5 +74,72 @@ func TestPacketizeJSONContractUsesExplicitFieldNames(t *testing.T) {
 		if _, ok := packet[key]; !ok {
 			t.Fatalf("expected packet key %q in %s", key, data)
 		}
+	}
+}
+
+func TestParserStrictModeFailsOnTruncatedPacket(t *testing.T) {
+	parser := NewParser()
+
+	_, err := parser.Parse(Request{
+		Mode: ModeStrict,
+		Record: extract.RawPayloadRecord{
+			RecordID: "klv-001",
+			Payload:  append(bytes.Repeat([]byte{0x06}, 16), 0x82, 0x01),
+		},
+	})
+	if err == nil {
+		t.Fatal("expected strict parse error")
+	}
+}
+
+func TestParserBestEffortReturnsDiagnosticsOnMalformedPacket(t *testing.T) {
+	parser := NewParser()
+
+	stream, err := parser.Parse(Request{
+		Mode: ModeBestEffort,
+		Record: extract.RawPayloadRecord{
+			RecordID: "klv-001",
+			Payload:  append(bytes.Repeat([]byte{0x06}, 16), 0x82, 0x01),
+		},
+	})
+	if err != nil {
+		t.Fatalf("best-effort parse returned error: %v", err)
+	}
+	if len(stream.Diagnostics) != 1 {
+		t.Fatalf("expected 1 diagnostic, got %d", len(stream.Diagnostics))
+	}
+	if !stream.Recovered {
+		t.Fatal("expected recovered=true")
+	}
+}
+
+func TestParserParsesValidPacket(t *testing.T) {
+	parser := NewParser()
+
+	payload := append([]byte{0x06, 0x0e, 0x2b, 0x34}, bytes.Repeat([]byte{0x00}, 12)...)
+	payload = append(payload, 0x03, 0xaa, 0xbb, 0xcc)
+
+	stream, err := parser.Parse(Request{
+		Record: extract.RawPayloadRecord{
+			RecordID: "klv-001",
+			Payload:  payload,
+		},
+	})
+	if err != nil {
+		t.Fatalf("parse returned error: %v", err)
+	}
+	if len(stream.Packets) != 1 {
+		t.Fatalf("expected 1 packet, got %d", len(stream.Packets))
+	}
+
+	packet := stream.Packets[0]
+	if packet.PacketEndExclusive != len(payload) {
+		t.Fatalf("expected packet end %d, got %d", len(payload), packet.PacketEndExclusive)
+	}
+	if packet.Classification != ClassificationUniversalSet {
+		t.Fatalf("expected universal set classification, got %q", packet.Classification)
+	}
+	if got := packet.Length; got != 3 {
+		t.Fatalf("expected length 3, got %d", got)
 	}
 }
