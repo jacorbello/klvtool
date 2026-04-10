@@ -287,3 +287,36 @@ func TestDoctorCommandResyncsCachedStderrAcrossInvocations(t *testing.T) {
 		t.Fatalf("expected doctor error output to stay stable across invocations, got first %q and second %q", firstStderr.String(), secondStderr.String())
 	}
 }
+
+func TestDoctorCommandRespectsNoColor(t *testing.T) {
+	var stdout bytes.Buffer
+
+	cmd := NewRootCommand()
+	cmd.Out = &stdout
+	cmd.Err = &bytes.Buffer{}
+	cmd.Doctor.IsTerminal = func() bool { return true }
+	cmd.Doctor.Env = map[string]string{"NO_COLOR": "1"}
+	cmd.Doctor.Detect = func(ctx context.Context, goos string, env map[string]string) envcheck.Report {
+		return envcheck.Report{
+			Platform: "linux",
+			Backends: []envcheck.BackendHealth{
+				{
+					Name:    "ffmpeg",
+					Healthy: true,
+					Tools: []envcheck.ToolHealth{
+						{Name: "ffmpeg", Path: "/usr/bin/ffmpeg", Version: "ffmpeg version 7.1", Healthy: true},
+					},
+				},
+			},
+		}
+	}
+
+	if got := cmd.Execute([]string{"doctor"}); got != 0 {
+		t.Fatalf("expected exit code 0, got %d", got)
+	}
+
+	text := stdout.String()
+	if strings.Contains(text, "\033[") {
+		t.Errorf("expected no ANSI codes with NO_COLOR set, got:\n%s", text)
+	}
+}
