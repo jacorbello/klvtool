@@ -130,6 +130,7 @@ func TestDoctorCommandColorizesWhenTerminal(t *testing.T) {
 	cmd := NewRootCommand()
 	cmd.Out = &stdout
 	cmd.Err = &bytes.Buffer{}
+	cmd.Doctor.Env = map[string]string{}
 	cmd.Doctor.IsTerminal = func() bool { return true }
 	cmd.Doctor.Detect = func(ctx context.Context, goos string, env map[string]string) envcheck.Report {
 		return envcheck.Report{
