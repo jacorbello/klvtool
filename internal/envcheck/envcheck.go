@@ -55,7 +55,7 @@ type backendSpec struct {
 
 var backendSpecs = []backendSpec{
 	{name: "ffmpeg", tools: []string{"ffmpeg", "ffprobe"}},
-	{name: "gstreamer", tools: []string{"gst-launch-1.0", "gst-inspect-1.0"}},
+	{name: "gstreamer", tools: []string{"gst-launch-1.0", "gst-inspect-1.0", "gst-discoverer-1.0"}},
 }
 
 // Detect checks the configured backend tools and returns a structured report.
@@ -99,7 +99,7 @@ func detectBackend(ctx context.Context, spec backendSpec, lookPath LookPathFunc,
 		}
 
 		tool.Path = path
-		version, err := run(ctx, path, "--version")
+		version, err := run(ctx, path, versionArgs(toolName)...)
 		if err != nil {
 			tool.Error = err.Error()
 			backend.Tools = append(backend.Tools, tool)
@@ -123,4 +123,13 @@ func defaultVersionRunner(ctx context.Context, name string, args ...string) (str
 		return "", fmt.Errorf("%w: %s", err, strings.TrimSpace(string(output)))
 	}
 	return string(output), nil
+}
+
+func versionArgs(toolName string) []string {
+	switch toolName {
+	case "ffmpeg", "ffprobe":
+		return []string{"-version"}
+	default:
+		return []string{"--version"}
+	}
 }
