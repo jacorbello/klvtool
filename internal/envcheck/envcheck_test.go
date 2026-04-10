@@ -11,7 +11,7 @@ import (
 func TestDetectBackendsReportsToolHealth(t *testing.T) {
 	lookPath := func(name string) (string, error) {
 		switch name {
-		case "ffmpeg", "ffprobe", "gst-launch-1.0", "gst-inspect-1.0":
+		case "ffmpeg", "ffprobe", "gst-launch-1.0", "gst-inspect-1.0", "gst-discoverer-1.0":
 			return "/usr/bin/" + name, nil
 		default:
 			return "", errors.New("missing")
@@ -51,6 +51,12 @@ func TestDetectBackendsReportsToolHealth(t *testing.T) {
 	if !gstreamer.Healthy {
 		t.Fatal("expected gstreamer backend to be healthy")
 	}
+	if got, want := len(gstreamer.Tools), 3; got != want {
+		t.Fatalf("expected %d gstreamer tools, got %d", want, got)
+	}
+	if got, want := gstreamer.Tools[2].Name, "gst-discoverer-1.0"; got != want {
+		t.Fatalf("expected third gstreamer tool name %q, got %q", want, got)
+	}
 }
 
 func TestDetectBackendsReportsMissingTools(t *testing.T) {
@@ -74,18 +80,20 @@ func TestDetectBackendsReportsMissingTools(t *testing.T) {
 	if gstreamer.Healthy {
 		t.Fatal("expected gstreamer backend to be unhealthy")
 	}
-	if got := gstreamer.MissingTools; len(got) != 2 {
-		t.Fatalf("expected 2 missing gstreamer tools, got %d", len(got))
+	if got := gstreamer.MissingTools; len(got) != 3 {
+		t.Fatalf("expected 3 missing gstreamer tools, got %d", len(got))
 	}
 }
 
 func TestDetectUsesResolvedPathForVersionProbe(t *testing.T) {
 	var probed []string
+	var probedArgs [][]string
 	lookPath := func(name string) (string, error) {
 		return "/opt/bin/" + name, nil
 	}
 	runVersion := func(ctx context.Context, name string, args ...string) (string, error) {
 		probed = append(probed, name)
+		probedArgs = append(probedArgs, append([]string(nil), args...))
 		return name + " 9.0", nil
 	}
 
@@ -96,6 +104,9 @@ func TestDetectUsesResolvedPathForVersionProbe(t *testing.T) {
 	}
 	if got, want := probed[0], "/opt/bin/ffmpeg"; got != want {
 		t.Fatalf("expected version probe to use resolved path %q, got %q", want, got)
+	}
+	if got, want := strings.Join(probedArgs[0], " "), "-version"; got != want {
+		t.Fatalf("expected ffmpeg version probe args %q, got %q", want, got)
 	}
 	if got, want := ffmpeg.Tools[0].Path, "/opt/bin/ffmpeg"; got != want {
 		t.Fatalf("expected resolved tool path %q, got %q", want, got)
