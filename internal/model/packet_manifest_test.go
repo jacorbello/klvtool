@@ -31,3 +31,15 @@ func TestPacketManifestMarshalJSONUsesStableEmptySlices(t *testing.T) {
 		}
 	}
 }
+
+func TestPacketManifestMarshalJSONNormalizesNilRecords(t *testing.T) {
+	data, err := json.Marshal(PacketManifest{})
+	if err != nil {
+		t.Fatalf("json.Marshal error: %v", err)
+	}
+
+	got := string(data)
+	if !strings.Contains(got, `"records":[]`) {
+		t.Fatalf("expected empty records array, got %s", got)
+	}
+}
