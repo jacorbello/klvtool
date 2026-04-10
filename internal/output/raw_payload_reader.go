@@ -32,13 +32,6 @@ func ReadRawPayloadManifest(root string) ([]extract.RawPayloadRecord, error) {
 		if err != nil {
 			return nil, model.OutputWrite(fmt.Errorf("resolve payload path %q: %w", rec.PayloadPath, err))
 		}
-		info, err := os.Lstat(payloadPath)
-		if err != nil {
-			return nil, model.OutputWrite(fmt.Errorf("stat payload %q: %w", payloadPath, err))
-		}
-		if info.Mode()&os.ModeSymlink != 0 {
-			return nil, model.OutputWrite(fmt.Errorf("payload symlink %q is not allowed", payloadPath))
-		}
 		payload, err := os.ReadFile(payloadPath)
 		if err != nil {
 			return nil, model.OutputWrite(fmt.Errorf("read payload %q: %w", payloadPath, err))
@@ -80,6 +73,10 @@ func resolveCheckpointPath(root, payloadPath string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	realRoot, err := filepath.EvalSymlinks(absRoot)
+	if err != nil {
+		return "", err
+	}
 
 	candidate := filepath.Clean(filepath.Join(absRoot, filepath.FromSlash(payloadPath)))
 	rel, err := filepath.Rel(absRoot, candidate)
@@ -89,5 +86,17 @@ func resolveCheckpointPath(root, payloadPath string) (string, error) {
 	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 		return "", fmt.Errorf("path escapes checkpoint root")
 	}
-	return candidate, nil
+
+	realCandidate, err := filepath.EvalSymlinks(candidate)
+	if err != nil {
+		return "", err
+	}
+	rel, err = filepath.Rel(realRoot, realCandidate)
+	if err != nil {
+		return "", err
+	}
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("path escapes checkpoint root")
+	}
+	return realCandidate, nil
 }

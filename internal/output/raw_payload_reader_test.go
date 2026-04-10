@@ -196,8 +196,62 @@ func TestReadRawPayloadManifestRejectsSymlinkPayloads(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected symlink payload to fail")
 	}
-	if !strings.Contains(err.Error(), "symlink") {
-		t.Fatalf("expected symlink rejection error, got %v", err)
+	if !strings.Contains(err.Error(), "escapes checkpoint root") {
+		t.Fatalf("expected escape validation error, got %v", err)
+	}
+}
+
+func TestReadRawPayloadManifestRejectsSymlinkedParentDirectories(t *testing.T) {
+	root := t.TempDir()
+	outsideDir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(outsideDir, "payloads"), 0o755); err != nil {
+		t.Fatalf("mkdir outside payloads: %v", err)
+	}
+
+	wantPayload := []byte{0x0a, 0x0b}
+	if err := os.WriteFile(filepath.Join(outsideDir, "payloads", "klv-001.bin"), wantPayload, 0o644); err != nil {
+		t.Fatalf("write outside payload: %v", err)
+	}
+	if err := os.Symlink(filepath.Join(outsideDir, "payloads"), filepath.Join(root, "payloads")); err != nil {
+		t.Fatalf("create symlinked payloads dir: %v", err)
+	}
+
+	sum := sha256.Sum256(wantPayload)
+	wantHash := "sha256:" + hex.EncodeToString(sum[:])
+	manifest := model.Manifest{
+		SchemaVersion:   "1",
+		SourceInputPath: "input.ts",
+		BackendName:     "ffmpeg",
+		BackendVersion:  "7.1",
+		Records: []model.Record{
+			{
+				RecordID:    "klv-001",
+				PID:         256,
+				PayloadPath: "payloads/klv-001.bin",
+				PayloadSize: int64(len(wantPayload)),
+				PayloadHash: wantHash,
+			},
+		},
+	}
+
+	manifestFile, err := os.Create(filepath.Join(root, "manifest.ndjson"))
+	if err != nil {
+		t.Fatalf("create manifest: %v", err)
+	}
+	if err := NewManifestWriter(manifestFile).WriteManifest(manifest); err != nil {
+		_ = manifestFile.Close()
+		t.Fatalf("write manifest: %v", err)
+	}
+	if err := manifestFile.Close(); err != nil {
+		t.Fatalf("close manifest: %v", err)
+	}
+
+	_, err = ReadRawPayloadManifest(root)
+	if err == nil {
+		t.Fatal("expected symlinked parent directory to fail")
+	}
+	if !strings.Contains(err.Error(), "escapes checkpoint root") {
+		t.Fatalf("expected escape validation error, got %v", err)
 	}
 }
 
