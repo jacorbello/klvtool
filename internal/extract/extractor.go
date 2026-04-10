@@ -24,9 +24,9 @@ type BackendDescriptor struct {
 	Tools   []string
 }
 
-// PayloadRecord captures one extracted payload and the transport metadata needed
-// to persist it into the manifest/output layer.
-type PayloadRecord struct {
+// RawPayloadRecord captures one extracted payload and the transport metadata
+// needed to persist it into the manifest/output layer.
+type RawPayloadRecord struct {
 	RecordID          string
 	PID               uint16
 	TransportStreamID *uint16
@@ -38,6 +38,9 @@ type PayloadRecord struct {
 	Payload           []byte
 	Warnings          []string
 }
+
+// PayloadRecord is kept as a compatibility alias for existing callers.
+type PayloadRecord = RawPayloadRecord
 
 // RunRequest captures the input path, backend preference, and validated backend
 // catalog used for backend resolution.
