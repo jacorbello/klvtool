@@ -33,3 +33,28 @@ func TestCanonicalizeRecordsNormalizesNilWarningsToEmpty(t *testing.T) {
 		t.Fatalf("expected empty warnings, got %v", got[0].Warnings)
 	}
 }
+
+func TestCanonicalizeRecordsPreservesInputOrderForEqualPIDs(t *testing.T) {
+	records := []PayloadRecord{
+		{PID: 0x045, Payload: []byte("b")},
+		{PID: 0x045, Payload: []byte("a")},
+	}
+
+	got := CanonicalizeRecords(records)
+
+	if len(got) != 2 {
+		t.Fatalf("expected 2 records, got %d", len(got))
+	}
+	if string(got[0].Payload) != "b" {
+		t.Fatalf("expected first payload b, got %q", got[0].Payload)
+	}
+	if got[0].RecordID != "klv-001" {
+		t.Fatalf("expected first record id klv-001, got %q", got[0].RecordID)
+	}
+	if string(got[1].Payload) != "a" {
+		t.Fatalf("expected second payload a, got %q", got[1].Payload)
+	}
+	if got[1].RecordID != "klv-002" {
+		t.Fatalf("expected second record id klv-002, got %q", got[1].RecordID)
+	}
+}

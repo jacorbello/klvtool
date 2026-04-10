@@ -12,7 +12,7 @@ func CanonicalizeRecords(records []PayloadRecord) []PayloadRecord {
 		if out[i].PID != out[j].PID {
 			return out[i].PID < out[j].PID
 		}
-		return string(out[i].Payload) < string(out[j].Payload)
+		return false
 	})
 	for i := range out {
 		out[i].RecordID = canonicalRecordID(i)
