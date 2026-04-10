@@ -4,14 +4,15 @@ import "fmt"
 
 // PESUnit represents a reassembled Packetized Elementary Stream unit.
 type PESUnit struct {
-	PID         uint16
-	PTS         *int64
-	DTS         *int64
-	Payload     []byte
-	PacketStart int64
-	PacketIndex int64
-	PacketCount int
-	Diagnostics []Diagnostic
+	PID               uint16
+	PTS               *int64
+	DTS               *int64
+	Payload           []byte
+	PacketStart       int64
+	PacketIndex       int64
+	PacketCount       int
+	ContinuityCounter *uint8
+	Diagnostics       []Diagnostic
 }
 
 // parsePESHeader parses PTS/DTS from a PES header.
@@ -57,6 +58,7 @@ type pesAccumulator struct {
 	packetStart int64
 	packetIndex int64
 	packetCount int
+	firstCC     uint8
 	lastCC      int
 	diagnostics []Diagnostic
 }
@@ -91,6 +93,7 @@ func (a *PESAssembler) Feed(pkt Packet) *PESUnit {
 			packetStart: pkt.Offset,
 			packetIndex: pkt.Index,
 			packetCount: 1,
+			firstCC:     pkt.ContinuityCounter,
 			lastCC:      int(pkt.ContinuityCounter),
 		}
 		if err != nil {
@@ -148,15 +151,17 @@ func (a *PESAssembler) Flush() []PESUnit {
 }
 
 func (acc *pesAccumulator) toPESUnit() *PESUnit {
+	cc := acc.firstCC
 	return &PESUnit{
-		PID:         acc.pid,
-		PTS:         acc.pts,
-		DTS:         acc.dts,
-		Payload:     acc.payload,
-		PacketStart: acc.packetStart,
-		PacketIndex: acc.packetIndex,
-		PacketCount: acc.packetCount,
-		Diagnostics: acc.diagnostics,
+		PID:               acc.pid,
+		PTS:               acc.pts,
+		DTS:               acc.dts,
+		Payload:           acc.payload,
+		PacketStart:       acc.packetStart,
+		PacketIndex:       acc.packetIndex,
+		PacketCount:       acc.packetCount,
+		ContinuityCounter: &cc,
+		Diagnostics:       acc.diagnostics,
 	}
 }
 

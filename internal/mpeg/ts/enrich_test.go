@@ -62,6 +62,9 @@ func TestEnrichRecordsPopulatesMetadata(t *testing.T) {
 	if rec.PacketIndex == nil || *rec.PacketIndex != 2 {
 		t.Errorf("PacketIndex = %v, want 2", rec.PacketIndex)
 	}
+	if rec.ContinuityCounter == nil || *rec.ContinuityCounter != 0 {
+		t.Errorf("ContinuityCounter = %v, want 0", rec.ContinuityCounter)
+	}
 }
 
 func TestEnrichRecordsPIDMismatchAddsWarning(t *testing.T) {

@@ -62,6 +62,10 @@ func EnrichRecords(r io.ReadSeeker, records []extract.RawPayloadRecord) ([]extra
 		index := first.PacketIndex
 		enriched[i].PacketOffset = &offset
 		enriched[i].PacketIndex = &index
+		if first.ContinuityCounter != nil {
+			cc := *first.ContinuityCounter
+			enriched[i].ContinuityCounter = &cc
+		}
 	}
 
 	return enriched, nil
