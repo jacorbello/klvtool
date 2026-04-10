@@ -1,6 +1,10 @@
 package ts
 
-import "encoding/binary"
+import (
+	"encoding/binary"
+	"fmt"
+	"io"
+)
 
 const (
 	pidPAT     = 0x0000
@@ -146,4 +150,62 @@ func (p *PSIParser) parsePMT(pmtPID uint16, payload []byte) bool {
 
 	p.table.Programs[programNum] = streams
 	return len(streams) > 0
+}
+
+// DiscoverStreams reads enough of the source to parse PAT/PMT and returns
+// the complete StreamTable. The returned int64 is the byte offset where
+// discovery stopped.
+func DiscoverStreams(r io.ReadSeeker) (StreamTable, int64, error) {
+	scanner := NewPacketScanner(r, ScanConfig{PayloadPIDs: map[uint16]bool{pidPAT: true}})
+	psi := NewPSIParser()
+
+	var pmtPIDs map[uint16]bool
+	for {
+		pkt, err := scanner.Next()
+		if err != nil {
+			if err == io.EOF {
+				return StreamTable{}, 0, fmt.Errorf("PAT not found in stream")
+			}
+			return StreamTable{}, 0, err
+		}
+		if psi.Feed(pkt) {
+			pmtPIDs = make(map[uint16]bool)
+			for _, pid := range psi.pmtPIDs {
+				pmtPIDs[pid] = true
+			}
+			break
+		}
+	}
+
+	if _, err := r.Seek(0, io.SeekStart); err != nil {
+		return StreamTable{}, 0, fmt.Errorf("seek to start: %w", err)
+	}
+
+	allPIDs := map[uint16]bool{pidPAT: true}
+	for pid := range pmtPIDs {
+		allPIDs[pid] = true
+	}
+	scanner = NewPacketScanner(r, ScanConfig{PayloadPIDs: allPIDs})
+	psi = NewPSIParser()
+
+	parsedPMTs := make(map[uint16]bool)
+	for {
+		pkt, err := scanner.Next()
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return StreamTable{}, 0, err
+		}
+		psi.Feed(pkt)
+
+		if pkt.PayloadUnitStart && pmtPIDs[pkt.PID] {
+			parsedPMTs[pkt.PID] = true
+		}
+		if len(parsedPMTs) == len(pmtPIDs) && len(pmtPIDs) > 0 {
+			break
+		}
+	}
+
+	return psi.Table(), scanner.offset, nil
 }

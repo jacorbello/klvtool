@@ -1,6 +1,7 @@
 package ts
 
 import (
+	"bytes"
 	"testing"
 )
 
@@ -128,5 +129,54 @@ func TestPSIParserMultiProgramPAT(t *testing.T) {
 	}
 	if !parser.IsPMTPID(0x1100) {
 		t.Error("0x1100 should be PMT PID")
+	}
+}
+
+func TestDiscoverStreamsFromSyntheticFile(t *testing.T) {
+	var buf bytes.Buffer
+
+	patSection := []byte{
+		0x00, 0x00, 0xB0, 0x0D,
+		0x00, 0x01, 0xC1, 0x00, 0x00,
+		0x00, 0x01, 0xF0, 0x00,
+		0x00, 0x00, 0x00, 0x00,
+	}
+	patPkt := buildPacket(0x0000, 0, true, patSection)
+	buf.Write(patPkt)
+
+	pmtSection := []byte{
+		0x00, 0x02, 0xB0, 0x12,
+		0x00, 0x01, 0xC1, 0x00, 0x00,
+		0xE1, 0x00, 0xF0, 0x00,
+		0x06, 0xE3, 0x00, 0xF0, 0x00,
+		0x00, 0x00, 0x00, 0x00,
+	}
+	pmtPkt := buildPacket(0x1000, 0, true, pmtSection)
+	buf.Write(pmtPkt)
+
+	dataPkt := buildPacket(0x0300, 0, false, []byte{0xFF})
+	buf.Write(dataPkt)
+
+	r := bytes.NewReader(buf.Bytes())
+	table, offset, err := DiscoverStreams(r)
+	if err != nil {
+		t.Fatalf("DiscoverStreams: %v", err)
+	}
+	if offset == 0 {
+		t.Error("offset should be > 0 after discovery")
+	}
+
+	streams, ok := table.Programs[1]
+	if !ok {
+		t.Fatal("Program 1 not found")
+	}
+	if len(streams) != 1 {
+		t.Fatalf("stream count = %d, want 1", len(streams))
+	}
+	if streams[0].PID != 0x0300 {
+		t.Errorf("stream PID = 0x%04X, want 0x0300", streams[0].PID)
+	}
+	if streams[0].StreamType != 0x06 {
+		t.Errorf("stream type = 0x%02X, want 0x06", streams[0].StreamType)
 	}
 }
