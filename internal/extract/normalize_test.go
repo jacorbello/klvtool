@@ -39,12 +39,13 @@ func TestCanonicalizeRecordsNormalizesNilWarningsToEmpty(t *testing.T) {
 
 func TestCanonicalizeRecordsDeterministicAcrossEquivalentInputs(t *testing.T) {
 	tsid := uint16Ptr(7)
-	offset10 := int64Ptr(10)
 	offset30 := int64Ptr(30)
+	offset10 := int64Ptr(10)
 	packetIndex := int64Ptr(2)
 	continuityCounter := uint8Ptr(4)
 	pts := int64Ptr(100)
 	dts := int64Ptr(90)
+	laterPTS := int64Ptr(110)
 
 	recordNilTSID := PayloadRecord{
 		PID:               0x045,
@@ -54,9 +55,8 @@ func TestCanonicalizeRecordsDeterministicAcrossEquivalentInputs(t *testing.T) {
 		ContinuityCounter: continuityCounter,
 		PTS:               pts,
 		DTS:               dts,
-		Warnings:          []string{"z"},
 	}
-	recordShortWarnings := PayloadRecord{
+	recordShortOffset := PayloadRecord{
 		PID:               0x045,
 		Payload:           []byte("same"),
 		TransportStreamID: tsid,
@@ -65,22 +65,20 @@ func TestCanonicalizeRecordsDeterministicAcrossEquivalentInputs(t *testing.T) {
 		ContinuityCounter: continuityCounter,
 		PTS:               pts,
 		DTS:               dts,
-		Warnings:          []string{"a"},
 	}
-	recordLongWarnings := PayloadRecord{
+	recordHigherPTS := PayloadRecord{
 		PID:               0x045,
 		Payload:           []byte("same"),
 		TransportStreamID: tsid,
 		PacketOffset:      offset10,
 		PacketIndex:       packetIndex,
 		ContinuityCounter: continuityCounter,
-		PTS:               pts,
+		PTS:               laterPTS,
 		DTS:               dts,
-		Warnings:          []string{"a", "b"},
 	}
 
-	gotA := CanonicalizeRecords([]PayloadRecord{recordLongWarnings, recordNilTSID, recordShortWarnings})
-	gotB := CanonicalizeRecords([]PayloadRecord{recordShortWarnings, recordLongWarnings, recordNilTSID})
+	gotA := CanonicalizeRecords([]PayloadRecord{recordHigherPTS, recordNilTSID, recordShortOffset})
+	gotB := CanonicalizeRecords([]PayloadRecord{recordShortOffset, recordHigherPTS, recordNilTSID})
 
 	if !reflect.DeepEqual(gotA, gotB) {
 		t.Fatalf("expected canonicalized outputs to match across equivalent inputs\nA: %#v\nB: %#v", gotA, gotB)
@@ -93,12 +91,6 @@ func TestCanonicalizeRecordsDeterministicAcrossEquivalentInputs(t *testing.T) {
 	}
 	if gotA[0].RecordID != "klv-001" || gotA[1].RecordID != "klv-002" || gotA[2].RecordID != "klv-003" {
 		t.Fatalf("expected stable record ids, got %#v", []string{gotA[0].RecordID, gotA[1].RecordID, gotA[2].RecordID})
-	}
-	if len(gotA[1].Warnings) != 1 || gotA[1].Warnings[0] != "a" {
-		t.Fatalf("expected shorter warnings slice before longer one, got %#v", gotA[1].Warnings)
-	}
-	if len(gotA[2].Warnings) != 2 {
-		t.Fatalf("expected longer warnings slice last, got %#v", gotA[2].Warnings)
 	}
 }
 

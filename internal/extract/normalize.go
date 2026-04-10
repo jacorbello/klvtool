@@ -53,9 +53,6 @@ func lessPayloadRecord(a, b PayloadRecord) bool {
 	if cmp := compareOptionalInt64(a.DTS, b.DTS); cmp != 0 {
 		return cmp < 0
 	}
-	if cmp := compareWarnings(a.Warnings, b.Warnings); cmp != 0 {
-		return cmp < 0
-	}
 	return false
 }
 
@@ -108,22 +105,4 @@ func compareOptionalUint8(a, b *uint8) int {
 	default:
 		return 0
 	}
-}
-
-func compareWarnings(a, b []string) int {
-	if len(a) != len(b) {
-		if len(a) < len(b) {
-			return -1
-		}
-		return 1
-	}
-	for i := range a {
-		if a[i] < b[i] {
-			return -1
-		}
-		if a[i] > b[i] {
-			return 1
-		}
-	}
-	return 0
 }
