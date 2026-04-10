@@ -82,3 +82,76 @@ func TestParseHeaderRejectsBadSyncByte(t *testing.T) {
 		t.Errorf("expected zero-value Packet for bad sync byte, got PID=%d HasPayload=%v", got.PID, got.HasPayload)
 	}
 }
+
+func TestParseAdaptationFieldBasic(t *testing.T) {
+	tests := []struct {
+		name string
+		data []byte
+		want AdaptationField
+	}{
+		{
+			name: "empty adaptation field length=0",
+			data: []byte{0x00},
+			want: AdaptationField{Length: 0},
+		},
+		{
+			name: "discontinuity flag set",
+			data: []byte{0x01, 0x80},
+			want: AdaptationField{Length: 1, Discontinuity: true},
+		},
+		{
+			name: "random access flag set",
+			data: []byte{0x01, 0x40},
+			want: AdaptationField{Length: 1, RandomAccess: true},
+		},
+		{
+			name: "both flags set",
+			data: []byte{0x01, 0xC0},
+			want: AdaptationField{Length: 1, Discontinuity: true, RandomAccess: true},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := parseAdaptationField(tt.data)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got.Length != tt.want.Length {
+				t.Errorf("Length = %d, want %d", got.Length, tt.want.Length)
+			}
+			if got.Discontinuity != tt.want.Discontinuity {
+				t.Errorf("Discontinuity = %v, want %v", got.Discontinuity, tt.want.Discontinuity)
+			}
+			if got.RandomAccess != tt.want.RandomAccess {
+				t.Errorf("RandomAccess = %v, want %v", got.RandomAccess, tt.want.RandomAccess)
+			}
+		})
+	}
+}
+
+func TestParseAdaptationFieldPCR(t *testing.T) {
+	data := []byte{
+		0x07,                                  // adaptation field length = 7
+		0x10,                                  // flags: PCR present
+		0x00, 0x00, 0x00, 0x00, 0x7E, 0x00,   // PCR bytes: base=0, ext=0
+	}
+	got, err := parseAdaptationField(data)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.PCR == nil {
+		t.Fatal("PCR is nil, want non-nil")
+	}
+	if *got.PCR != 0 {
+		t.Errorf("PCR = %d, want 0", *got.PCR)
+	}
+}
+
+func TestParseAdaptationFieldTooShort(t *testing.T) {
+	data := []byte{0x05, 0x00}
+	_, err := parseAdaptationField(data)
+	if err == nil {
+		t.Fatal("expected error for truncated adaptation field")
+	}
+}
