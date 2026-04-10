@@ -8,6 +8,8 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/jacorbello/klvtool/internal/backends/ffmpeg"
+	"github.com/jacorbello/klvtool/internal/backends/gstreamer"
 	"github.com/jacorbello/klvtool/internal/envcheck"
 )
 
@@ -15,18 +17,21 @@ type DoctorCommand struct {
 	Out io.Writer
 	Err io.Writer
 
-	GOOS   string
-	Env    map[string]string
-	Detect func(context.Context, string, map[string]string) envcheck.Report
+	GOOS       string
+	Env        map[string]string
+	Version    string
+	IsTerminal func() bool
+	Detect     func(context.Context, string, map[string]string) envcheck.Report
 }
 
 func NewDoctorCommand() *DoctorCommand {
 	return &DoctorCommand{
-		Out:    os.Stdout,
-		Err:    os.Stderr,
-		GOOS:   runtime.GOOS,
-		Env:    currentEnvMap(),
-		Detect: defaultDoctorDetect,
+		Out:        os.Stdout,
+		Err:        os.Stderr,
+		GOOS:       runtime.GOOS,
+		Env:        currentEnvMap(),
+		Detect:     defaultDoctorDetect,
+		IsTerminal: nil,
 	}
 }
 
@@ -85,12 +90,59 @@ func (c *DoctorCommand) writeUsage(w io.Writer) {
 	_, _ = fmt.Fprintln(w, "  gstreamer:  gst-launch-1.0, gst-inspect-1.0, gst-discoverer-1.0, tsdemux module")
 }
 
+func isTerminalWriter(w io.Writer) bool {
+	f, ok := w.(*os.File)
+	if !ok {
+		return false
+	}
+	info, err := f.Stat()
+	if err != nil {
+		return false
+	}
+	return info.Mode()&os.ModeCharDevice != 0
+}
+
+func (c *DoctorCommand) colorEnabled() bool {
+	if _, ok := c.env()["NO_COLOR"]; ok {
+		return false
+	}
+	if c.IsTerminal != nil {
+		return c.IsTerminal()
+	}
+	return isTerminalWriter(c.Out)
+}
+
+func parseToolVersion(backendName, rawVersion string) string {
+	if rawVersion == "" {
+		return ""
+	}
+	// Limit to first line to avoid multi-line banners in tabular output.
+	if i := strings.IndexByte(rawVersion, '\n'); i >= 0 {
+		rawVersion = rawVersion[:i]
+	}
+	switch backendName {
+	case "ffmpeg":
+		return ffmpeg.ParseVersion(rawVersion)
+	case "gstreamer":
+		return gstreamer.ParseVersion(rawVersion)
+	default:
+		return rawVersion
+	}
+}
+
 func (c *DoctorCommand) writeReport(w io.Writer, report envcheck.Report) {
 	if w == nil {
 		return
 	}
 
-	_, _ = fmt.Fprintln(w, "backend resolution preference: auto")
+	clr := newColorizer(c.colorEnabled())
+	v := c.Version
+	if v == "" {
+		v = "dev"
+	}
+
+	_, _ = fmt.Fprintf(w, "klvtool: %s\n", v)
+	_, _ = fmt.Fprintln(w, "backend preference: auto")
 	_, _ = fmt.Fprintf(w, "platform: %s\n", report.Platform)
 	if report.GuidanceSummary != "" {
 		_, _ = fmt.Fprintf(w, "install guidance: %s\n", report.GuidanceSummary)
@@ -98,44 +150,36 @@ func (c *DoctorCommand) writeReport(w io.Writer, report envcheck.Report) {
 	_, _ = fmt.Fprintln(w)
 
 	for i, backend := range report.Backends {
-		status := "unavailable"
 		if backend.Healthy {
-			status = "available"
-		}
-		_, _ = fmt.Fprintf(w, "%s: %s\n", backend.Name, status)
-
-		for _, tool := range backend.Tools {
-			_, _ = fmt.Fprintf(w, "  %s\n", tool.Name)
-			if tool.Path != "" {
-				_, _ = fmt.Fprintf(w, "    path: %s\n", tool.Path)
+			_, _ = fmt.Fprintf(w, "%s %s\n", clr.green(backend.Name), clr.green("\xe2\x9c\x93 available"))
+			for _, tool := range backend.Tools {
+				ver := parseToolVersion(backend.Name, tool.Version)
+				_, _ = fmt.Fprintf(w, "  %-10s%s   %s\n", tool.Name, ver, clr.dim(tool.Path))
 			}
-			if tool.Version != "" {
-				_, _ = fmt.Fprintf(w, "    version: %s\n", tool.Version)
-			}
-			if tool.Error != "" {
-				_, _ = fmt.Fprintf(w, "    error: %s\n", tool.Error)
-			}
-		}
-
-		for _, module := range backend.Modules {
-			status := "unavailable"
-			if module.Healthy {
-				status = "available"
-			}
-			_, _ = fmt.Fprintf(w, "  module: %s (%s)\n", module.Name, status)
-			if module.Error != "" {
-				_, _ = fmt.Fprintf(w, "    error: %s\n", module.Error)
-			}
-		}
-
-		if !backend.Healthy && (len(backend.MissingTools) > 0 || len(backend.MissingModules) > 0) {
-			missing := append([]string(nil), backend.MissingTools...)
-			for _, module := range backend.MissingModules {
-				missing = append(missing, "module:"+module)
-			}
-			_, _ = fmt.Fprintf(w, "  missing: %s\n", strings.Join(missing, ", "))
-			for _, step := range report.Guidance {
-				_, _ = fmt.Fprintf(w, "  install: %s\n", step)
+		} else {
+			if len(backend.MissingTools) == 0 && len(backend.MissingModules) == 0 {
+				// Tools present but unhealthy (e.g., version command failed)
+				_, _ = fmt.Fprintf(w, "%s %s\n", clr.red(backend.Name), clr.red("\xe2\x9c\x97 unhealthy"))
+				for _, tool := range backend.Tools {
+					if tool.Error != "" {
+						_, _ = fmt.Fprintf(w, "  %s %s\n", tool.Name, clr.red(tool.Error))
+					}
+				}
+				for _, module := range backend.Modules {
+					if module.Error != "" {
+						_, _ = fmt.Fprintf(w, "  %s %s\n", module.Name, clr.red(module.Error))
+					}
+				}
+			} else {
+				_, _ = fmt.Fprintf(w, "%s %s\n", clr.red(backend.Name), clr.red("\xe2\x9c\x97 not installed"))
+				missing := append([]string(nil), backend.MissingTools...)
+				missing = append(missing, backend.MissingModules...)
+				if len(missing) > 0 {
+					_, _ = fmt.Fprintf(w, "  %s %s\n", clr.red("missing:"), strings.Join(missing, ", "))
+				}
+				for _, step := range report.Guidance {
+					_, _ = fmt.Fprintf(w, "  install: %s\n", clr.dim(step))
+				}
 			}
 		}
 

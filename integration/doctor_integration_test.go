@@ -15,13 +15,14 @@ func TestDoctorIntegration(t *testing.T) {
 	cmd := cli.NewRootCommand()
 	cmd.Out = &stdout
 	cmd.Err = &stderr
+	cmd.Doctor.IsTerminal = func() bool { return false }
 
 	if got := cmd.Execute([]string{"doctor"}); got != 0 {
 		t.Fatalf("expected doctor command to succeed, got %d with stderr %q", got, stderr.String())
 	}
 
 	text := stdout.String()
-	for _, want := range []string{"ffmpeg", "gstreamer", "backend resolution preference: auto"} {
+	for _, want := range []string{"ffmpeg", "gstreamer", "backend preference: auto"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("expected doctor output to contain %q, got %q", want, text)
 		}
