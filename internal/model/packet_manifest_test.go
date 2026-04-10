@@ -48,15 +48,34 @@ func TestPacketCheckpointMarshalJSONUsesStablePacketAndDiagnosticArrays(t *testi
 	data, err := json.Marshal(PacketCheckpoint{
 		RecordID: "klv-001",
 		Mode:     "best-effort",
+		Packets: []PacketRecord{
+			{
+				PacketIndex:    0,
+				PacketStart:    0,
+				KeyStart:       0,
+				LengthStart:    16,
+				ValueStart:     17,
+				PacketEnd:      20,
+				RawKeyHex:      "060e2b34",
+				Length:         3,
+				RawValueHex:    "aabbcc",
+				Classification: "universal_set",
+			},
+		},
 	})
 	if err != nil {
 		t.Fatalf("json.Marshal error: %v", err)
 	}
 
 	got := string(data)
-	for _, want := range []string{`"packets":[]`, `"diagnostics":[]`} {
+	for _, want := range []string{`"packets":[`, `"packetEnd":20`, `"rawKeyHex":"060e2b34"`, `"rawValueHex":"aabbcc"`, `"diagnostics":[]`} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("expected %q in %s", want, got)
+		}
+	}
+	for _, want := range []string{`"packetEndExclusive"`, `"key":`, `"value":`} {
+		if strings.Contains(got, want) {
+			t.Fatalf("did not expect legacy field %q in %s", want, got)
 		}
 	}
 }

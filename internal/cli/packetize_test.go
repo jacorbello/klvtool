@@ -134,6 +134,24 @@ func TestPacketizeWritesPacketCheckpointOutputs(t *testing.T) {
 	if !bytes.Contains(packetBytes, []byte(`"parsedCount":1`)) {
 		t.Fatalf("expected packet checkpoint to include parsed count, got %s", packetBytes)
 	}
+	for _, want := range [][]byte{
+		[]byte(`"packetEnd":20`),
+		[]byte(`"rawKeyHex":"060e2b34000000000000000000000000"`),
+		[]byte(`"rawValueHex":"aabbcc"`),
+	} {
+		if !bytes.Contains(packetBytes, want) {
+			t.Fatalf("expected packet checkpoint to include %s, got %s", want, packetBytes)
+		}
+	}
+	for _, legacy := range [][]byte{
+		[]byte(`"packetEndExclusive"`),
+		[]byte(`"key":`),
+		[]byte(`"value":`),
+	} {
+		if bytes.Contains(packetBytes, legacy) {
+			t.Fatalf("did not expect legacy field %s in %s", legacy, packetBytes)
+		}
+	}
 	if !strings.Contains(stdout.String(), "packets: 1") {
 		t.Fatalf("expected stdout summary, got %q", stdout.String())
 	}

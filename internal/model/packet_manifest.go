@@ -64,17 +64,17 @@ func (c PacketCheckpoint) MarshalJSON() ([]byte, error) {
 
 // PacketRecord captures one parsed packet in a packet checkpoint.
 type PacketRecord struct {
-	PacketIndex        int                `json:"packetIndex"`
-	PacketStart        int                `json:"packetStart"`
-	KeyStart           int                `json:"keyStart"`
-	LengthStart        int                `json:"lengthStart"`
-	ValueStart         int                `json:"valueStart"`
-	PacketEndExclusive int                `json:"packetEndExclusive"`
-	Key                []byte             `json:"key"`
-	Length             int                `json:"length"`
-	Value              []byte             `json:"value"`
-	Classification     string             `json:"classification"`
-	Diagnostics        []PacketDiagnostic `json:"diagnostics"`
+	PacketIndex    int                `json:"packetIndex"`
+	PacketStart    int                `json:"packetStart"`
+	KeyStart       int                `json:"keyStart"`
+	LengthStart    int                `json:"lengthStart"`
+	ValueStart     int                `json:"valueStart"`
+	PacketEnd      int                `json:"packetEnd"`
+	RawKeyHex      string             `json:"rawKeyHex"`
+	Length         int                `json:"length"`
+	RawValueHex    string             `json:"rawValueHex"`
+	Classification string             `json:"classification"`
+	Diagnostics    []PacketDiagnostic `json:"diagnostics"`
 }
 
 func (r PacketRecord) MarshalJSON() ([]byte, error) {
