@@ -207,7 +207,7 @@ func normalizeWarning(warning string) string {
 	if strings.TrimSpace(warning) == "" {
 		return ""
 	}
-	return "pid unavailable from backend metadata"
+	return warning
 }
 
 func defaultRunner(ctx context.Context, path string, args ...string) ([]byte, error) {
