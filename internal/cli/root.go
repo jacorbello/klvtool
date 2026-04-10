@@ -83,6 +83,9 @@ func (c *RootCommand) writeUsage(w io.Writer) {
 	_, _ = fmt.Fprintln(w, "Required tools:")
 	_, _ = fmt.Fprintln(w, "  ffmpeg:     ffmpeg, ffprobe")
 	_, _ = fmt.Fprintln(w, "  gstreamer:  gst-launch-1.0, gst-inspect-1.0, gst-discoverer-1.0, tsdemux module")
+	_, _ = fmt.Fprintln(w)
+	_, _ = fmt.Fprintln(w, "Install:")
+	_, _ = fmt.Fprintln(w, "  go install github.com/jacorbello/klvtool/cmd/klvtool@latest")
 }
 
 func (c *RootCommand) writeUnsupportedArgs(args []string) {
