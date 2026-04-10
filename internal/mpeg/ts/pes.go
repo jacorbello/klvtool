@@ -113,23 +113,21 @@ func (a *PESAssembler) Feed(pkt Packet) *PESUnit {
 		if !ok {
 			return nil
 		}
-		if acc.lastCC >= 0 {
-			expected := (acc.lastCC + 1) & 0x0F
-			if int(pkt.ContinuityCounter) != expected {
-				if int(pkt.ContinuityCounter) == acc.lastCC {
-					acc.diagnostics = append(acc.diagnostics, Diagnostic{
-						Severity: "warning",
-						Code:     "continuity_duplicate",
-						Message:  fmt.Sprintf("duplicate CC=%d on PID 0x%04X", pkt.ContinuityCounter, pkt.PID),
-					})
-					return nil
-				}
+		expected := (acc.lastCC + 1) & 0x0F
+		if int(pkt.ContinuityCounter) != expected {
+			if int(pkt.ContinuityCounter) == acc.lastCC {
 				acc.diagnostics = append(acc.diagnostics, Diagnostic{
 					Severity: "warning",
-					Code:     "continuity_gap",
-					Message:  fmt.Sprintf("CC gap on PID 0x%04X: expected %d, got %d", pkt.PID, expected, pkt.ContinuityCounter),
+					Code:     "continuity_duplicate",
+					Message:  fmt.Sprintf("duplicate CC=%d on PID 0x%04X", pkt.ContinuityCounter, pkt.PID),
 				})
+				return nil
 			}
+			acc.diagnostics = append(acc.diagnostics, Diagnostic{
+				Severity: "warning",
+				Code:     "continuity_gap",
+				Message:  fmt.Sprintf("CC gap on PID 0x%04X: expected %d, got %d", pkt.PID, expected, pkt.ContinuityCounter),
+			})
 		}
 		acc.lastCC = int(pkt.ContinuityCounter)
 		acc.packetCount++
