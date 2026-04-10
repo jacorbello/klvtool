@@ -230,6 +230,11 @@ func DiscoverStreams(r io.ReadSeeker) (StreamTable, error) {
 	scanner = NewPacketScanner(r, ScanConfig{PayloadPIDs: allPIDs})
 	psi = NewPSIParser()
 
+	// Track which PMT PIDs have been fully parsed. A PMT is only marked
+	// complete when psi.Feed reports that a section actually changed the
+	// table — PUSI alone is insufficient because a malformed PMT start
+	// or a not-yet-complete multi-packet section would otherwise end
+	// discovery early with an incomplete table.
 	parsedPMTs := make(map[uint16]bool)
 	packetsScanned := 0
 	for packetsScanned < maxDiscoveryPackets {
@@ -241,9 +246,7 @@ func DiscoverStreams(r io.ReadSeeker) (StreamTable, error) {
 			return StreamTable{}, err
 		}
 		packetsScanned++
-		psi.Feed(pkt)
-
-		if pkt.PayloadUnitStart && pmtPIDs[pkt.PID] {
+		if psi.Feed(pkt) && pmtPIDs[pkt.PID] {
 			parsedPMTs[pkt.PID] = true
 		}
 		if len(parsedPMTs) == len(pmtPIDs) && len(pmtPIDs) > 0 {

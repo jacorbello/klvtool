@@ -178,6 +178,58 @@ func TestDiscoverStreamsFromSyntheticFile(t *testing.T) {
 	}
 }
 
+// TestDiscoverStreamsWaitsForValidPMTParse verifies that DiscoverStreams
+// does not terminate early when a payload-unit-start packet arrives on a
+// PMT PID with malformed contents. Only a Feed call that actually
+// updates the StreamTable should mark the PMT as complete.
+func TestDiscoverStreamsWaitsForValidPMTParse(t *testing.T) {
+	var file bytes.Buffer
+
+	// PAT: program 1 → PMT PID 0x1000.
+	patPkt := buildPacket(0x0000, 0, true, []byte{
+		0x00, 0x00, 0xB0, 0x0D,
+		0x00, 0x01, 0xC1, 0x00, 0x00,
+		0x00, 0x01, 0xF0, 0x00,
+		0x00, 0x00, 0x00, 0x00,
+	})
+	file.Write(patPkt)
+
+	// First packet on PMT PID: PUSI=1 but malformed — wrong table_id.
+	// The prior implementation would mark the PMT "parsed" from PUSI
+	// alone and stop discovery. The fixed implementation must keep
+	// scanning until a real PMT arrives.
+	garbagePMT := buildPacket(0x1000, 0, true, []byte{
+		0x00,       // pointer field
+		0xFF,       // table_id = 0xFF (not PMT 0x02)
+		0xB0, 0x08, // fake section_length
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	})
+	file.Write(garbagePMT)
+
+	// Real PMT section arrives later.
+	realPMT := buildPacket(0x1000, 1, true, []byte{
+		0x00, 0x02, 0xB0, 0x12,
+		0x00, 0x01, 0xC1, 0x00, 0x00,
+		0xE1, 0x00, 0xF0, 0x00,
+		0x06, 0xE3, 0x00, 0xF0, 0x00,
+		0x00, 0x00, 0x00, 0x00,
+	})
+	file.Write(realPMT)
+
+	r := bytes.NewReader(file.Bytes())
+	table, err := DiscoverStreams(r)
+	if err != nil {
+		t.Fatalf("DiscoverStreams: %v", err)
+	}
+	streams, ok := table.Programs[1]
+	if !ok {
+		t.Fatal("Program 1 not found after valid PMT — discovery stopped too early on garbage PMT")
+	}
+	if len(streams) != 1 || streams[0].PID != 0x0300 {
+		t.Errorf("unexpected streams: %+v", streams)
+	}
+}
+
 // TestPSIParserReassemblesMultiPacketPMT verifies that a PMT section
 // which spans two TS packets (PUSI start + continuation) is correctly
 // reassembled. Real MPEG-TS streams produce multi-packet PMTs once they
