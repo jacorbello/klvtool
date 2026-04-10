@@ -20,6 +20,8 @@ make build
 ./bin/klvtool packetize --input /tmp/klvtool-raw --out /tmp/klvtool-packets --mode best-effort
 ```
 
+The `testdata/fixtures/sample.ts` path is a local fixture reference. If that file is not present in your checkout, use any equivalent MPEG-TS sample that exposes KLV payloads for the extract and packetize smoke flow.
+
 ## Dependencies
 
 At least one media backend is required. Either can be used independently via `--backend`, or `--backend auto` (the default) will prefer GStreamer and fall back to FFmpeg.
