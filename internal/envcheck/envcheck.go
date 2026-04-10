@@ -22,12 +22,21 @@ type ToolHealth struct {
 	Error   string
 }
 
+// ModuleHealth describes one required backend module or plugin.
+type ModuleHealth struct {
+	Name    string
+	Healthy bool
+	Error   string
+}
+
 // BackendHealth describes the health of a media backend and its required tools.
 type BackendHealth struct {
-	Name         string
-	Tools        []ToolHealth
-	Healthy      bool
-	MissingTools []string
+	Name           string
+	Tools          []ToolHealth
+	Modules        []ModuleHealth
+	Healthy        bool
+	MissingTools   []string
+	MissingModules []string
 }
 
 // Report is the structured result of an environment check.
@@ -49,13 +58,14 @@ func (r Report) BackendsByName() map[string]*BackendHealth {
 }
 
 type backendSpec struct {
-	name  string
-	tools []string
+	name    string
+	tools   []string
+	modules []string
 }
 
 var backendSpecs = []backendSpec{
 	{name: "ffmpeg", tools: []string{"ffmpeg", "ffprobe"}},
-	{name: "gstreamer", tools: []string{"gst-launch-1.0", "gst-inspect-1.0", "gst-discoverer-1.0"}},
+	{name: "gstreamer", tools: []string{"gst-launch-1.0", "gst-inspect-1.0", "gst-discoverer-1.0"}, modules: []string{"tsdemux"}},
 }
 
 // Detect checks the configured backend tools and returns a structured report.
@@ -85,6 +95,7 @@ func Detect(ctx context.Context, goos string, env map[string]string, lookPath Lo
 func detectBackend(ctx context.Context, spec backendSpec, lookPath LookPathFunc, run VersionRunner) BackendHealth {
 	backend := BackendHealth{Name: spec.name}
 	allHealthy := true
+	var inspectPath string
 
 	for _, toolName := range spec.tools {
 		tool := ToolHealth{Name: toolName}
@@ -99,6 +110,9 @@ func detectBackend(ctx context.Context, spec backendSpec, lookPath LookPathFunc,
 		}
 
 		tool.Path = path
+		if toolName == "gst-inspect-1.0" {
+			inspectPath = path
+		}
 		version, err := run(ctx, path, versionArgs(toolName)...)
 		if err != nil {
 			tool.Error = err.Error()
@@ -112,7 +126,26 @@ func detectBackend(ctx context.Context, spec backendSpec, lookPath LookPathFunc,
 		backend.Tools = append(backend.Tools, tool)
 	}
 
-	backend.Healthy = allHealthy && len(backend.Tools) == len(spec.tools)
+	for _, moduleName := range spec.modules {
+		module := ModuleHealth{Name: moduleName}
+		switch {
+		case inspectPath == "":
+			module.Error = "gst-inspect-1.0 unavailable"
+			backend.MissingModules = append(backend.MissingModules, moduleName)
+			allHealthy = false
+		default:
+			if _, err := run(ctx, inspectPath, moduleName); err != nil {
+				module.Error = err.Error()
+				backend.MissingModules = append(backend.MissingModules, moduleName)
+				allHealthy = false
+			} else {
+				module.Healthy = true
+			}
+		}
+		backend.Modules = append(backend.Modules, module)
+	}
+
+	backend.Healthy = allHealthy && len(backend.Tools) == len(spec.tools) && len(backend.Modules) == len(spec.modules)
 	return backend
 }
 

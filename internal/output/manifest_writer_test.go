@@ -54,3 +54,36 @@ func TestManifestWriterWrapsWriteErrors(t *testing.T) {
 		t.Fatalf("expected errors.Is to match output write failure, got %v", err)
 	}
 }
+
+func TestManifestWriterWritesManifestLine(t *testing.T) {
+	var buf bytes.Buffer
+	writer := NewManifestWriter(&buf)
+
+	err := writer.WriteManifest(model.Manifest{
+		SchemaVersion:   "1",
+		SourceInputPath: "input.ts",
+		BackendName:     "ffmpeg",
+		BackendVersion:  "7.1",
+		Records: []model.Record{
+			{
+				RecordID:    "rec-001",
+				PID:         256,
+				PayloadPath: "payloads/rec-001.bin",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("write manifest: %v", err)
+	}
+
+	got := buf.String()
+	if !strings.Contains(got, `"backendName":"ffmpeg"`) {
+		t.Fatalf("expected manifest output to include backend name, got %q", got)
+	}
+	if !strings.Contains(got, `"backendVersion":"7.1"`) {
+		t.Fatalf("expected manifest output to include backend version, got %q", got)
+	}
+	if !strings.HasSuffix(got, "\n") {
+		t.Fatalf("expected manifest output to end with newline, got %q", got)
+	}
+}

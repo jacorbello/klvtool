@@ -10,10 +10,16 @@ tmp/
 *.so
 *.dylib
 coverage.out
+coverage.html
+vendor/
+__debug_bin*
 
 # Local test and fixture outputs
 testdata/output/
 testdata/tmp/
+.cache/
+manifest.ndjson
+payloads/
 
 # Editor and OS files
 .DS_Store

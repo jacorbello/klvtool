@@ -16,6 +16,7 @@ type RootCommand struct {
 	Out     io.Writer
 	Err     io.Writer
 	Doctor  *DoctorCommand
+	Extract *ExtractCommand
 }
 
 func NewRootCommand() *RootCommand {
@@ -25,6 +26,7 @@ func NewRootCommand() *RootCommand {
 		Out:     os.Stdout,
 		Err:     os.Stderr,
 		Doctor:  NewDoctorCommand(),
+		Extract: NewExtractCommand(),
 	}
 }
 
@@ -43,6 +45,9 @@ func (c *RootCommand) Execute(args []string) int {
 	if len(args) > 0 && args[0] == "doctor" {
 		return c.doctorCommand().Execute(args[1:])
 	}
+	if len(args) > 0 && args[0] == "extract" {
+		return c.extractCommand().Execute(args[1:])
+	}
 	c.writeUnsupportedArgs(args)
 	return usageExitCode
 }
@@ -59,14 +64,19 @@ func (c *RootCommand) writeUsage(w io.Writer) {
 	if w == nil {
 		return
 	}
-	fmt.Fprintf(w, "Usage: %s [command] [--help|-h]\n", c.Use)
-	fmt.Fprintln(w)
-	fmt.Fprintf(w, "Version: %s\n", c.Version)
-	fmt.Fprintln(w)
-	fmt.Fprintln(w, "Baseline CLI for the klvtool repository.")
-	fmt.Fprintln(w)
-	fmt.Fprintln(w, "Commands:")
-	fmt.Fprintln(w, "  doctor   Check backend availability and environment health.")
+	_, _ = fmt.Fprintf(w, "Usage: %s [command] [--help|-h]\n", c.Use)
+	_, _ = fmt.Fprintln(w)
+	_, _ = fmt.Fprintf(w, "Version: %s\n", c.Version)
+	_, _ = fmt.Fprintln(w)
+	_, _ = fmt.Fprintln(w, "Baseline CLI for the klvtool repository.")
+	_, _ = fmt.Fprintln(w)
+	_, _ = fmt.Fprintln(w, "Commands:")
+	_, _ = fmt.Fprintln(w, "  doctor   Check backend availability and environment health.")
+	_, _ = fmt.Fprintln(w, "  extract  Extract payloads and write manifest output.")
+	_, _ = fmt.Fprintln(w)
+	_, _ = fmt.Fprintln(w, "Required tools:")
+	_, _ = fmt.Fprintln(w, "  ffmpeg:     ffmpeg, ffprobe")
+	_, _ = fmt.Fprintln(w, "  gstreamer:  gst-launch-1.0, gst-inspect-1.0, gst-discoverer-1.0, tsdemux module")
 }
 
 func (c *RootCommand) writeUnsupportedArgs(args []string) {
@@ -74,7 +84,7 @@ func (c *RootCommand) writeUnsupportedArgs(args []string) {
 		return
 	}
 	c.writeUsage(c.Err)
-	fmt.Fprintf(c.Err, "error: unsupported arguments: %v\n", args)
+	_, _ = fmt.Fprintf(c.Err, "error: unsupported arguments: %v\n", args)
 }
 
 func (c *RootCommand) doctorCommand() *DoctorCommand {
@@ -89,4 +99,18 @@ func (c *RootCommand) doctorCommand() *DoctorCommand {
 	doctor.Out = c.Out
 	doctor.Err = c.Err
 	return doctor
+}
+
+func (c *RootCommand) extractCommand() *ExtractCommand {
+	if c == nil {
+		return NewExtractCommand()
+	}
+	extractCmd := c.Extract
+	if extractCmd == nil {
+		extractCmd = NewExtractCommand()
+		c.Extract = extractCmd
+	}
+	extractCmd.Out = c.Out
+	extractCmd.Err = c.Err
+	return extractCmd
 }
