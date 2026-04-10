@@ -11,23 +11,20 @@ import (
 func TestDetectBackendsReportsToolHealth(t *testing.T) {
 	lookPath := func(name string) (string, error) {
 		switch name {
-		case "ffmpeg", "ffprobe", "gst-launch-1.0", "gst-inspect-1.0", "gst-discoverer-1.0":
+		case "ffmpeg", "ffprobe":
 			return "/usr/bin/" + name, nil
 		default:
 			return "", errors.New("missing")
 		}
 	}
 	runVersion := func(ctx context.Context, name string, args ...string) (string, error) {
-		if name == "/usr/bin/gst-inspect-1.0" && len(args) == 1 && args[0] == "tsdemux" {
-			return "Plugin Details:\nName\ttsdemux", nil
-		}
 		return name + " 1.2.3", nil
 	}
 
 	report := Detect(context.Background(), runtime.GOOS, nil, lookPath, runVersion)
 
-	if len(report.Backends) != 2 {
-		t.Fatalf("expected 2 backends, got %d", len(report.Backends))
+	if len(report.Backends) != 1 {
+		t.Fatalf("expected 1 backend, got %d", len(report.Backends))
 	}
 
 	ffmpeg := report.BackendsByName()["ffmpeg"]
@@ -46,36 +43,13 @@ func TestDetectBackendsReportsToolHealth(t *testing.T) {
 	if got, want := ffmpeg.Tools[0].Version, "/usr/bin/ffmpeg 1.2.3"; got != want {
 		t.Fatalf("expected ffmpeg version %q, got %q", want, got)
 	}
-
-	gstreamer := report.BackendsByName()["gstreamer"]
-	if gstreamer == nil {
-		t.Fatal("expected gstreamer backend report")
-	}
-	if !gstreamer.Healthy {
-		t.Fatal("expected gstreamer backend to be healthy")
-	}
-	if got, want := len(gstreamer.Tools), 3; got != want {
-		t.Fatalf("expected %d gstreamer tools, got %d", want, got)
-	}
-	if got, want := gstreamer.Tools[2].Name, "gst-discoverer-1.0"; got != want {
-		t.Fatalf("expected third gstreamer tool name %q, got %q", want, got)
-	}
-	if got, want := len(gstreamer.Modules), 1; got != want {
-		t.Fatalf("expected %d gstreamer modules, got %d", want, got)
-	}
-	if got, want := gstreamer.Modules[0].Name, "tsdemux"; got != want {
-		t.Fatalf("expected required gstreamer module %q, got %q", want, got)
-	}
-	if !gstreamer.Modules[0].Healthy {
-		t.Fatal("expected required gstreamer module to be healthy")
-	}
 }
 
 func TestDetectBackendsReportsMissingTools(t *testing.T) {
 	lookPath := func(name string) (string, error) {
 		switch name {
-		case "ffmpeg", "ffprobe":
-			return "/usr/bin/" + name, nil
+		case "ffmpeg":
+			return "/usr/bin/ffmpeg", nil
 		default:
 			return "", errors.New("missing")
 		}
@@ -85,18 +59,15 @@ func TestDetectBackendsReportsMissingTools(t *testing.T) {
 	}
 
 	report := Detect(context.Background(), "linux", nil, lookPath, runVersion)
-	gstreamer := report.BackendsByName()["gstreamer"]
-	if gstreamer == nil {
-		t.Fatal("expected gstreamer backend report")
+	ffmpeg := report.BackendsByName()["ffmpeg"]
+	if ffmpeg == nil {
+		t.Fatal("expected ffmpeg backend report")
 	}
-	if gstreamer.Healthy {
-		t.Fatal("expected gstreamer backend to be unhealthy")
+	if ffmpeg.Healthy {
+		t.Fatal("expected ffmpeg backend to be unhealthy when ffprobe is missing")
 	}
-	if got := gstreamer.MissingTools; len(got) != 3 {
-		t.Fatalf("expected 3 missing gstreamer tools, got %d", len(got))
-	}
-	if got := gstreamer.MissingModules; len(got) != 1 {
-		t.Fatalf("expected 1 missing gstreamer module, got %d", len(got))
+	if got := ffmpeg.MissingTools; len(got) != 1 || got[0] != "ffprobe" {
+		t.Fatalf("expected 1 missing tool (ffprobe), got %v", got)
 	}
 }
 
@@ -125,41 +96,6 @@ func TestDetectUsesResolvedPathForVersionProbe(t *testing.T) {
 	}
 	if got, want := ffmpeg.Tools[0].Path, "/opt/bin/ffmpeg"; got != want {
 		t.Fatalf("expected resolved tool path %q, got %q", want, got)
-	}
-}
-
-func TestDetectReportsMissingGstreamerModuleWhenInspectSucceeds(t *testing.T) {
-	lookPath := func(name string) (string, error) {
-		switch name {
-		case "gst-launch-1.0", "gst-inspect-1.0", "gst-discoverer-1.0":
-			return "/usr/bin/" + name, nil
-		default:
-			return "", errors.New("missing")
-		}
-	}
-	runVersion := func(ctx context.Context, name string, args ...string) (string, error) {
-		if name == "/usr/bin/gst-inspect-1.0" && len(args) == 1 && args[0] == "tsdemux" {
-			return "", errors.New("No such element or plugin 'tsdemux'")
-		}
-		return name + " 1.2.3", nil
-	}
-
-	report := Detect(context.Background(), "linux", nil, lookPath, runVersion)
-	gstreamer := report.BackendsByName()["gstreamer"]
-	if gstreamer == nil {
-		t.Fatal("expected gstreamer backend report")
-	}
-	if gstreamer.Healthy {
-		t.Fatal("expected gstreamer backend to be unhealthy when module is missing")
-	}
-	if got, want := len(gstreamer.MissingModules), 1; got != want {
-		t.Fatalf("expected %d missing gstreamer module, got %d", want, got)
-	}
-	if got, want := gstreamer.MissingModules[0], "tsdemux"; got != want {
-		t.Fatalf("expected missing module %q, got %q", want, got)
-	}
-	if got, want := gstreamer.Modules[0].Error, "No such element or plugin 'tsdemux'"; got != want {
-		t.Fatalf("expected module error %q, got %q", want, got)
 	}
 }
 
@@ -202,7 +138,7 @@ func TestInstallGuidanceUsesOSReleaseEvidence(t *testing.T) {
 	if guidance.Platform != "debian_ubuntu" {
 		t.Fatalf("expected debian_ubuntu platform, got %q", guidance.Platform)
 	}
-	if !containsString(guidance.Steps, "apt install ffmpeg gstreamer1.0-tools") {
+	if !containsString(guidance.Steps, "apt install ffmpeg") {
 		t.Fatalf("expected apt guidance, got %v", guidance.Steps)
 	}
 }
@@ -215,7 +151,7 @@ func TestInstallGuidanceUsesOSReleaseEvidenceForWSL(t *testing.T) {
 	if guidance.Platform != "wsl" {
 		t.Fatalf("expected wsl platform, got %q", guidance.Platform)
 	}
-	if !containsString(guidance.Steps, "apt install ffmpeg gstreamer1.0-tools") {
+	if !containsString(guidance.Steps, "apt install ffmpeg") {
 		t.Fatalf("expected apt guidance, got %v", guidance.Steps)
 	}
 }
@@ -280,11 +216,11 @@ func TestPlatformGuidance(t *testing.T) {
 		contains    string
 		notContains string
 	}{
-		{name: "macos", goos: "darwin", contains: "brew install ffmpeg gstreamer"},
-		{name: "wsl with distro evidence", goos: "linux", env: map[string]string{"WSL_INTEROP": "1"}, osRelease: "NAME=\"Ubuntu\"\nID=ubuntu\nID_LIKE=debian\n", contains: "apt install ffmpeg gstreamer1.0-tools"},
+		{name: "macos", goos: "darwin", contains: "brew install ffmpeg"},
+		{name: "wsl with distro evidence", goos: "linux", env: map[string]string{"WSL_INTEROP": "1"}, osRelease: "NAME=\"Ubuntu\"\nID=ubuntu\nID_LIKE=debian\n", contains: "apt install ffmpeg"},
 		{name: "wsl without distro evidence", goos: "linux", env: map[string]string{"WSL_INTEROP": "1"}, osRelease: "NAME=\"Arch Linux\"\nID=arch\n", contains: "native package manager", notContains: "apt install"},
 		{name: "unsupported", goos: "windows", contains: "native package manager"},
-		{name: "debian ubuntu", goos: "linux", osRelease: "NAME=\"Ubuntu\"\nID=ubuntu\nID_LIKE=debian\n", contains: "apt install ffmpeg gstreamer1.0-tools"},
+		{name: "debian ubuntu", goos: "linux", osRelease: "NAME=\"Ubuntu\"\nID=ubuntu\nID_LIKE=debian\n", contains: "apt install ffmpeg"},
 	}
 
 	for _, tt := range tests {
@@ -306,43 +242,6 @@ func TestPlatformGuidance(t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestDetectUsesHealthCheckArgsForNoVersionTools(t *testing.T) {
-	type call struct {
-		name string
-		args []string
-	}
-	var calls []call
-
-	lookPath := func(name string) (string, error) {
-		switch name {
-		case "gst-launch-1.0", "gst-inspect-1.0", "gst-discoverer-1.0":
-			return "/usr/bin/" + name, nil
-		default:
-			return "", errors.New("missing")
-		}
-	}
-	runVersion := func(ctx context.Context, name string, args ...string) (string, error) {
-		calls = append(calls, call{name: name, args: append([]string(nil), args...)})
-		if name == "/usr/bin/gst-inspect-1.0" && len(args) == 1 && args[0] == "tsdemux" {
-			return "Plugin Details:\nName\ttsdemux", nil
-		}
-		return name + " 1.2.3", nil
-	}
-
-	Detect(context.Background(), "linux", nil, lookPath, runVersion)
-
-	for _, c := range calls {
-		if c.name == "/usr/bin/gst-discoverer-1.0" {
-			if len(c.args) != 1 || c.args[0] != "--help" {
-				t.Fatalf("expected gst-discoverer-1.0 to be called with [--help], got %v", c.args)
-			}
-			// Confirm it was NOT called with --version
-			return
-		}
-	}
-	t.Fatal("expected gst-discoverer-1.0 to be probed with --help, but no call was recorded")
 }
 
 func containsString(items []string, want string) bool {

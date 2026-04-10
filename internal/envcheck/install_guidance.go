@@ -14,7 +14,7 @@ type Guidance struct {
 
 type osReleaseReader func() (string, error)
 
-const unsupportedGuidanceStep = "Install ffmpeg and gstreamer using the platform's native package manager or manual binaries."
+const unsupportedGuidanceStep = "Install ffmpeg using the platform's native package manager or manual binaries."
 
 // InstallGuidance returns platform-aware install advice for the media tools.
 func InstallGuidance(goos string, env map[string]string) Guidance {
@@ -28,8 +28,8 @@ func installGuidance(goos string, env map[string]string, readOSRelease osRelease
 			Platform: "macos",
 			Summary:  "Install the backend tools with Homebrew.",
 			Steps: []string{
-				"brew install ffmpeg gstreamer",
-				"brew upgrade ffmpeg gstreamer",
+				"brew install ffmpeg",
+				"brew upgrade ffmpeg",
 			},
 		}
 	case "unsupported":
@@ -46,7 +46,7 @@ func installGuidance(goos string, env map[string]string, readOSRelease osRelease
 			Summary:  "Install the Linux packages inside the WSL distribution.",
 			Steps: []string{
 				"WSL: use the Linux distribution package manager inside the WSL environment.",
-				"sudo apt update && sudo apt install ffmpeg gstreamer1.0-tools gstreamer1.0-plugins-base-apps gstreamer1.0-plugins-bad",
+				"sudo apt update && sudo apt install ffmpeg",
 			},
 		}
 	case "debian_ubuntu":
@@ -54,7 +54,7 @@ func installGuidance(goos string, env map[string]string, readOSRelease osRelease
 			Platform: "debian_ubuntu",
 			Summary:  "Install the backend tools with apt.",
 			Steps: []string{
-				"sudo apt update && sudo apt install ffmpeg gstreamer1.0-tools gstreamer1.0-plugins-base-apps gstreamer1.0-plugins-bad",
+				"sudo apt update && sudo apt install ffmpeg",
 			},
 		}
 	default:
