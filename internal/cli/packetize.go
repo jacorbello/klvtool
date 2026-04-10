@@ -16,8 +16,6 @@ import (
 	"github.com/jacorbello/klvtool/internal/packetize"
 )
 
-type rawPayloadReaderFunc func(string) ([]extract.RawPayloadRecord, error)
-
 type packetParser interface {
 	Parse(packetize.Request) (packetize.PacketizedStream, error)
 }
@@ -201,7 +199,7 @@ func (c *PacketizeCommand) writeError(w io.Writer, err error) {
 	_, _ = fmt.Fprintf(w, "error: %v\n", err)
 }
 
-func (c *PacketizeCommand) rawPayloadReader() rawPayloadReaderFunc {
+func (c *PacketizeCommand) rawPayloadReader() func(string) ([]extract.RawPayloadRecord, error) {
 	if c != nil && c.ReadRawPayloads != nil {
 		return c.ReadRawPayloads
 	}

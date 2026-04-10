@@ -1,6 +1,7 @@
 package packetize
 
 import (
+	"bytes"
 	"fmt"
 	"math"
 	"slices"
@@ -51,7 +52,15 @@ func (p *Parser) Parse(req Request) (PacketizedStream, error) {
 				return stream, model.PacketParse(err)
 			}
 			stream.Recovered = true
-			break
+			recovered := scanForwardToKey(req.Record.Payload, offset+1)
+			if recovered < 0 {
+				break
+			}
+			skipOffset := offset
+			skipLen := recovered
+			stream.Diagnostics = append(stream.Diagnostics, recoverySkipDiagnostic(skipOffset, skipLen, packetIndex))
+			offset = recovered
+			continue
 		}
 
 		stream.Packets = append(stream.Packets, packet)
@@ -127,6 +136,37 @@ func classifyKey(key []byte) Classification {
 		return ClassificationUniversalSet
 	}
 	return ClassificationUnknown
+}
+
+// universalKeyPrefix is the 4-byte SMPTE universal label prefix used for
+// scan-forward recovery in best-effort mode.
+var universalKeyPrefix = []byte{0x06, 0x0e, 0x2b, 0x34}
+
+// scanForwardToKey scans the payload starting at offset looking for the next
+// occurrence of the SMPTE universal key prefix. Returns the offset of the match
+// or -1 if no match is found.
+func scanForwardToKey(payload []byte, offset int) int {
+	if offset < 0 || offset >= len(payload) {
+		return -1
+	}
+	idx := bytes.Index(payload[offset:], universalKeyPrefix)
+	if idx < 0 {
+		return -1
+	}
+	return offset + idx
+}
+
+func recoverySkipDiagnostic(skipFrom, skipTo, packetIndex int) Diagnostic {
+	byteOffset := skipFrom
+	pktIndex := packetIndex
+	return Diagnostic{
+		Severity:    "warning",
+		Code:        "recovery_skip",
+		Message:     fmt.Sprintf("skipped %d bytes to next key at offset %d", skipTo-skipFrom, skipTo),
+		Stage:       "packetize",
+		PacketIndex: &pktIndex,
+		ByteOffset:  &byteOffset,
+	}
 }
 
 func malformedPacketDiagnostic(code, message string, offset int, packetIndex int) Diagnostic {

@@ -105,11 +105,58 @@ func TestParserBestEffortReturnsDiagnosticsOnMalformedPacket(t *testing.T) {
 	if err != nil {
 		t.Fatalf("best-effort parse returned error: %v", err)
 	}
-	if len(stream.Diagnostics) != 1 {
-		t.Fatalf("expected 1 diagnostic, got %d", len(stream.Diagnostics))
+	if len(stream.Diagnostics) < 1 {
+		t.Fatalf("expected at least 1 diagnostic, got %d", len(stream.Diagnostics))
 	}
 	if !stream.Recovered {
 		t.Fatal("expected recovered=true")
+	}
+}
+
+func TestParserBestEffortRecoversPastMalformedPacket(t *testing.T) {
+	parser := NewParser()
+
+	// Build a payload with garbage bytes followed by a valid KLV packet.
+	// The first 17 bytes are a truncated/bad packet (16-byte non-UL key + short BER).
+	badPacket := append(bytes.Repeat([]byte{0xFF}, 16), 0x82, 0x01)
+
+	// Valid packet: SMPTE universal key + 3 bytes of value.
+	validPacket := append([]byte{0x06, 0x0e, 0x2b, 0x34}, bytes.Repeat([]byte{0x00}, 12)...)
+	validPacket = append(validPacket, 0x03, 0xaa, 0xbb, 0xcc)
+
+	payload := append(badPacket, validPacket...)
+
+	stream, err := parser.Parse(Request{
+		Mode: ModeBestEffort,
+		Record: extract.RawPayloadRecord{
+			RecordID: "klv-002",
+			Payload:  payload,
+		},
+	})
+	if err != nil {
+		t.Fatalf("best-effort parse returned error: %v", err)
+	}
+	if !stream.Recovered {
+		t.Fatal("expected recovered=true")
+	}
+	if stream.ParsedCount != 1 {
+		t.Fatalf("expected 1 parsed packet after recovery, got %d", stream.ParsedCount)
+	}
+	if len(stream.Packets) != 1 {
+		t.Fatalf("expected 1 packet, got %d", len(stream.Packets))
+	}
+	if stream.Packets[0].Classification != ClassificationUniversalSet {
+		t.Fatalf("expected universal set classification, got %q", stream.Packets[0].Classification)
+	}
+
+	hasRecoverySkip := false
+	for _, d := range stream.Diagnostics {
+		if d.Code == "recovery_skip" {
+			hasRecoverySkip = true
+		}
+	}
+	if !hasRecoverySkip {
+		t.Fatal("expected recovery_skip diagnostic")
 	}
 }
 
