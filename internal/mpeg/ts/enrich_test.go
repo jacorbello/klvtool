@@ -122,7 +122,9 @@ func TestEnrichRecordsDoesNotMutateInput(t *testing.T) {
 	}
 
 	r := bytes.NewReader(file.Bytes())
-	EnrichRecords(r, original)
+	if _, err := EnrichRecords(r, original); err != nil {
+		t.Fatalf("EnrichRecords: %v", err)
+	}
 
 	if original[0].PTS != nil {
 		t.Error("original record was mutated")

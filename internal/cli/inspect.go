@@ -180,7 +180,7 @@ func defaultInspect(path string) (ts.StreamTable, InspectStats, error) {
 	if err != nil {
 		return ts.StreamTable{}, InspectStats{}, model.TSRead(fmt.Errorf("open %q: %w", path, err))
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	table, _, err := ts.DiscoverStreams(file)
 	if err != nil {

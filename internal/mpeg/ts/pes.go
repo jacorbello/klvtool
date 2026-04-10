@@ -29,13 +29,14 @@ func parsePESHeader(data []byte) (pts *int64, dts *int64, headerLen int, err err
 	pesHeaderDataLength := int(data[8])
 	headerLen = 9 + pesHeaderDataLength
 
-	if ptsDTSFlags == 0x02 {
+	switch ptsDTSFlags {
+	case 0x02:
 		if len(data) < 14 {
 			return nil, nil, 0, fmt.Errorf("PES header too short for PTS: %d bytes", len(data))
 		}
 		ptsVal := parseTimestamp(data[9:14])
 		pts = &ptsVal
-	} else if ptsDTSFlags == 0x03 {
+	case 0x03:
 		if len(data) < 19 {
 			return nil, nil, 0, fmt.Errorf("PES header too short for PTS+DTS: %d bytes", len(data))
 		}
