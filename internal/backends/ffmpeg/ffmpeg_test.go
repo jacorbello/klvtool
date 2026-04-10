@@ -115,6 +115,38 @@ func TestExtractNormalizesMissingPIDWarning(t *testing.T) {
 	}
 }
 
+func TestExtractPreservesMalformedPIDWarning(t *testing.T) {
+	root := t.TempDir()
+	backend := &Backend{
+		Run: func(ctx context.Context, path string, args ...string) ([]byte, error) {
+			switch path {
+			case "ffprobe":
+				return []byte(`{"streams":[{"index":2,"id":"abc"}]}`), nil
+			case "ffmpeg":
+				outPath := args[len(args)-1]
+				if err := os.WriteFile(outPath, []byte(filepath.Base(outPath)), 0o600); err != nil {
+					t.Fatalf("write extracted payload: %v", err)
+				}
+				return []byte(""), nil
+			default:
+				t.Fatalf("unexpected command path %q", path)
+				return nil, nil
+			}
+		},
+	}
+
+	records, err := backend.Extract(context.Background(), filepath.Join(root, "input.ts"))
+	if err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if got := records[0].Warnings; len(got) != 1 || !strings.Contains(got[0], `abc`) {
+		t.Fatalf("expected malformed id warning to preserve raw value, got %#v", got)
+	}
+}
+
 func TestExtractWrapsProbeParseErrors(t *testing.T) {
 	backend := &Backend{
 		Run: func(ctx context.Context, path string, args ...string) ([]byte, error) {
