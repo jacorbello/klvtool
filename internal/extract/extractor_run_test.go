@@ -2,6 +2,7 @@ package extract
 
 import (
 	"context"
+	"reflect"
 	"testing"
 )
 
@@ -40,14 +41,66 @@ func (b *runBackendStub) Extract(ctx context.Context, path string) ([]PayloadRec
 	return b.records, nil
 }
 
-func TestExtractorRunCanonicalizesRecords(t *testing.T) {
+func TestExtractorRunCanonicalizesEquivalentRecordOrder(t *testing.T) {
+	tsid := uint16Ptr(7)
+
+	gotA := runExtractorRun(t, []PayloadRecord{
+		{
+			PID:               0x045,
+			Payload:           []byte("same"),
+			TransportStreamID: tsid,
+		},
+		{
+			PID:     0x045,
+			Payload: []byte("same"),
+		},
+	})
+	gotB := runExtractorRun(t, []PayloadRecord{
+		{
+			PID:     0x045,
+			Payload: []byte("same"),
+		},
+		{
+			PID:               0x045,
+			Payload:           []byte("same"),
+			TransportStreamID: tsid,
+		},
+	})
+
+	if !reflect.DeepEqual(gotA.Records, gotB.Records) {
+		t.Fatalf("expected canonicalized records to match across backend orderings\nA: %#v\nB: %#v", gotA.Records, gotB.Records)
+	}
+	if len(gotA.Records) != 2 {
+		t.Fatalf("expected 2 records, got %d", len(gotA.Records))
+	}
+	if gotA.Records[0].TransportStreamID != nil {
+		t.Fatal("expected nil TransportStreamID record first")
+	}
+	if gotA.Records[0].RecordID != "klv-001" || gotA.Records[1].RecordID != "klv-002" {
+		t.Fatalf("expected stable record ids, got %#v", []string{gotA.Records[0].RecordID, gotA.Records[1].RecordID})
+	}
+	for i, result := range []RunResult{gotA, gotB} {
+		if result.BackendVersion != "1.2.3" {
+			t.Fatalf("run %d: expected backend version 1.2.3, got %q", i, result.BackendVersion)
+		}
+		for j, record := range result.Records {
+			if record.Warnings == nil {
+				t.Fatalf("run %d record %d: expected warnings to be non-nil", i, j)
+			}
+			if len(record.Warnings) != 0 {
+				t.Fatalf("run %d record %d: expected empty warnings, got %v", i, j, record.Warnings)
+			}
+		}
+	}
+}
+
+func runExtractorRun(t *testing.T, records []PayloadRecord) RunResult {
+	t.Helper()
+
 	backend := &runBackendStub{
 		descriptor: BackendDescriptor{Name: BackendFFmpeg, Healthy: true},
 		version:    "1.2.3",
-		records: []PayloadRecord{
-			{PID: 0x045, Payload: []byte("b")},
-			{PID: 0x045, Payload: []byte("a")},
-		},
+		records:    records,
 	}
 	selector := &runSelectorStub{
 		response: ExtractionResponse{
@@ -77,31 +130,12 @@ func TestExtractorRunCanonicalizesRecords(t *testing.T) {
 	if backend.extractArg != "input.ts" {
 		t.Fatalf("expected backend extract path input.ts, got %q", backend.extractArg)
 	}
-	if got.BackendVersion != "1.2.3" {
-		t.Fatalf("expected backend version 1.2.3, got %q", got.BackendVersion)
+	if backend.versionArg == nil {
+		t.Fatal("expected version context to be passed to backend")
 	}
-	if len(got.Records) != 2 {
-		t.Fatalf("expected 2 records, got %d", len(got.Records))
+	if backend.extractArgCtx == nil {
+		t.Fatal("expected extract context to be passed to backend")
 	}
-	if got.Records[0].PID != 0x045 {
-		t.Fatalf("expected first pid 0x045, got %#x", got.Records[0].PID)
-	}
-	if string(got.Records[0].Payload) != "a" {
-		t.Fatalf("expected first payload a, got %q", got.Records[0].Payload)
-	}
-	if got.Records[0].RecordID != "klv-001" {
-		t.Fatalf("expected first record id klv-001, got %q", got.Records[0].RecordID)
-	}
-	if got.Records[1].RecordID != "klv-002" {
-		t.Fatalf("expected second record id klv-002, got %q", got.Records[1].RecordID)
-	}
-	if string(got.Records[1].Payload) != "b" {
-		t.Fatalf("expected second payload b, got %q", got.Records[1].Payload)
-	}
-	if got.Records[0].Warnings == nil {
-		t.Fatal("expected first record warnings to be non-nil")
-	}
-	if len(got.Records[0].Warnings) != 0 {
-		t.Fatalf("expected first record warnings to be empty, got %v", got.Records[0].Warnings)
-	}
+
+	return got
 }
