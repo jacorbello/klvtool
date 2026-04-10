@@ -17,6 +17,7 @@ __debug_bin*
 # Local test and fixture outputs
 testdata/output/
 testdata/tmp/
+testdata/fixtures/sample.ts
 .cache/
 manifest.ndjson
 payloads/
