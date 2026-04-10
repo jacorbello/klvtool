@@ -128,8 +128,8 @@ func detectBackend(ctx context.Context, spec backendSpec, lookPath LookPathFunc,
 
 	for _, moduleName := range spec.modules {
 		module := ModuleHealth{Name: moduleName}
-		switch {
-		case inspectPath == "":
+		switch inspectPath {
+		case "":
 			module.Error = "gst-inspect-1.0 unavailable"
 			backend.MissingModules = append(backend.MissingModules, moduleName)
 			allHealthy = false
