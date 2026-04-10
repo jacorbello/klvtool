@@ -67,6 +67,73 @@ func TestEnrichRecordsPopulatesMetadata(t *testing.T) {
 	}
 }
 
+// TestEnrichRecordsExitsEarlyAfterFirstUnitPerPID verifies that the
+// scan stops once every target PID has recorded its first PES unit.
+// It also acts as a regression guard against the earlier implementation
+// that buffered every PES unit (with full payload) for the entire
+// stream before picking the first — a pattern that caused unbounded
+// memory growth on multi-GB captures.
+func TestEnrichRecordsExitsEarlyAfterFirstUnitPerPID(t *testing.T) {
+	var file bytes.Buffer
+
+	// PAT → PMT with data stream on PID 0x0300.
+	patPkt := buildPacket(0x0000, 0, true, []byte{
+		0x00, 0x00, 0xB0, 0x0D,
+		0x00, 0x01, 0xC1, 0x00, 0x00,
+		0x00, 0x01, 0xF0, 0x00,
+		0x00, 0x00, 0x00, 0x00,
+	})
+	file.Write(patPkt)
+	pmtPkt := buildPacket(0x1000, 0, true, []byte{
+		0x00, 0x02, 0xB0, 0x12,
+		0x00, 0x01, 0xC1, 0x00, 0x00,
+		0xE1, 0x00, 0xF0, 0x00,
+		0x06, 0xE3, 0x00, 0xF0, 0x00,
+		0x00, 0x00, 0x00, 0x00,
+	})
+	file.Write(pmtPkt)
+
+	// First PES unit for PID 0x0300 at packet index 2, offset 376.
+	firstPES := buildPacket(0x0300, 0, true, []byte{
+		0x00, 0x00, 0x01, 0xBD,
+		0x00, 0x08, 0x80, 0x80, 0x05,
+		0x21, 0x00, 0x01, 0x00, 0x01, // PTS=0
+		0xDE, 0xAD,
+	})
+	file.Write(firstPES)
+
+	// Many additional PES units that a bug-era implementation would
+	// have buffered in full. We emit 20 distinct PES starts — if the
+	// early-exit works, the scan stops before reaching most of these.
+	for i := 1; i <= 20; i++ {
+		pes := buildPacket(0x0300, uint8(i)&0x0F, true, []byte{
+			0x00, 0x00, 0x01, 0xBD,
+			0x00, 0x08, 0x80, 0x80, 0x05,
+			0x21, 0x00, 0x01, 0x00, 0x01,
+			byte(i), byte(i),
+		})
+		file.Write(pes)
+	}
+
+	records := []extract.RawPayloadRecord{
+		{RecordID: "klv-001", PID: 0x0300, Payload: []byte{0xDE, 0xAD}},
+	}
+
+	r := bytes.NewReader(file.Bytes())
+	enriched, err := EnrichRecords(r, records)
+	if err != nil {
+		t.Fatalf("EnrichRecords: %v", err)
+	}
+	rec := enriched[0]
+	// The first unit's metadata must be the one used, not any later one.
+	if rec.PacketIndex == nil || *rec.PacketIndex != 2 {
+		t.Errorf("PacketIndex = %v, want 2 (first unit), later unit was used instead", rec.PacketIndex)
+	}
+	if rec.PacketOffset == nil || *rec.PacketOffset != 376 {
+		t.Errorf("PacketOffset = %v, want 376", rec.PacketOffset)
+	}
+}
+
 func TestEnrichRecordsPIDMismatchAddsWarning(t *testing.T) {
 	var file bytes.Buffer
 	patSection := []byte{

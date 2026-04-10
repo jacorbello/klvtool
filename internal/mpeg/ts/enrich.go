@@ -34,7 +34,40 @@ func EnrichRecords(r io.ReadSeeker, records []extract.RawPayloadRecord) ([]extra
 	scanner := NewPacketScanner(r, ScanConfig{PayloadPIDs: targetPIDs})
 	asm := NewPESAssembler()
 
-	pesUnits := make(map[uint16][]PESUnit)
+	// Record only the first PES unit's metadata per PID rather than
+	// buffering every unit (with its full payload) across the whole
+	// stream. On multi-GB captures this keeps memory bounded and lets
+	// us exit the scan as soon as every target PID has a first unit.
+	type enrichMetadata struct {
+		pts         *int64
+		dts         *int64
+		packetStart int64
+		packetIndex int64
+		cc          *uint8
+	}
+	firstMeta := make(map[uint16]enrichMetadata, len(targetPIDs))
+
+	record := func(unit *PESUnit) {
+		if !targetPIDs[unit.PID] {
+			return
+		}
+		if _, seen := firstMeta[unit.PID]; seen {
+			return
+		}
+		m := enrichMetadata{
+			pts:         unit.PTS,
+			dts:         unit.DTS,
+			packetStart: unit.PacketStart,
+			packetIndex: unit.PacketIndex,
+		}
+		if unit.ContinuityCounter != nil {
+			cc := *unit.ContinuityCounter
+			m.cc = &cc
+		}
+		firstMeta[unit.PID] = m
+	}
+
+scan:
 	for {
 		pkt, err := scanner.Next()
 		if err != nil {
@@ -44,33 +77,40 @@ func EnrichRecords(r io.ReadSeeker, records []extract.RawPayloadRecord) ([]extra
 			return nil, fmt.Errorf("scan: %w", err)
 		}
 		if unit := asm.Feed(pkt); unit != nil {
-			pesUnits[unit.PID] = append(pesUnits[unit.PID], *unit)
+			record(unit)
+			if len(firstMeta) == len(targetPIDs) {
+				break scan
+			}
 		}
 	}
-	for _, unit := range asm.Flush() {
-		pesUnits[unit.PID] = append(pesUnits[unit.PID], unit)
+	// Only flush the assembler if we haven't already satisfied every
+	// target PID — avoids unnecessary work when the scan exited early.
+	if len(firstMeta) < len(targetPIDs) {
+		for _, unit := range asm.Flush() {
+			u := unit
+			record(&u)
+		}
 	}
 
 	enriched := make([]extract.RawPayloadRecord, len(records))
 	for i, rec := range records {
 		enriched[i] = copyRecord(rec)
 
-		units, ok := pesUnits[rec.PID]
-		if !ok || len(units) == 0 {
+		meta, ok := firstMeta[rec.PID]
+		if !ok {
 			enriched[i].Warnings = append(enriched[i].Warnings,
 				fmt.Sprintf("no PES units found for PID 0x%04X in transport stream", rec.PID))
 			continue
 		}
 
-		first := units[0]
-		enriched[i].PTS = first.PTS
-		enriched[i].DTS = first.DTS
-		offset := first.PacketStart
-		index := first.PacketIndex
+		enriched[i].PTS = meta.pts
+		enriched[i].DTS = meta.dts
+		offset := meta.packetStart
+		index := meta.packetIndex
 		enriched[i].PacketOffset = &offset
 		enriched[i].PacketIndex = &index
-		if first.ContinuityCounter != nil {
-			cc := *first.ContinuityCounter
+		if meta.cc != nil {
+			cc := *meta.cc
 			enriched[i].ContinuityCounter = &cc
 		}
 	}
