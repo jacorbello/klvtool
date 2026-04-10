@@ -7,7 +7,10 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"time"
+
+	"github.com/jacorbello/klvtool/internal/version"
 )
 
 const defaultReleaseURL = "https://api.github.com/repos/jacorbello/klvtool/releases/latest"
@@ -22,6 +25,9 @@ type VersionCommand struct {
 
 func NewVersionCommand() *VersionCommand {
 	return &VersionCommand{
+		Out:        os.Stdout,
+		Err:        os.Stderr,
+		Version:    version.String(),
 		ReleaseURL: defaultReleaseURL,
 	}
 }
@@ -37,6 +43,7 @@ func (c *VersionCommand) Execute(args []string) int {
 			return 0
 		}
 		c.writeUsage(c.Err)
+		_, _ = fmt.Fprintf(c.Err, "error: %v\n", err)
 		return usageExitCode
 	}
 
@@ -82,6 +89,7 @@ func (c *VersionCommand) fetchLatestRelease() (tag string, url string, err error
 		return "", "", err
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("User-Agent", "klvtool/"+c.Version)
 
 	resp, err := c.httpClient().Do(req)
 	if err != nil {
