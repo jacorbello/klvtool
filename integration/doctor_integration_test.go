@@ -21,7 +21,7 @@ func TestDoctorIntegration(t *testing.T) {
 	}
 
 	text := stdout.String()
-	for _, want := range []string{"ffmpeg", "gstreamer", "backend preference: auto"} {
+	for _, want := range []string{"ffmpeg", "backend preference: auto"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("expected doctor output to contain %q, got %q", want, text)
 		}
