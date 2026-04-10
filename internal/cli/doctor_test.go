@@ -16,6 +16,7 @@ func TestDoctorCommandRuns(t *testing.T) {
 	cmd := NewRootCommand()
 	cmd.Out = &stdout
 	cmd.Err = &stderr
+	cmd.Doctor.IsTerminal = func() bool { return false }
 	cmd.Doctor.Detect = func(ctx context.Context, goos string, env map[string]string) envcheck.Report {
 		return envcheck.Report{
 			Platform:        "linux",
@@ -31,13 +32,13 @@ func TestDoctorCommandRuns(t *testing.T) {
 						{
 							Name:    "ffmpeg",
 							Path:    "/usr/bin/ffmpeg",
-							Version: "ffmpeg version 7.1",
+							Version: "ffmpeg version 7.1 Copyright (c) 2000-2024 the FFmpeg developers",
 							Healthy: true,
 						},
 						{
 							Name:    "ffprobe",
 							Path:    "/usr/bin/ffprobe",
-							Version: "ffprobe version 7.1",
+							Version: "ffprobe version 7.1 Copyright (c) 2007-2024 the FFmpeg developers",
 							Healthy: true,
 						},
 					},
@@ -73,28 +74,85 @@ func TestDoctorCommandRuns(t *testing.T) {
 	}
 
 	if got := cmd.Execute([]string{"doctor"}); got != 0 {
-		t.Fatalf("expected doctor command to succeed, got exit code %d", got)
+		t.Fatalf("expected exit code 0, got %d\nstderr: %s", got, stderr.String())
 	}
 	if stderr.Len() != 0 {
-		t.Fatalf("expected doctor command to keep stderr empty, got %q", stderr.String())
+		t.Fatalf("expected empty stderr, got %q", stderr.String())
 	}
 
 	text := stdout.String()
+
+	// Header assertions
 	for _, want := range []string{
-		"backend resolution preference: auto",
-		"ffmpeg: available",
-		"version: ffmpeg version 7.1",
-		"gstreamer: unavailable",
-		"module: tsdemux (unavailable)",
-		"missing: gst-launch-1.0, gst-inspect-1.0, gst-discoverer-1.0, module:tsdemux",
+		"klvtool: ",
+		"backend preference: auto",
+		"platform: linux",
 		"install guidance: Install the backend tools with apt.",
-		"install: sudo apt update && sudo apt install ffmpeg gstreamer1.0-tools",
-		"ffmpeg:",
-		"gstreamer:",
 	} {
 		if !strings.Contains(text, want) {
-			t.Fatalf("expected doctor output to contain %q, got %q", want, text)
+			t.Errorf("missing header line %q in output:\n%s", want, text)
 		}
+	}
+
+	// Healthy backend assertions
+	for _, want := range []string{
+		"ffmpeg \xe2\x9c\x93 available",
+		"ffmpeg    7.1",
+		"/usr/bin/ffmpeg",
+		"ffprobe   7.1",
+		"/usr/bin/ffprobe",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("missing healthy backend line %q in output:\n%s", want, text)
+		}
+	}
+
+	// Unhealthy backend assertions
+	for _, want := range []string{
+		"gstreamer \xe2\x9c\x97 not installed",
+		"missing: gst-launch-1.0, gst-inspect-1.0, gst-discoverer-1.0, tsdemux",
+		"install: sudo apt update && sudo apt install ffmpeg gstreamer1.0-tools",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("missing unhealthy backend line %q in output:\n%s", want, text)
+		}
+	}
+
+	// Must NOT contain raw version banners
+	if strings.Contains(text, "Copyright") {
+		t.Errorf("output should not contain raw version banner, got:\n%s", text)
+	}
+}
+
+func TestDoctorCommandColorizesWhenTerminal(t *testing.T) {
+	var stdout bytes.Buffer
+
+	cmd := NewRootCommand()
+	cmd.Out = &stdout
+	cmd.Err = &bytes.Buffer{}
+	cmd.Doctor.IsTerminal = func() bool { return true }
+	cmd.Doctor.Detect = func(ctx context.Context, goos string, env map[string]string) envcheck.Report {
+		return envcheck.Report{
+			Platform: "linux",
+			Backends: []envcheck.BackendHealth{
+				{
+					Name:    "ffmpeg",
+					Healthy: true,
+					Tools: []envcheck.ToolHealth{
+						{Name: "ffmpeg", Path: "/usr/bin/ffmpeg", Version: "ffmpeg version 7.1", Healthy: true},
+					},
+				},
+			},
+		}
+	}
+
+	if got := cmd.Execute([]string{"doctor"}); got != 0 {
+		t.Fatalf("expected exit code 0, got %d", got)
+	}
+
+	text := stdout.String()
+	if !strings.Contains(text, "\033[32m") {
+		t.Errorf("expected ANSI green codes in terminal output, got:\n%s", text)
 	}
 }
 
