@@ -158,7 +158,7 @@ func TestPacketizeWritesPacketCheckpointOutputs(t *testing.T) {
 			t.Fatalf("did not expect legacy field %s in %s", legacy, packetBytes)
 		}
 	}
-	if !strings.Contains(stdout.String(), "packets: 1") {
+	if !strings.Contains(stdout.String(), "records: 1") {
 		t.Fatalf("expected stdout summary, got %q", stdout.String())
 	}
 }

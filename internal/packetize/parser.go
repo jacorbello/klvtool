@@ -43,8 +43,8 @@ func (p *Parser) Parse(req Request) (PacketizedStream, error) {
 		return stream, nil
 	}
 
-	for offset, packetIndex := 0, 0; offset < len(req.Record.Payload); packetIndex++ {
-		packet, nextOffset, diag, err := parsePacket(req.Record.Payload, offset, packetIndex)
+	for offset, attempt := 0, 0; offset < len(req.Record.Payload); attempt++ {
+		packet, nextOffset, diag, err := parsePacket(req.Record.Payload, offset, attempt)
 		if err != nil {
 			stream.Diagnostics = append(stream.Diagnostics, diag)
 			stream.ErrorCount++
@@ -58,11 +58,14 @@ func (p *Parser) Parse(req Request) (PacketizedStream, error) {
 			}
 			skipOffset := offset
 			skipLen := recovered
-			stream.Diagnostics = append(stream.Diagnostics, recoverySkipDiagnostic(skipOffset, skipLen, packetIndex))
+			skipDiag := recoverySkipDiagnostic(skipOffset, skipLen, attempt)
+			stream.Diagnostics = append(stream.Diagnostics, skipDiag)
+			stream.WarningCount++
 			offset = recovered
 			continue
 		}
 
+		packet.PacketIndex = len(stream.Packets)
 		stream.Packets = append(stream.Packets, packet)
 		stream.ParsedCount++
 		offset = nextOffset

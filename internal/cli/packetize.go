@@ -127,7 +127,7 @@ func (c *PacketizeCommand) Execute(args []string) int {
 	}
 
 	if c.Out != nil {
-		_, _ = fmt.Fprintf(c.Out, "packets: %d\n", len(streams))
+		_, _ = fmt.Fprintf(c.Out, "records: %d\n", len(streams))
 		_, _ = fmt.Fprintf(c.Out, "manifest: %s\n", filepath.Join(outDir, "manifest.ndjson"))
 	}
 	return 0

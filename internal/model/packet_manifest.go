@@ -13,6 +13,9 @@ type PacketManifest struct {
 
 func (m PacketManifest) MarshalJSON() ([]byte, error) {
 	type alias PacketManifest
+	if m.SchemaVersion == "" {
+		m.SchemaVersion = PacketSchemaVersion
+	}
 	if m.Records == nil {
 		m.Records = []PacketManifestEntry{}
 	}
