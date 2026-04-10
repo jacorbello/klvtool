@@ -182,7 +182,7 @@ func defaultInspect(path string) (ts.StreamTable, InspectStats, error) {
 	}
 	defer func() { _ = file.Close() }()
 
-	table, _, err := ts.DiscoverStreams(file)
+	table, err := ts.DiscoverStreams(file)
 	if err != nil {
 		return ts.StreamTable{}, InspectStats{}, model.TSParse(fmt.Errorf("discover streams: %w", err))
 	}

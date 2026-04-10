@@ -22,14 +22,11 @@ func TestDiscoverStreamsFromSampleTS(t *testing.T) {
 	}
 	defer func() { _ = file.Close() }()
 
-	table, offset, err := ts.DiscoverStreams(file)
+	table, err := ts.DiscoverStreams(file)
 	if err != nil {
 		t.Fatalf("DiscoverStreams: %v", err)
 	}
 
-	if offset == 0 {
-		t.Error("offset should be > 0 after discovery")
-	}
 	if len(table.Programs) == 0 {
 		t.Fatal("expected at least one program")
 	}
@@ -66,7 +63,7 @@ func TestFullScanPESReassemblyFromSampleTS(t *testing.T) {
 	}
 	defer func() { _ = file.Close() }()
 
-	table, _, err := ts.DiscoverStreams(file)
+	table, err := ts.DiscoverStreams(file)
 	if err != nil {
 		t.Fatalf("DiscoverStreams: %v", err)
 	}

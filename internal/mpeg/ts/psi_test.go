@@ -158,12 +158,9 @@ func TestDiscoverStreamsFromSyntheticFile(t *testing.T) {
 	buf.Write(dataPkt)
 
 	r := bytes.NewReader(buf.Bytes())
-	table, offset, err := DiscoverStreams(r)
+	table, err := DiscoverStreams(r)
 	if err != nil {
 		t.Fatalf("DiscoverStreams: %v", err)
-	}
-	if offset == 0 {
-		t.Error("offset should be > 0 after discovery")
 	}
 
 	streams, ok := table.Programs[1]

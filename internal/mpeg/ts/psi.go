@@ -151,9 +151,8 @@ func (p *PSIParser) parsePMT(pmtPID uint16, payload []byte) bool {
 }
 
 // DiscoverStreams reads enough of the source to parse PAT/PMT and returns
-// the complete StreamTable. The returned int64 is the byte offset where
-// discovery stopped.
-func DiscoverStreams(r io.ReadSeeker) (StreamTable, int64, error) {
+// the complete StreamTable.
+func DiscoverStreams(r io.ReadSeeker) (StreamTable, error) {
 	scanner := NewPacketScanner(r, ScanConfig{PayloadPIDs: map[uint16]bool{pidPAT: true}})
 	psi := NewPSIParser()
 
@@ -162,9 +161,9 @@ func DiscoverStreams(r io.ReadSeeker) (StreamTable, int64, error) {
 		pkt, err := scanner.Next()
 		if err != nil {
 			if err == io.EOF {
-				return StreamTable{}, 0, fmt.Errorf("PAT not found in stream")
+				return StreamTable{}, fmt.Errorf("PAT not found in stream")
 			}
-			return StreamTable{}, 0, err
+			return StreamTable{}, err
 		}
 		if psi.Feed(pkt) {
 			pmtPIDs = make(map[uint16]bool)
@@ -176,7 +175,7 @@ func DiscoverStreams(r io.ReadSeeker) (StreamTable, int64, error) {
 	}
 
 	if _, err := r.Seek(0, io.SeekStart); err != nil {
-		return StreamTable{}, 0, fmt.Errorf("seek to start: %w", err)
+		return StreamTable{}, fmt.Errorf("seek to start: %w", err)
 	}
 
 	allPIDs := map[uint16]bool{pidPAT: true}
@@ -193,7 +192,7 @@ func DiscoverStreams(r io.ReadSeeker) (StreamTable, int64, error) {
 			if err == io.EOF {
 				break
 			}
-			return StreamTable{}, 0, err
+			return StreamTable{}, err
 		}
 		psi.Feed(pkt)
 
@@ -205,5 +204,5 @@ func DiscoverStreams(r io.ReadSeeker) (StreamTable, int64, error) {
 		}
 	}
 
-	return psi.Table(), scanner.offset, nil
+	return psi.Table(), nil
 }
