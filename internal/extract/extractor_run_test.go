@@ -45,7 +45,7 @@ func TestExtractorRunCanonicalizesRecords(t *testing.T) {
 		descriptor: BackendDescriptor{Name: BackendFFmpeg, Healthy: true},
 		version:    "1.2.3",
 		records: []PayloadRecord{
-			{PID: 0x1bd, Payload: []byte("b")},
+			{PID: 0x045, Payload: []byte("b")},
 			{PID: 0x045, Payload: []byte("a")},
 		},
 	}
@@ -94,6 +94,9 @@ func TestExtractorRunCanonicalizesRecords(t *testing.T) {
 	}
 	if got.Records[1].RecordID != "klv-002" {
 		t.Fatalf("expected second record id klv-002, got %q", got.Records[1].RecordID)
+	}
+	if string(got.Records[1].Payload) != "b" {
+		t.Fatalf("expected second payload b, got %q", got.Records[1].Payload)
 	}
 	if got.Records[0].Warnings == nil {
 		t.Fatal("expected first record warnings to be non-nil")
