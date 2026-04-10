@@ -148,6 +148,18 @@ func (c *DoctorCommand) writeReport(w io.Writer, report envcheck.Report) {
 				ver := parseToolVersion(backend.Name, tool.Version)
 				_, _ = fmt.Fprintf(w, "  %-20s%s   %s\n", tool.Name, ver, clr.dim(tool.Path))
 			}
+		} else if len(backend.MissingTools) == 0 && len(backend.MissingModules) == 0 {
+			_, _ = fmt.Fprintf(w, "%s %s\n", clr.red(backend.Name), clr.red("\xe2\x9c\x97 unhealthy"))
+			for _, tool := range backend.Tools {
+				if tool.Error != "" {
+					_, _ = fmt.Fprintf(w, "  %s %s\n", clr.red(tool.Name+":"), tool.Error)
+				}
+			}
+			for _, mod := range backend.Modules {
+				if mod.Error != "" {
+					_, _ = fmt.Fprintf(w, "  %s %s\n", clr.red(mod.Name+":"), mod.Error)
+				}
+			}
 		} else {
 			_, _ = fmt.Fprintf(w, "%s %s\n", clr.red(backend.Name), clr.red("\xe2\x9c\x97 not installed"))
 			missing := append([]string(nil), backend.MissingTools...)

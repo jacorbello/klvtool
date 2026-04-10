@@ -288,6 +288,49 @@ func TestDoctorCommandResyncsCachedStderrAcrossInvocations(t *testing.T) {
 	}
 }
 
+func TestDoctorCommandShowsUnhealthyWhenToolsInstalledButFailing(t *testing.T) {
+	var stdout bytes.Buffer
+
+	cmd := NewRootCommand()
+	cmd.Out = &stdout
+	cmd.Err = &bytes.Buffer{}
+	cmd.Doctor.IsTerminal = func() bool { return false }
+	cmd.Doctor.Detect = func(ctx context.Context, goos string, env map[string]string) envcheck.Report {
+		return envcheck.Report{
+			Platform: "linux",
+			Guidance: []string{"sudo apt install ffmpeg"},
+			Backends: []envcheck.BackendHealth{
+				{
+					Name:    "ffmpeg",
+					Healthy: false,
+					Tools: []envcheck.ToolHealth{
+						{Name: "ffmpeg", Path: "/usr/bin/ffmpeg", Error: "exec format error", Healthy: false},
+						{Name: "ffprobe", Path: "/usr/bin/ffprobe", Version: "7.1", Healthy: true},
+					},
+				},
+			},
+		}
+	}
+
+	if got := cmd.Execute([]string{"doctor"}); got != 0 {
+		t.Fatalf("expected exit code 0, got %d", got)
+	}
+
+	text := stdout.String()
+	if !strings.Contains(text, "unhealthy") {
+		t.Errorf("expected 'unhealthy' label when tools installed but failing, got:\n%s", text)
+	}
+	if strings.Contains(text, "not installed") {
+		t.Errorf("expected no 'not installed' label when tools are present, got:\n%s", text)
+	}
+	if !strings.Contains(text, "ffmpeg:") || !strings.Contains(text, "exec format error") {
+		t.Errorf("expected tool error details in output, got:\n%s", text)
+	}
+	if strings.Contains(text, "install:") {
+		t.Errorf("expected no install guidance for unhealthy (not missing) backend, got:\n%s", text)
+	}
+}
+
 func TestDoctorCommandRespectsNoColor(t *testing.T) {
 	var stdout bytes.Buffer
 
