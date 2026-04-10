@@ -1,6 +1,7 @@
 package extract
 
 import (
+	"bytes"
 	"fmt"
 	"sort"
 )
@@ -12,7 +13,10 @@ func CanonicalizeRecords(records []PayloadRecord) []PayloadRecord {
 		if out[i].PID != out[j].PID {
 			return out[i].PID < out[j].PID
 		}
-		return false
+		if len(out[i].Payload) != len(out[j].Payload) {
+			return len(out[i].Payload) < len(out[j].Payload)
+		}
+		return bytes.Compare(out[i].Payload, out[j].Payload) < 0
 	})
 	for i := range out {
 		out[i].RecordID = canonicalRecordID(i)
