@@ -146,7 +146,7 @@ func (c *DoctorCommand) writeReport(w io.Writer, report envcheck.Report) {
 			_, _ = fmt.Fprintf(w, "%s %s\n", clr.green(backend.Name), clr.green("\xe2\x9c\x93 available"))
 			for _, tool := range backend.Tools {
 				ver := parseToolVersion(backend.Name, tool.Version)
-				_, _ = fmt.Fprintf(w, "  %-10s%-6s%s\n", tool.Name, ver, clr.dim(tool.Path))
+				_, _ = fmt.Fprintf(w, "  %-10s%s   %s\n", tool.Name, ver, clr.dim(tool.Path))
 			}
 		} else {
 			_, _ = fmt.Fprintf(w, "%s %s\n", clr.red(backend.Name), clr.red("\xe2\x9c\x97 not installed"))
