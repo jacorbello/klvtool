@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	ts "github.com/jacorbello/klvtool/internal/mpeg/ts"
 	"github.com/jacorbello/klvtool/internal/version"
 )
 
@@ -76,6 +77,32 @@ func TestHelpArgs(t *testing.T) {
 				t.Fatalf("expected help text to include version %q, got %q", version.String(), text)
 			}
 		})
+	}
+}
+
+func TestRootRoutesToInspect(t *testing.T) {
+	var out, errBuf bytes.Buffer
+
+	root := &RootCommand{
+		Out: &out,
+		Err: &errBuf,
+		Inspect: &InspectCommand{
+			Out: &out,
+			Err: &errBuf,
+			Inspect: func(path string) (ts.StreamTable, InspectStats, error) {
+				return ts.StreamTable{Programs: map[uint16][]ts.Stream{}}, InspectStats{
+					PacketCounts:  map[uint16]int64{},
+					PESUnitCounts: map[uint16]int{},
+					FirstPTS:      map[uint16]int64{},
+					LastPTS:       map[uint16]int64{},
+				}, nil
+			},
+		},
+	}
+
+	code := root.Execute([]string{"inspect", "--input", "test.ts"})
+	if code != 0 {
+		t.Errorf("exit code = %d, want 0; stderr: %s", code, errBuf.String())
 	}
 }
 

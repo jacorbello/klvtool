@@ -14,6 +14,9 @@ const (
 	CodePacketParse        Code = "packet_parse_failure"
 	CodeCheckpointRead     Code = "checkpoint_read_failure"
 	CodeOutputWrite        Code = "output_write_failure"
+	CodeTSSync             Code = "ts_sync_failure"
+	CodeTSParse            Code = "ts_parse_failure"
+	CodeTSRead             Code = "ts_read_failure"
 )
 
 // Error classifies a failure with a stable code and optional wrapped cause.
@@ -84,4 +87,16 @@ func CheckpointRead(err error) *Error {
 
 func OutputWrite(err error) *Error {
 	return NewError(CodeOutputWrite, err)
+}
+
+func TSSync(err error) *Error {
+	return NewError(CodeTSSync, err)
+}
+
+func TSParse(err error) *Error {
+	return NewError(CodeTSParse, err)
+}
+
+func TSRead(err error) *Error {
+	return NewError(CodeTSRead, err)
 }
