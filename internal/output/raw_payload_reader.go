@@ -32,6 +32,13 @@ func ReadRawPayloadManifest(root string) ([]extract.RawPayloadRecord, error) {
 		if err != nil {
 			return nil, model.OutputWrite(fmt.Errorf("resolve payload path %q: %w", rec.PayloadPath, err))
 		}
+		info, err := os.Lstat(payloadPath)
+		if err != nil {
+			return nil, model.OutputWrite(fmt.Errorf("stat payload %q: %w", payloadPath, err))
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return nil, model.OutputWrite(fmt.Errorf("payload symlink %q is not allowed", payloadPath))
+		}
 		payload, err := os.ReadFile(payloadPath)
 		if err != nil {
 			return nil, model.OutputWrite(fmt.Errorf("read payload %q: %w", payloadPath, err))

@@ -146,6 +146,61 @@ func TestReadRawPayloadManifestRejectsEscapingPayloadPaths(t *testing.T) {
 	}
 }
 
+func TestReadRawPayloadManifestRejectsSymlinkPayloads(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "payloads"), 0o755); err != nil {
+		t.Fatalf("mkdir payloads: %v", err)
+	}
+
+	outsideDir := t.TempDir()
+	outsidePayload := filepath.Join(outsideDir, "escape.bin")
+	wantPayload := []byte{0x09, 0x08, 0x07}
+	if err := os.WriteFile(outsidePayload, wantPayload, 0o644); err != nil {
+		t.Fatalf("write outside payload: %v", err)
+	}
+	if err := os.Symlink(outsidePayload, filepath.Join(root, "payloads", "klv-001.bin")); err != nil {
+		t.Fatalf("create symlink payload: %v", err)
+	}
+
+	sum := sha256.Sum256(wantPayload)
+	wantHash := "sha256:" + hex.EncodeToString(sum[:])
+	manifest := model.Manifest{
+		SchemaVersion:   "1",
+		SourceInputPath: "input.ts",
+		BackendName:     "ffmpeg",
+		BackendVersion:  "7.1",
+		Records: []model.Record{
+			{
+				RecordID:    "klv-001",
+				PID:         256,
+				PayloadPath: "payloads/klv-001.bin",
+				PayloadSize: int64(len(wantPayload)),
+				PayloadHash: wantHash,
+			},
+		},
+	}
+
+	manifestFile, err := os.Create(filepath.Join(root, "manifest.ndjson"))
+	if err != nil {
+		t.Fatalf("create manifest: %v", err)
+	}
+	if err := NewManifestWriter(manifestFile).WriteManifest(manifest); err != nil {
+		_ = manifestFile.Close()
+		t.Fatalf("write manifest: %v", err)
+	}
+	if err := manifestFile.Close(); err != nil {
+		t.Fatalf("close manifest: %v", err)
+	}
+
+	_, err = ReadRawPayloadManifest(root)
+	if err == nil {
+		t.Fatal("expected symlink payload to fail")
+	}
+	if !strings.Contains(err.Error(), "symlink") {
+		t.Fatalf("expected symlink rejection error, got %v", err)
+	}
+}
+
 func TestReadRawPayloadManifestValidatesPayloadMetadata(t *testing.T) {
 	root := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(root, "payloads"), 0o755); err != nil {
