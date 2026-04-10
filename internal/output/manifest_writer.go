@@ -41,3 +41,23 @@ func (mw *ManifestWriter) WriteRecord(record model.Record) error {
 	}
 	return nil
 }
+
+// WriteManifest writes one full manifest as a single JSON line.
+func (mw *ManifestWriter) WriteManifest(manifest model.Manifest) error {
+	if mw == nil || mw.w == nil {
+		return model.OutputWrite(errors.New("manifest writer is not initialized"))
+	}
+
+	data, err := manifest.MarshalJSON()
+	if err != nil {
+		return model.OutputWrite(fmt.Errorf("marshal manifest: %w", err))
+	}
+
+	if _, err := mw.w.Write(append(data, '\n')); err != nil {
+		return model.OutputWrite(fmt.Errorf("write manifest: %w", err))
+	}
+	if err := mw.w.Flush(); err != nil {
+		return model.OutputWrite(fmt.Errorf("flush manifest writer: %w", err))
+	}
+	return nil
+}

@@ -41,7 +41,7 @@ func (c *DoctorCommand) Execute(args []string) int {
 	if len(args) > 0 {
 		c.writeUsage(c.Err)
 		if c.Err != nil {
-			fmt.Fprintf(c.Err, "error: unsupported arguments: %v\n", args)
+			_, _ = fmt.Fprintf(c.Err, "error: unsupported arguments: %v\n", args)
 		}
 		return usageExitCode
 	}
@@ -76,9 +76,13 @@ func (c *DoctorCommand) writeUsage(w io.Writer) {
 	if w == nil {
 		return
 	}
-	fmt.Fprintln(w, "Usage: klvtool doctor [--help|-h]")
-	fmt.Fprintln(w)
-	fmt.Fprintln(w, "Check backend availability, detected versions, and install guidance.")
+	_, _ = fmt.Fprintln(w, "Usage: klvtool doctor [--help|-h]")
+	_, _ = fmt.Fprintln(w)
+	_, _ = fmt.Fprintln(w, "Check backend availability, detected versions, required modules, and install guidance.")
+	_, _ = fmt.Fprintln(w)
+	_, _ = fmt.Fprintln(w, "Required tools:")
+	_, _ = fmt.Fprintln(w, "  ffmpeg:     ffmpeg, ffprobe")
+	_, _ = fmt.Fprintln(w, "  gstreamer:  gst-launch-1.0, gst-inspect-1.0, gst-discoverer-1.0, tsdemux module")
 }
 
 func (c *DoctorCommand) writeReport(w io.Writer, report envcheck.Report) {
@@ -86,42 +90,57 @@ func (c *DoctorCommand) writeReport(w io.Writer, report envcheck.Report) {
 		return
 	}
 
-	fmt.Fprintln(w, "backend resolution preference: auto")
-	fmt.Fprintf(w, "platform: %s\n", report.Platform)
+	_, _ = fmt.Fprintln(w, "backend resolution preference: auto")
+	_, _ = fmt.Fprintf(w, "platform: %s\n", report.Platform)
 	if report.GuidanceSummary != "" {
-		fmt.Fprintf(w, "install guidance: %s\n", report.GuidanceSummary)
+		_, _ = fmt.Fprintf(w, "install guidance: %s\n", report.GuidanceSummary)
 	}
-	fmt.Fprintln(w)
+	_, _ = fmt.Fprintln(w)
 
 	for i, backend := range report.Backends {
 		status := "unavailable"
 		if backend.Healthy {
 			status = "available"
 		}
-		fmt.Fprintf(w, "%s: %s\n", backend.Name, status)
+		_, _ = fmt.Fprintf(w, "%s: %s\n", backend.Name, status)
 
 		for _, tool := range backend.Tools {
-			fmt.Fprintf(w, "  %s\n", tool.Name)
+			_, _ = fmt.Fprintf(w, "  %s\n", tool.Name)
 			if tool.Path != "" {
-				fmt.Fprintf(w, "    path: %s\n", tool.Path)
+				_, _ = fmt.Fprintf(w, "    path: %s\n", tool.Path)
 			}
 			if tool.Version != "" {
-				fmt.Fprintf(w, "    version: %s\n", tool.Version)
+				_, _ = fmt.Fprintf(w, "    version: %s\n", tool.Version)
 			}
 			if tool.Error != "" {
-				fmt.Fprintf(w, "    error: %s\n", tool.Error)
+				_, _ = fmt.Fprintf(w, "    error: %s\n", tool.Error)
 			}
 		}
 
-		if !backend.Healthy && len(backend.MissingTools) > 0 {
-			fmt.Fprintf(w, "  missing: %s\n", strings.Join(backend.MissingTools, ", "))
+		for _, module := range backend.Modules {
+			status := "unavailable"
+			if module.Healthy {
+				status = "available"
+			}
+			_, _ = fmt.Fprintf(w, "  module: %s (%s)\n", module.Name, status)
+			if module.Error != "" {
+				_, _ = fmt.Fprintf(w, "    error: %s\n", module.Error)
+			}
+		}
+
+		if !backend.Healthy && (len(backend.MissingTools) > 0 || len(backend.MissingModules) > 0) {
+			missing := append([]string(nil), backend.MissingTools...)
+			for _, module := range backend.MissingModules {
+				missing = append(missing, "module:"+module)
+			}
+			_, _ = fmt.Fprintf(w, "  missing: %s\n", strings.Join(missing, ", "))
 			for _, step := range report.Guidance {
-				fmt.Fprintf(w, "  install: %s\n", step)
+				_, _ = fmt.Fprintf(w, "  install: %s\n", step)
 			}
 		}
 
 		if i < len(report.Backends)-1 {
-			fmt.Fprintln(w)
+			_, _ = fmt.Fprintln(w)
 		}
 	}
 }

@@ -18,6 +18,9 @@ func TestDetectBackendsReportsToolHealth(t *testing.T) {
 		}
 	}
 	runVersion := func(ctx context.Context, name string, args ...string) (string, error) {
+		if name == "/usr/bin/gst-inspect-1.0" && len(args) == 1 && args[0] == "tsdemux" {
+			return "Plugin Details:\nName\ttsdemux", nil
+		}
 		return name + " 1.2.3", nil
 	}
 
@@ -57,6 +60,15 @@ func TestDetectBackendsReportsToolHealth(t *testing.T) {
 	if got, want := gstreamer.Tools[2].Name, "gst-discoverer-1.0"; got != want {
 		t.Fatalf("expected third gstreamer tool name %q, got %q", want, got)
 	}
+	if got, want := len(gstreamer.Modules), 1; got != want {
+		t.Fatalf("expected %d gstreamer modules, got %d", want, got)
+	}
+	if got, want := gstreamer.Modules[0].Name, "tsdemux"; got != want {
+		t.Fatalf("expected required gstreamer module %q, got %q", want, got)
+	}
+	if !gstreamer.Modules[0].Healthy {
+		t.Fatal("expected required gstreamer module to be healthy")
+	}
 }
 
 func TestDetectBackendsReportsMissingTools(t *testing.T) {
@@ -82,6 +94,9 @@ func TestDetectBackendsReportsMissingTools(t *testing.T) {
 	}
 	if got := gstreamer.MissingTools; len(got) != 3 {
 		t.Fatalf("expected 3 missing gstreamer tools, got %d", len(got))
+	}
+	if got := gstreamer.MissingModules; len(got) != 1 {
+		t.Fatalf("expected 1 missing gstreamer module, got %d", len(got))
 	}
 }
 
@@ -110,6 +125,41 @@ func TestDetectUsesResolvedPathForVersionProbe(t *testing.T) {
 	}
 	if got, want := ffmpeg.Tools[0].Path, "/opt/bin/ffmpeg"; got != want {
 		t.Fatalf("expected resolved tool path %q, got %q", want, got)
+	}
+}
+
+func TestDetectReportsMissingGstreamerModuleWhenInspectSucceeds(t *testing.T) {
+	lookPath := func(name string) (string, error) {
+		switch name {
+		case "gst-launch-1.0", "gst-inspect-1.0", "gst-discoverer-1.0":
+			return "/usr/bin/" + name, nil
+		default:
+			return "", errors.New("missing")
+		}
+	}
+	runVersion := func(ctx context.Context, name string, args ...string) (string, error) {
+		if name == "/usr/bin/gst-inspect-1.0" && len(args) == 1 && args[0] == "tsdemux" {
+			return "", errors.New("No such element or plugin 'tsdemux'")
+		}
+		return name + " 1.2.3", nil
+	}
+
+	report := Detect(context.Background(), "linux", nil, lookPath, runVersion)
+	gstreamer := report.BackendsByName()["gstreamer"]
+	if gstreamer == nil {
+		t.Fatal("expected gstreamer backend report")
+	}
+	if gstreamer.Healthy {
+		t.Fatal("expected gstreamer backend to be unhealthy when module is missing")
+	}
+	if got, want := len(gstreamer.MissingModules), 1; got != want {
+		t.Fatalf("expected %d missing gstreamer module, got %d", want, got)
+	}
+	if got, want := gstreamer.MissingModules[0], "tsdemux"; got != want {
+		t.Fatalf("expected missing module %q, got %q", want, got)
+	}
+	if got, want := gstreamer.Modules[0].Error, "No such element or plugin 'tsdemux'"; got != want {
+		t.Fatalf("expected module error %q, got %q", want, got)
 	}
 }
 

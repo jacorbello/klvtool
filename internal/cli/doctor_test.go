@@ -43,9 +43,10 @@ func TestDoctorCommandRuns(t *testing.T) {
 					},
 				},
 				{
-					Name:         "gstreamer",
-					Healthy:      false,
-					MissingTools: []string{"gst-launch-1.0", "gst-inspect-1.0"},
+					Name:           "gstreamer",
+					Healthy:        false,
+					MissingTools:   []string{"gst-launch-1.0", "gst-inspect-1.0", "gst-discoverer-1.0"},
+					MissingModules: []string{"tsdemux"},
 					Tools: []envcheck.ToolHealth{
 						{
 							Name:  "gst-launch-1.0",
@@ -54,6 +55,16 @@ func TestDoctorCommandRuns(t *testing.T) {
 						{
 							Name:  "gst-inspect-1.0",
 							Error: "missing",
+						},
+						{
+							Name:  "gst-discoverer-1.0",
+							Error: "missing",
+						},
+					},
+					Modules: []envcheck.ModuleHealth{
+						{
+							Name:  "tsdemux",
+							Error: "gst-inspect-1.0 unavailable",
 						},
 					},
 				},
@@ -74,6 +85,8 @@ func TestDoctorCommandRuns(t *testing.T) {
 		"ffmpeg: available",
 		"version: ffmpeg version 7.1",
 		"gstreamer: unavailable",
+		"module: tsdemux (unavailable)",
+		"missing: gst-launch-1.0, gst-inspect-1.0, gst-discoverer-1.0, module:tsdemux",
 		"install guidance: Install the backend tools with apt.",
 		"install: sudo apt update && sudo apt install ffmpeg gstreamer1.0-tools",
 		"ffmpeg:",
