@@ -48,6 +48,119 @@ func parsePESHeader(data []byte) (pts *int64, dts *int64, headerLen int, err err
 	return pts, dts, headerLen, nil
 }
 
+type pesAccumulator struct {
+	pid         uint16
+	pts         *int64
+	dts         *int64
+	payload     []byte
+	packetStart int64
+	packetIndex int64
+	packetCount int
+	lastCC      int
+	diagnostics []Diagnostic
+}
+
+// PESAssembler reassembles TS packets into complete PES units.
+type PESAssembler struct {
+	pending map[uint16]*pesAccumulator
+}
+
+// NewPESAssembler returns an empty PESAssembler.
+func NewPESAssembler() *PESAssembler {
+	return &PESAssembler{pending: make(map[uint16]*pesAccumulator)}
+}
+
+// Feed processes a TS packet. If a PUSI flag starts a new PES unit and
+// there was a previous in-progress unit on the same PID, the completed
+// unit is returned.
+func (a *PESAssembler) Feed(pkt Packet) *PESUnit {
+	if !pkt.HasPayload || pkt.Payload == nil {
+		return nil
+	}
+
+	var emitted *PESUnit
+
+	if pkt.PayloadUnitStart {
+		if acc, ok := a.pending[pkt.PID]; ok {
+			emitted = acc.toPESUnit()
+		}
+		pts, dts, headerLen, err := parsePESHeader(pkt.Payload)
+		acc := &pesAccumulator{
+			pid:         pkt.PID,
+			packetStart: pkt.Offset,
+			packetIndex: pkt.Index,
+			packetCount: 1,
+			lastCC:      int(pkt.ContinuityCounter),
+		}
+		if err != nil {
+			acc.diagnostics = append(acc.diagnostics, Diagnostic{
+				Severity: "warning",
+				Code:     "missing_pes_header",
+				Message:  fmt.Sprintf("PES header parse error: %v", err),
+			})
+			acc.payload = append(acc.payload, pkt.Payload...)
+		} else {
+			acc.pts = pts
+			acc.dts = dts
+			if headerLen < len(pkt.Payload) {
+				acc.payload = append(acc.payload, pkt.Payload[headerLen:]...)
+			}
+		}
+		a.pending[pkt.PID] = acc
+	} else {
+		acc, ok := a.pending[pkt.PID]
+		if !ok {
+			return nil
+		}
+		if acc.lastCC >= 0 {
+			expected := (acc.lastCC + 1) & 0x0F
+			if int(pkt.ContinuityCounter) != expected {
+				if int(pkt.ContinuityCounter) == acc.lastCC {
+					acc.diagnostics = append(acc.diagnostics, Diagnostic{
+						Severity: "warning",
+						Code:     "continuity_duplicate",
+						Message:  fmt.Sprintf("duplicate CC=%d on PID 0x%04X", pkt.ContinuityCounter, pkt.PID),
+					})
+					return nil
+				}
+				acc.diagnostics = append(acc.diagnostics, Diagnostic{
+					Severity: "warning",
+					Code:     "continuity_gap",
+					Message:  fmt.Sprintf("CC gap on PID 0x%04X: expected %d, got %d", pkt.PID, expected, pkt.ContinuityCounter),
+				})
+			}
+		}
+		acc.lastCC = int(pkt.ContinuityCounter)
+		acc.packetCount++
+		acc.payload = append(acc.payload, pkt.Payload...)
+	}
+
+	return emitted
+}
+
+// Flush returns any in-progress PES units.
+func (a *PESAssembler) Flush() []PESUnit {
+	var units []PESUnit
+	for _, acc := range a.pending {
+		units = append(units, *acc.toPESUnit())
+	}
+	a.pending = make(map[uint16]*pesAccumulator)
+	return units
+}
+
+func (acc *pesAccumulator) toPESUnit() *PESUnit {
+	return &PESUnit{
+		PID:         acc.pid,
+		PTS:         acc.pts,
+		DTS:         acc.dts,
+		Payload:     acc.payload,
+		PacketStart: acc.packetStart,
+		PacketIndex: acc.packetIndex,
+		PacketCount: acc.packetCount,
+		Diagnostics: acc.diagnostics,
+	}
+}
+
 // parseTimestamp extracts a 33-bit PTS or DTS value from 5 bytes.
 func parseTimestamp(data []byte) int64 {
 	ts := int64(data[0]>>1&0x07) << 30
