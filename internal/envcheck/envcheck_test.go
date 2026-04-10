@@ -308,6 +308,43 @@ func TestPlatformGuidance(t *testing.T) {
 	}
 }
 
+func TestDetectUsesHealthCheckArgsForNoVersionTools(t *testing.T) {
+	type call struct {
+		name string
+		args []string
+	}
+	var calls []call
+
+	lookPath := func(name string) (string, error) {
+		switch name {
+		case "gst-launch-1.0", "gst-inspect-1.0", "gst-discoverer-1.0":
+			return "/usr/bin/" + name, nil
+		default:
+			return "", errors.New("missing")
+		}
+	}
+	runVersion := func(ctx context.Context, name string, args ...string) (string, error) {
+		calls = append(calls, call{name: name, args: append([]string(nil), args...)})
+		if name == "/usr/bin/gst-inspect-1.0" && len(args) == 1 && args[0] == "tsdemux" {
+			return "Plugin Details:\nName\ttsdemux", nil
+		}
+		return name + " 1.2.3", nil
+	}
+
+	Detect(context.Background(), "linux", nil, lookPath, runVersion)
+
+	for _, c := range calls {
+		if c.name == "/usr/bin/gst-discoverer-1.0" {
+			if len(c.args) != 1 || c.args[0] != "--help" {
+				t.Fatalf("expected gst-discoverer-1.0 to be called with [--help], got %v", c.args)
+			}
+			// Confirm it was NOT called with --version
+			return
+		}
+	}
+	t.Fatal("expected gst-discoverer-1.0 to be probed with --help, but no call was recorded")
+}
+
 func containsString(items []string, want string) bool {
 	for _, item := range items {
 		if strings.Contains(item, want) {

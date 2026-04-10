@@ -22,7 +22,7 @@ func TestDoctorCommandRuns(t *testing.T) {
 			Platform:        "linux",
 			GuidanceSummary: "Install the backend tools with apt.",
 			Guidance: []string{
-				"sudo apt update && sudo apt install ffmpeg gstreamer1.0-tools",
+				"sudo apt update && sudo apt install ffmpeg gstreamer1.0-tools gstreamer1.0-plugins-base-apps gstreamer1.0-plugins-bad",
 			},
 			Backends: []envcheck.BackendHealth{
 				{
@@ -97,10 +97,9 @@ func TestDoctorCommandRuns(t *testing.T) {
 	// Healthy backend assertions
 	for _, want := range []string{
 		"ffmpeg \xe2\x9c\x93 available",
-		"ffmpeg",
-		"7.1",
+		"ffmpeg              7.1",
 		"/usr/bin/ffmpeg",
-		"ffprobe",
+		"ffprobe             7.1",
 		"/usr/bin/ffprobe",
 	} {
 		if !strings.Contains(text, want) {
@@ -112,7 +111,7 @@ func TestDoctorCommandRuns(t *testing.T) {
 	for _, want := range []string{
 		"gstreamer \xe2\x9c\x97 not installed",
 		"missing: gst-launch-1.0, gst-inspect-1.0, gst-discoverer-1.0, tsdemux",
-		"install: sudo apt update && sudo apt install ffmpeg gstreamer1.0-tools",
+		"install: sudo apt update && sudo apt install ffmpeg gstreamer1.0-tools gstreamer1.0-plugins-base-apps gstreamer1.0-plugins-bad",
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("missing unhealthy backend line %q in output:\n%s", want, text)
@@ -286,6 +285,49 @@ func TestDoctorCommandResyncsCachedStderrAcrossInvocations(t *testing.T) {
 	}
 	if firstStderr.String() != secondStderr.String() {
 		t.Fatalf("expected doctor error output to stay stable across invocations, got first %q and second %q", firstStderr.String(), secondStderr.String())
+	}
+}
+
+func TestDoctorCommandShowsUnhealthyWhenToolsInstalledButFailing(t *testing.T) {
+	var stdout bytes.Buffer
+
+	cmd := NewRootCommand()
+	cmd.Out = &stdout
+	cmd.Err = &bytes.Buffer{}
+	cmd.Doctor.IsTerminal = func() bool { return false }
+	cmd.Doctor.Detect = func(ctx context.Context, goos string, env map[string]string) envcheck.Report {
+		return envcheck.Report{
+			Platform: "linux",
+			Guidance: []string{"sudo apt install ffmpeg"},
+			Backends: []envcheck.BackendHealth{
+				{
+					Name:    "ffmpeg",
+					Healthy: false,
+					Tools: []envcheck.ToolHealth{
+						{Name: "ffmpeg", Path: "/usr/bin/ffmpeg", Error: "exec format error", Healthy: false},
+						{Name: "ffprobe", Path: "/usr/bin/ffprobe", Version: "7.1", Healthy: true},
+					},
+				},
+			},
+		}
+	}
+
+	if got := cmd.Execute([]string{"doctor"}); got != 0 {
+		t.Fatalf("expected exit code 0, got %d", got)
+	}
+
+	text := stdout.String()
+	if !strings.Contains(text, "unhealthy") {
+		t.Errorf("expected 'unhealthy' label when tools installed but failing, got:\n%s", text)
+	}
+	if strings.Contains(text, "not installed") {
+		t.Errorf("expected no 'not installed' label when tools are present, got:\n%s", text)
+	}
+	if !strings.Contains(text, "ffmpeg:") || !strings.Contains(text, "exec format error") {
+		t.Errorf("expected tool error details in output, got:\n%s", text)
+	}
+	if strings.Contains(text, "install:") {
+		t.Errorf("expected no install guidance for unhealthy (not missing) backend, got:\n%s", text)
 	}
 }
 

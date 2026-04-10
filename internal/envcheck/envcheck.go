@@ -113,6 +113,16 @@ func detectBackend(ctx context.Context, spec backendSpec, lookPath LookPathFunc,
 		if toolName == "gst-inspect-1.0" {
 			inspectPath = path
 		}
+		if args, ok := healthCheckArgs[toolName]; ok {
+			if _, err := run(ctx, path, args...); err != nil {
+				tool.Error = err.Error()
+				allHealthy = false
+			} else {
+				tool.Healthy = true
+			}
+			backend.Tools = append(backend.Tools, tool)
+			continue
+		}
 		version, err := run(ctx, path, versionArgs(toolName)...)
 		if err != nil {
 			tool.Error = err.Error()
@@ -156,6 +166,14 @@ func defaultVersionRunner(ctx context.Context, name string, args ...string) (str
 		return "", fmt.Errorf("%w: %s", err, strings.TrimSpace(string(output)))
 	}
 	return string(output), nil
+}
+
+// healthCheckArgs lists tools that do not support a --version flag.
+// Instead of querying a version, these tools are probed with the listed
+// arguments (e.g. --help) to confirm the binary is executable.
+// A successful exit marks the tool as healthy with an empty Version.
+var healthCheckArgs = map[string][]string{
+	"gst-discoverer-1.0": {"--help"},
 }
 
 func versionArgs(toolName string) []string {
