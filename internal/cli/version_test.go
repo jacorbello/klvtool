@@ -26,7 +26,7 @@ func TestVersionCheckUpToDate(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		resp := map[string]string{"tag_name": "v1.0.0"}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	}))
 	defer srv.Close()
 
@@ -52,7 +52,7 @@ func TestVersionCheckUpdateAvailable(t *testing.T) {
 			"html_url": "https://github.com/jacorbello/klvtool/releases/tag/v2.0.0",
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	}))
 	defer srv.Close()
 
