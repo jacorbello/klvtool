@@ -17,6 +17,7 @@ type RootCommand struct {
 	Err        io.Writer
 	Doctor     *DoctorCommand
 	Extract    *ExtractCommand
+	Inspect    *InspectCommand
 	Packetize  *PacketizeCommand
 	VersionCmd *VersionCommand
 }
@@ -29,6 +30,7 @@ func NewRootCommand() *RootCommand {
 		Err:        os.Stderr,
 		Doctor:     NewDoctorCommand(),
 		Extract:    NewExtractCommand(),
+		Inspect:    NewInspectCommand(),
 		Packetize:  NewPacketizeCommand(),
 		VersionCmd: NewVersionCommand(),
 	}
@@ -54,6 +56,9 @@ func (c *RootCommand) Execute(args []string) int {
 	}
 	if len(args) > 0 && args[0] == "extract" {
 		return c.extractCommand().Execute(args[1:])
+	}
+	if len(args) > 0 && args[0] == "inspect" {
+		return c.inspectCommand().Execute(args[1:])
 	}
 	if len(args) > 0 && args[0] == "packetize" {
 		return c.packetizeCommand().Execute(args[1:])
@@ -84,6 +89,7 @@ func (c *RootCommand) writeUsage(w io.Writer) {
 	_, _ = fmt.Fprintln(w, "  version  Print version information.")
 	_, _ = fmt.Fprintln(w, "  doctor   Check backend availability and environment health.")
 	_, _ = fmt.Fprintln(w, "  extract  Extract payloads and write manifest output.")
+	_, _ = fmt.Fprintln(w, "  inspect  Inspect MPEG-TS stream inventory and diagnostics.")
 	_, _ = fmt.Fprintln(w, "  packetize Replay raw checkpoints and write packet output.")
 	_, _ = fmt.Fprintln(w)
 	_, _ = fmt.Fprintln(w, "Required tools:")
@@ -128,6 +134,20 @@ func (c *RootCommand) extractCommand() *ExtractCommand {
 	extractCmd.Out = c.Out
 	extractCmd.Err = c.Err
 	return extractCmd
+}
+
+func (c *RootCommand) inspectCommand() *InspectCommand {
+	if c == nil {
+		return NewInspectCommand()
+	}
+	inspectCmd := c.Inspect
+	if inspectCmd == nil {
+		inspectCmd = NewInspectCommand()
+		c.Inspect = inspectCmd
+	}
+	inspectCmd.Out = c.Out
+	inspectCmd.Err = c.Err
+	return inspectCmd
 }
 
 func (c *RootCommand) packetizeCommand() *PacketizeCommand {
