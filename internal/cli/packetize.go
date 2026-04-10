@@ -148,14 +148,14 @@ func (c *PacketizeCommand) writeOutputs(outDir, sourcePath string, streams []pac
 
 	manifest.SchemaVersion = "1"
 	manifest.SourcePath = sourcePath
-	manifest.Records = make([]model.PacketCheckpoint, 0, len(streams))
+	manifest.Records = make([]model.PacketManifestEntry, 0, len(streams))
 
 	for _, stream := range streams {
 		packetPath, err := writePacketCheckpoint(packetDir, stream)
 		if err != nil {
 			return err
 		}
-		manifest.Records = append(manifest.Records, model.PacketCheckpoint{
+		manifest.Records = append(manifest.Records, model.PacketManifestEntry{
 			RecordID:      stream.Source.RecordID,
 			Mode:          string(stream.Mode),
 			ParserVersion: stream.ParserVersion,
@@ -228,7 +228,7 @@ func writePacketCheckpoint(dir string, stream packetize.PacketizedStream) (strin
 	}
 
 	path := filepath.Join(dir, filename)
-	data, err := json.Marshal(stream)
+	data, err := json.Marshal(toPacketCheckpoint(stream))
 	if err != nil {
 		return "", model.OutputWrite(fmt.Errorf("marshal packet checkpoint for %q: %w", stream.Source.RecordID, err))
 	}
@@ -278,6 +278,36 @@ func toPacketDiagnostics(diags []packetize.Diagnostic) []model.PacketDiagnostic 
 		})
 	}
 	return out
+}
+
+func toPacketCheckpoint(stream packetize.PacketizedStream) model.PacketCheckpoint {
+	checkpoint := model.PacketCheckpoint{
+		RecordID:      stream.Source.RecordID,
+		Mode:          string(stream.Mode),
+		ParserVersion: stream.ParserVersion,
+		ParsedCount:   stream.ParsedCount,
+		WarningCount:  stream.WarningCount,
+		ErrorCount:    stream.ErrorCount,
+		Recovered:     stream.Recovered,
+		Packets:       make([]model.PacketRecord, 0, len(stream.Packets)),
+		Diagnostics:   toPacketDiagnostics(stream.Diagnostics),
+	}
+	for _, packet := range stream.Packets {
+		checkpoint.Packets = append(checkpoint.Packets, model.PacketRecord{
+			PacketIndex:        packet.PacketIndex,
+			PacketStart:        packet.PacketStart,
+			KeyStart:           packet.KeyStart,
+			LengthStart:        packet.LengthStart,
+			ValueStart:         packet.ValueStart,
+			PacketEndExclusive: packet.PacketEndExclusive,
+			Key:                append([]byte(nil), packet.Key...),
+			Length:             packet.Length,
+			Value:              append([]byte(nil), packet.Value...),
+			Classification:     string(packet.Classification),
+			Diagnostics:        toPacketDiagnostics(packet.Diagnostics),
+		})
+	}
+	return checkpoint
 }
 
 func sameDirectory(inputDir, outDir string) (bool, error) {

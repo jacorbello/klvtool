@@ -16,7 +16,7 @@ func TestPacketManifestWriterWritesManifestLine(t *testing.T) {
 	err := writer.WriteManifest(model.PacketManifest{
 		SchemaVersion: "1",
 		SourcePath:    "/tmp/raw",
-		Records: []model.PacketCheckpoint{
+		Records: []model.PacketManifestEntry{
 			{
 				RecordID:   "klv-001",
 				Mode:       "strict",

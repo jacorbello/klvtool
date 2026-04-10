@@ -125,6 +125,12 @@ func TestPacketizeWritesPacketCheckpointOutputs(t *testing.T) {
 	if !bytes.Contains(packetBytes, []byte(`"mode":"best-effort"`)) {
 		t.Fatalf("expected packet checkpoint to record mode, got %s", packetBytes)
 	}
+	if !bytes.Contains(packetBytes, []byte(`"packets":[`)) {
+		t.Fatalf("expected packet checkpoint to include packet array, got %s", packetBytes)
+	}
+	if !bytes.Contains(packetBytes, []byte(`"diagnostics":[]`)) {
+		t.Fatalf("expected packet checkpoint to normalize diagnostics array, got %s", packetBytes)
+	}
 	if !bytes.Contains(packetBytes, []byte(`"parsedCount":1`)) {
 		t.Fatalf("expected packet checkpoint to include parsed count, got %s", packetBytes)
 	}

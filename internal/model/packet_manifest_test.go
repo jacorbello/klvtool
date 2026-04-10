@@ -10,7 +10,7 @@ func TestPacketManifestMarshalJSONUsesStableEmptySlices(t *testing.T) {
 	manifest := PacketManifest{
 		SchemaVersion: "1",
 		SourcePath:    "/tmp/raw",
-		Records: []PacketCheckpoint{
+		Records: []PacketManifestEntry{
 			{
 				RecordID:   "klv-001",
 				Mode:       "strict",
@@ -41,5 +41,22 @@ func TestPacketManifestMarshalJSONNormalizesNilRecords(t *testing.T) {
 	got := string(data)
 	if !strings.Contains(got, `"records":[]`) {
 		t.Fatalf("expected empty records array, got %s", got)
+	}
+}
+
+func TestPacketCheckpointMarshalJSONUsesStablePacketAndDiagnosticArrays(t *testing.T) {
+	data, err := json.Marshal(PacketCheckpoint{
+		RecordID: "klv-001",
+		Mode:     "best-effort",
+	})
+	if err != nil {
+		t.Fatalf("json.Marshal error: %v", err)
+	}
+
+	got := string(data)
+	for _, want := range []string{`"packets":[]`, `"diagnostics":[]`} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("expected %q in %s", want, got)
+		}
 	}
 }

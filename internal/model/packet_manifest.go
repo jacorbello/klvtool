@@ -4,21 +4,21 @@ import "encoding/json"
 
 // PacketManifest captures the packet checkpoint output for one extraction record.
 type PacketManifest struct {
-	SchemaVersion string             `json:"schemaVersion"`
-	SourcePath    string             `json:"sourcePath"`
-	Records       []PacketCheckpoint `json:"records"`
+	SchemaVersion string                `json:"schemaVersion"`
+	SourcePath    string                `json:"sourcePath"`
+	Records       []PacketManifestEntry `json:"records"`
 }
 
 func (m PacketManifest) MarshalJSON() ([]byte, error) {
 	type alias PacketManifest
 	if m.Records == nil {
-		m.Records = []PacketCheckpoint{}
+		m.Records = []PacketManifestEntry{}
 	}
 	return json.Marshal(alias(m))
 }
 
-// PacketCheckpoint captures one parsed raw record and its packet checkpoint output.
-type PacketCheckpoint struct {
+// PacketManifestEntry captures the per-record manifest summary for a packet checkpoint.
+type PacketManifestEntry struct {
 	RecordID      string             `json:"recordId"`
 	Mode          string             `json:"mode"`
 	ParserVersion string             `json:"parserVersion"`
@@ -30,12 +30,59 @@ type PacketCheckpoint struct {
 	Diagnostics   []PacketDiagnostic `json:"diagnostics"`
 }
 
+func (e PacketManifestEntry) MarshalJSON() ([]byte, error) {
+	type alias PacketManifestEntry
+	if e.Diagnostics == nil {
+		e.Diagnostics = []PacketDiagnostic{}
+	}
+	return json.Marshal(alias(e))
+}
+
+// PacketCheckpoint captures one parsed raw record and its packet checkpoint output.
+type PacketCheckpoint struct {
+	RecordID      string             `json:"recordId"`
+	Mode          string             `json:"mode"`
+	ParserVersion string             `json:"parserVersion"`
+	ParsedCount   int                `json:"parsedCount"`
+	WarningCount  int                `json:"warningCount"`
+	ErrorCount    int                `json:"errorCount"`
+	Recovered     bool               `json:"recovered"`
+	Packets       []PacketRecord     `json:"packets"`
+	Diagnostics   []PacketDiagnostic `json:"diagnostics"`
+}
+
 func (c PacketCheckpoint) MarshalJSON() ([]byte, error) {
 	type alias PacketCheckpoint
+	if c.Packets == nil {
+		c.Packets = []PacketRecord{}
+	}
 	if c.Diagnostics == nil {
 		c.Diagnostics = []PacketDiagnostic{}
 	}
 	return json.Marshal(alias(c))
+}
+
+// PacketRecord captures one parsed packet in a packet checkpoint.
+type PacketRecord struct {
+	PacketIndex        int                `json:"packetIndex"`
+	PacketStart        int                `json:"packetStart"`
+	KeyStart           int                `json:"keyStart"`
+	LengthStart        int                `json:"lengthStart"`
+	ValueStart         int                `json:"valueStart"`
+	PacketEndExclusive int                `json:"packetEndExclusive"`
+	Key                []byte             `json:"key"`
+	Length             int                `json:"length"`
+	Value              []byte             `json:"value"`
+	Classification     string             `json:"classification"`
+	Diagnostics        []PacketDiagnostic `json:"diagnostics"`
+}
+
+func (r PacketRecord) MarshalJSON() ([]byte, error) {
+	type alias PacketRecord
+	if r.Diagnostics == nil {
+		r.Diagnostics = []PacketDiagnostic{}
+	}
+	return json.Marshal(alias(r))
 }
 
 // PacketDiagnostic captures one warning or error emitted while packetizing a raw record.
