@@ -107,6 +107,7 @@ func (c *RootCommand) doctorCommand() *DoctorCommand {
 	}
 	doctor.Out = c.Out
 	doctor.Err = c.Err
+	doctor.Version = c.Version
 	return doctor
 }
 
