@@ -11,7 +11,7 @@ const (
 	CodeUnsupportedBackend Code = "unsupported_backend"
 	CodeBackendExecution   Code = "backend_execution_failure"
 	CodeBackendParse       Code = "backend_parse_failure"
-	CodePacketization      Code = "packetization_failure"
+	CodePacketParse        Code = "packet_parse_failure"
 	CodeOutputWrite        Code = "output_write_failure"
 )
 
@@ -73,8 +73,8 @@ func BackendParse(err error) *Error {
 	return NewError(CodeBackendParse, err)
 }
 
-func Packetization(err error) *Error {
-	return NewError(CodePacketization, err)
+func PacketParse(err error) *Error {
+	return NewError(CodePacketParse, err)
 }
 
 func OutputWrite(err error) *Error {
