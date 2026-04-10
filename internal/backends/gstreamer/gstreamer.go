@@ -15,7 +15,7 @@ import (
 )
 
 var (
-	versionPattern       = regexp.MustCompile(`(?m)^gst-launch-1\.0 version (\S+)`)
+	versionPattern       = regexp.MustCompile(`(?m)^gst-\S+ version (\S+)`)
 	discoverStreamLine   = regexp.MustCompile(`^\s*([[:alpha:]][[:alnum:]_-]*_[0-9A-Fa-f]+):`)
 	discoverPIDLine      = regexp.MustCompile(`(?i)\bpid\b[^0-9a-fx]*((?:0x)?[0-9a-fA-F]+)\b`)
 	discoverOutputMarker = regexp.MustCompile(`(?m)(^Analyzing\b|^Done discovering\b|^Topology:\b|^Properties:\b)`)

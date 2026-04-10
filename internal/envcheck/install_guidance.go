@@ -46,7 +46,7 @@ func installGuidance(goos string, env map[string]string, readOSRelease osRelease
 			Summary:  "Install the Linux packages inside the WSL distribution.",
 			Steps: []string{
 				"WSL: use the Linux distribution package manager inside the WSL environment.",
-				"sudo apt update && sudo apt install ffmpeg gstreamer1.0-tools",
+				"sudo apt update && sudo apt install ffmpeg gstreamer1.0-tools gstreamer1.0-plugins-base-apps gstreamer1.0-plugins-bad",
 			},
 		}
 	case "debian_ubuntu":
@@ -54,7 +54,7 @@ func installGuidance(goos string, env map[string]string, readOSRelease osRelease
 			Platform: "debian_ubuntu",
 			Summary:  "Install the backend tools with apt.",
 			Steps: []string{
-				"sudo apt update && sudo apt install ffmpeg gstreamer1.0-tools",
+				"sudo apt update && sudo apt install ffmpeg gstreamer1.0-tools gstreamer1.0-plugins-base-apps gstreamer1.0-plugins-bad",
 			},
 		}
 	default:

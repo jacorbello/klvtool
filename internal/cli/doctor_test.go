@@ -22,7 +22,7 @@ func TestDoctorCommandRuns(t *testing.T) {
 			Platform:        "linux",
 			GuidanceSummary: "Install the backend tools with apt.",
 			Guidance: []string{
-				"sudo apt update && sudo apt install ffmpeg gstreamer1.0-tools",
+				"sudo apt update && sudo apt install ffmpeg gstreamer1.0-tools gstreamer1.0-plugins-base-apps gstreamer1.0-plugins-bad",
 			},
 			Backends: []envcheck.BackendHealth{
 				{
@@ -97,10 +97,9 @@ func TestDoctorCommandRuns(t *testing.T) {
 	// Healthy backend assertions
 	for _, want := range []string{
 		"ffmpeg \xe2\x9c\x93 available",
-		"ffmpeg",
-		"7.1",
+		"ffmpeg              7.1",
 		"/usr/bin/ffmpeg",
-		"ffprobe",
+		"ffprobe             7.1",
 		"/usr/bin/ffprobe",
 	} {
 		if !strings.Contains(text, want) {
@@ -112,7 +111,7 @@ func TestDoctorCommandRuns(t *testing.T) {
 	for _, want := range []string{
 		"gstreamer \xe2\x9c\x97 not installed",
 		"missing: gst-launch-1.0, gst-inspect-1.0, gst-discoverer-1.0, tsdemux",
-		"install: sudo apt update && sudo apt install ffmpeg gstreamer1.0-tools",
+		"install: sudo apt update && sudo apt install ffmpeg gstreamer1.0-tools gstreamer1.0-plugins-base-apps gstreamer1.0-plugins-bad",
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("missing unhealthy backend line %q in output:\n%s", want, text)
