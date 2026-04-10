@@ -9,6 +9,11 @@ import (
 const (
 	pidPAT     = 0x0000
 	programNIT = 0x0000
+
+	// maxDiscoveryPackets bounds the second pass of DiscoverStreams so a
+	// truncated or corrupted stream where an announced PMT PID never carries
+	// data does not cause a full scan to EOF.
+	maxDiscoveryPackets = 10000
 )
 
 // Stream describes a single elementary stream discovered from PAT/PMT.
@@ -186,7 +191,8 @@ func DiscoverStreams(r io.ReadSeeker) (StreamTable, error) {
 	psi = NewPSIParser()
 
 	parsedPMTs := make(map[uint16]bool)
-	for {
+	packetsScanned := 0
+	for packetsScanned < maxDiscoveryPackets {
 		pkt, err := scanner.Next()
 		if err != nil {
 			if err == io.EOF {
@@ -194,6 +200,7 @@ func DiscoverStreams(r io.ReadSeeker) (StreamTable, error) {
 			}
 			return StreamTable{}, err
 		}
+		packetsScanned++
 		psi.Feed(pkt)
 
 		if pkt.PayloadUnitStart && pmtPIDs[pkt.PID] {
