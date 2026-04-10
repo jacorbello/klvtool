@@ -31,41 +31,97 @@ type StreamTable struct {
 }
 
 // PSIParser accumulates PSI sections and builds a StreamTable.
+//
+// PSI sections (PAT, PMT) can span multiple TS packets. The parser buffers
+// section bytes per PID until enough data has arrived to satisfy the
+// section_length header, then dispatches to the table-specific parser.
 type PSIParser struct {
-	pmtPIDs map[uint16]uint16 // program number → PMT PID
-	table   StreamTable
+	pmtPIDs     map[uint16]uint16 // program number → PMT PID
+	pmtPIDIndex map[uint16]bool   // reverse lookup: PID → is a PMT PID
+	sectionBufs map[uint16][]byte // PID → in-progress section bytes
+	table       StreamTable
 }
 
 // NewPSIParser returns a fresh PSI parser ready to accept PAT/PMT packets.
 func NewPSIParser() *PSIParser {
 	return &PSIParser{
-		pmtPIDs: make(map[uint16]uint16),
-		table:   StreamTable{Programs: make(map[uint16][]Stream)},
+		pmtPIDs:     make(map[uint16]uint16),
+		pmtPIDIndex: make(map[uint16]bool),
+		sectionBufs: make(map[uint16][]byte),
+		table:       StreamTable{Programs: make(map[uint16][]Stream)},
 	}
 }
 
 // IsPMTPID reports whether pid has been identified as a PMT PID via PAT.
 func (p *PSIParser) IsPMTPID(pid uint16) bool {
-	for _, pmtPID := range p.pmtPIDs {
-		if pmtPID == pid {
-			return true
-		}
-	}
-	return false
+	return p.pmtPIDIndex[pid]
 }
 
-// Feed consumes a packet. Returns true if the parser state changed.
+// Feed consumes a packet. Returns true if the parser state changed (a
+// complete section was parsed). Continuation packets contribute to the
+// current in-progress section on their PID; PUSI packets start a fresh
+// section, discarding any prior partial accumulation.
 func (p *PSIParser) Feed(pkt Packet) bool {
 	if !pkt.HasPayload || pkt.Payload == nil {
 		return false
 	}
-	if pkt.PID == pidPAT && pkt.PayloadUnitStart {
-		return p.parsePAT(pkt.Payload)
+	if pkt.PID != pidPAT && !p.IsPMTPID(pkt.PID) {
+		return false
 	}
-	if p.IsPMTPID(pkt.PID) && pkt.PayloadUnitStart {
-		return p.parsePMT(pkt.PID, pkt.Payload)
+
+	if pkt.PayloadUnitStart {
+		// Skip the pointer_field and its padding: payload[0] is the pointer
+		// value N, and payload[1:1+N] is the tail of a previous section we
+		// don't buffer. The new section begins at payload[1+N:].
+		if len(pkt.Payload) < 1 {
+			return false
+		}
+		pointer := int(pkt.Payload[0])
+		if 1+pointer > len(pkt.Payload) {
+			delete(p.sectionBufs, pkt.PID)
+			return false
+		}
+		section := append([]byte(nil), pkt.Payload[1+pointer:]...)
+		p.sectionBufs[pkt.PID] = section
+	} else {
+		buf, ok := p.sectionBufs[pkt.PID]
+		if !ok {
+			// Continuation arrived before any PUSI on this PID — ignore.
+			return false
+		}
+		p.sectionBufs[pkt.PID] = append(buf, pkt.Payload...)
 	}
-	return false
+
+	return p.tryParseSection(pkt.PID)
+}
+
+// tryParseSection attempts to parse the accumulated section for pid. If
+// the section is not yet complete (fewer bytes buffered than
+// 3+section_length), it returns false and keeps buffering. If the section
+// is complete, it dispatches to the appropriate table parser and clears
+// the buffer.
+func (p *PSIParser) tryParseSection(pid uint16) bool {
+	buf := p.sectionBufs[pid]
+	if len(buf) < 3 {
+		return false
+	}
+	sectionLength := int(binary.BigEndian.Uint16(buf[1:3]) & 0x0FFF)
+	total := 3 + sectionLength
+	if len(buf) < total {
+		return false
+	}
+
+	section := buf[:total]
+	var changed bool
+	switch {
+	case pid == pidPAT:
+		changed = p.parsePAT(section)
+	case p.IsPMTPID(pid):
+		changed = p.parsePMT(pid, section)
+	}
+
+	delete(p.sectionBufs, pid)
+	return changed
 }
 
 // Table returns a copy of the current StreamTable.
@@ -79,23 +135,14 @@ func (p *PSIParser) Table() StreamTable {
 	return cp
 }
 
-func (p *PSIParser) parsePAT(payload []byte) bool {
-	if len(payload) < 1 {
-		return false
-	}
-	pointer := int(payload[0])
-	if 1+pointer > len(payload) {
-		return false
-	}
-	data := payload[1+pointer:]
-	if len(data) < 8 {
-		return false
-	}
-	if data[0] != 0x00 {
+// parsePAT parses a complete PAT section (pointer_field already stripped,
+// length already validated by tryParseSection).
+func (p *PSIParser) parsePAT(data []byte) bool {
+	if len(data) < 8 || data[0] != 0x00 {
 		return false
 	}
 	sectionLength := int(binary.BigEndian.Uint16(data[1:3]) & 0x0FFF)
-	if sectionLength < 5 || len(data) < 3+sectionLength {
+	if sectionLength < 5 {
 		return false
 	}
 	entryStart := 8
@@ -110,29 +157,20 @@ func (p *PSIParser) parsePAT(payload []byte) bool {
 		}
 		if existing, ok := p.pmtPIDs[programNum]; !ok || existing != pid {
 			p.pmtPIDs[programNum] = pid
+			p.pmtPIDIndex[pid] = true
 			changed = true
 		}
 	}
 	return changed
 }
 
-func (p *PSIParser) parsePMT(pmtPID uint16, payload []byte) bool {
-	if len(payload) < 1 {
-		return false
-	}
-	pointer := int(payload[0])
-	if 1+pointer > len(payload) {
-		return false
-	}
-	data := payload[1+pointer:]
-	if len(data) < 12 {
-		return false
-	}
-	if data[0] != 0x02 {
+// parsePMT parses a complete PMT section.
+func (p *PSIParser) parsePMT(pmtPID uint16, data []byte) bool {
+	if len(data) < 12 || data[0] != 0x02 {
 		return false
 	}
 	sectionLength := int(binary.BigEndian.Uint16(data[1:3]) & 0x0FFF)
-	if sectionLength < 9 || len(data) < 3+sectionLength {
+	if sectionLength < 9 {
 		return false
 	}
 	programNum := binary.BigEndian.Uint16(data[3:5])

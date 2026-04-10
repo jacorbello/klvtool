@@ -177,3 +177,108 @@ func TestDiscoverStreamsFromSyntheticFile(t *testing.T) {
 		t.Errorf("stream type = 0x%02X, want 0x06", streams[0].StreamType)
 	}
 }
+
+// TestPSIParserReassemblesMultiPacketPMT verifies that a PMT section
+// which spans two TS packets (PUSI start + continuation) is correctly
+// reassembled. Real MPEG-TS streams produce multi-packet PMTs once they
+// carry many streams or descriptors; a parser that only looks at the
+// first packet silently drops them.
+func TestPSIParserReassemblesMultiPacketPMT(t *testing.T) {
+	parser := NewPSIParser()
+
+	// Feed a PAT announcing program 1 → PMT PID 0x1000.
+	patSection := []byte{
+		0x00,       // pointer field
+		0x00,       // table_id
+		0xB0, 0x0D, // section_syntax=1, length=13
+		0x00, 0x01, 0xC1, 0x00, 0x00,
+		0x00, 0x01, 0xF0, 0x00,
+		0x00, 0x00, 0x00, 0x00,
+	}
+	parser.Feed(Packet{
+		PID: pidPAT, PayloadUnitStart: true, HasPayload: true,
+		Payload: append([]byte(nil), patSection...),
+	})
+
+	// Build a PMT with 40 streams so the section exceeds a single
+	// 184-byte TS payload and must span two packets.
+	const numStreams = 40
+	// PMT layout after table_id:
+	//   [section_syntax+length] [program_number] [version/current]
+	//   [section_number] [last_section_number] [PCR_PID] [program_info_length]
+	//   [N × 5-byte stream entries] [CRC32]
+	// Fixed overhead after table_id = 11 bytes + 4 CRC = 15 bytes.
+	// section_length counts from byte 3 to end-of-CRC.
+	entriesLen := numStreams * 5
+	sectionBodyLen := 9 + entriesLen + 4 // 9 bytes from program_number through program_info_length, plus entries, plus CRC
+	sectionLength := sectionBodyLen      // section_length = bytes after the length field itself through end of CRC
+
+	section := make([]byte, 0, 3+sectionLength)
+	section = append(section,
+		0x02, // table_id = PMT
+		byte(0xB0|((sectionLength>>8)&0x0F)),
+		byte(sectionLength&0xFF),
+		0x00, 0x01, // program_number = 1
+		0xC1,       // version=0, current_next=1
+		0x00, 0x00, // section_number, last_section_number
+		0xE1, 0x00, // PCR_PID = 0x0100
+		0xF0, 0x00, // program_info_length = 0
+	)
+	for i := 0; i < numStreams; i++ {
+		pid := uint16(0x0200 + i)
+		section = append(section,
+			0x06,                      // stream_type = private data
+			0xE0|byte(pid>>8)&0x1F,    // reserved + PID high
+			byte(pid),                 // PID low
+			0xF0, 0x00,                // ES_info_length = 0
+		)
+	}
+	// Placeholder CRC32 (parser does not verify CRC).
+	section = append(section, 0x00, 0x00, 0x00, 0x00)
+
+	// Prepend pointer_field and split across two TS packets. TS payload
+	// capacity without adaptation field is 184 bytes; the first packet's
+	// payload carries pointer_field + first 183 section bytes, the second
+	// packet's payload carries the rest.
+	firstPayload := make([]byte, 0, 184)
+	firstPayload = append(firstPayload, 0x00) // pointer_field
+	firstChunk := 183
+	if firstChunk > len(section) {
+		firstChunk = len(section)
+	}
+	firstPayload = append(firstPayload, section[:firstChunk]...)
+
+	restPayload := section[firstChunk:]
+	if len(restPayload) == 0 {
+		t.Fatalf("section fits in one packet (%d bytes) — test precondition failed", len(section))
+	}
+
+	parser.Feed(Packet{
+		PID: 0x1000, PayloadUnitStart: true, HasPayload: true,
+		Payload: firstPayload,
+	})
+	changed := parser.Feed(Packet{
+		PID: 0x1000, PayloadUnitStart: false, HasPayload: true, ContinuityCounter: 1,
+		Payload: append([]byte(nil), restPayload...),
+	})
+	if !changed {
+		t.Fatal("second packet should complete the PMT section")
+	}
+
+	table := parser.Table()
+	streams, ok := table.Programs[1]
+	if !ok {
+		t.Fatal("Program 1 not found")
+	}
+	if len(streams) != numStreams {
+		t.Fatalf("stream count = %d, want %d", len(streams), numStreams)
+	}
+	// Spot-check a few entries.
+	if streams[0].PID != 0x0200 {
+		t.Errorf("streams[0].PID = 0x%04X, want 0x0200", streams[0].PID)
+	}
+	if streams[numStreams-1].PID != uint16(0x0200+numStreams-1) {
+		t.Errorf("last stream PID = 0x%04X, want 0x%04X",
+			streams[numStreams-1].PID, uint16(0x0200+numStreams-1))
+	}
+}
