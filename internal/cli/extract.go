@@ -11,7 +11,6 @@ import (
 	"strings"
 
 	ffmpegbackend "github.com/jacorbello/klvtool/internal/backends/ffmpeg"
-	gstreamerbackend "github.com/jacorbello/klvtool/internal/backends/gstreamer"
 	"github.com/jacorbello/klvtool/internal/envcheck"
 	"github.com/jacorbello/klvtool/internal/extract"
 	"github.com/jacorbello/klvtool/internal/model"
@@ -49,7 +48,7 @@ func NewExtractCommand() *ExtractCommand {
 		GOOS:           runtime.GOOS,
 		Env:            currentEnvMap(),
 		Detect:         defaultDoctorDetect,
-		Extractor:      extract.NewExtractor(ffmpegbackend.NewBackend(), gstreamerbackend.NewBackend()),
+		Extractor:      extract.NewExtractor(ffmpegbackend.NewBackend()),
 		WritePayload:   output.WritePayload,
 		NewManifestOut: func(w io.Writer) manifestWriter { return output.NewManifestWriter(w) },
 	}
@@ -73,7 +72,7 @@ func (c *ExtractCommand) Execute(args []string) int {
 
 	fs.StringVar(&inputPath, "input", "", "path to the MPEG-TS input file")
 	fs.StringVar(&outDir, "out", "", "directory for extracted payloads and manifest")
-	fs.StringVar(&backend, "backend", string(extract.BackendAuto), "backend to use: auto, ffmpeg, gstreamer")
+	fs.StringVar(&backend, "backend", string(extract.BackendFFmpeg), "extraction backend (ffmpeg)")
 
 	if err := fs.Parse(args); err != nil {
 		c.writeUsage(c.Err)
@@ -86,8 +85,7 @@ func (c *ExtractCommand) Execute(args []string) int {
 		return usageExitCode
 	}
 
-	backendName, ok := parseRequestedBackend(backend)
-	if !ok {
+	if strings.TrimSpace(backend) != "" && strings.ToLower(strings.TrimSpace(backend)) != string(extract.BackendFFmpeg) {
 		c.writeUsage(c.Err)
 		c.writeError(c.Err, model.InvalidUsage(fmt.Errorf("unsupported backend %q", backend)))
 		return usageExitCode
@@ -104,14 +102,15 @@ func (c *ExtractCommand) Execute(args []string) int {
 	}
 
 	report := c.detect()
-	if err := validateRequestedBackend(report, backendName); err != nil {
+	desc := ffmpegDescriptor(report)
+	if !desc.Healthy {
+		err := model.MissingDependency(fmt.Errorf("ffmpeg backend is unavailable"))
 		c.writeError(c.Err, err)
 		return exitCodeForError(err)
 	}
 	result, err := c.extractor().Run(context.Background(), extract.RunRequest{
 		InputPath: inputPath,
-		Backend:   backendName,
-		Backends:  backendDescriptors(report),
+		Backend:   desc,
 	})
 	if err != nil {
 		c.writeError(c.Err, err)
@@ -142,7 +141,7 @@ func (c *ExtractCommand) writeOutputs(outDir, inputPath string, result extract.R
 	payloadDir := filepath.Join(outDir, "payloads")
 	manifest.SchemaVersion = "1"
 	manifest.SourceInputPath = inputPath
-	manifest.BackendName = string(result.Selected.Name)
+	manifest.BackendName = string(result.Backend.Name)
 	manifest.BackendVersion = result.BackendVersion
 	manifest.Records = make([]model.Record, 0, len(result.Records))
 
@@ -215,7 +214,7 @@ func (c *ExtractCommand) extractor() extractRunner {
 	if c != nil && c.Extractor != nil {
 		return c.Extractor
 	}
-	return extract.NewExtractor(ffmpegbackend.NewBackend(), gstreamerbackend.NewBackend())
+	return extract.NewExtractor(ffmpegbackend.NewBackend())
 }
 
 func (c *ExtractCommand) payloadWriter() payloadWriterFunc {
@@ -236,13 +235,12 @@ func (c *ExtractCommand) writeUsage(w io.Writer) {
 	if w == nil {
 		return
 	}
-	_, _ = fmt.Fprintln(w, "Usage: klvtool extract --input <file.ts> --out <dir> [--backend auto|ffmpeg|gstreamer]")
+	_, _ = fmt.Fprintln(w, "Usage: klvtool extract --input <file.ts> --out <dir>")
 	_, _ = fmt.Fprintln(w)
 	_, _ = fmt.Fprintln(w, "Validate backend availability, extract KLV/data payloads, and write manifest output.")
 	_, _ = fmt.Fprintln(w)
 	_, _ = fmt.Fprintln(w, "Required tools:")
-	_, _ = fmt.Fprintln(w, "  ffmpeg:     ffmpeg, ffprobe")
-	_, _ = fmt.Fprintln(w, "  gstreamer:  gst-launch-1.0, gst-inspect-1.0, gst-discoverer-1.0, tsdemux module")
+	_, _ = fmt.Fprintln(w, "  ffmpeg:  ffmpeg, ffprobe")
 }
 
 func (c *ExtractCommand) writeError(w io.Writer, err error) {
@@ -252,54 +250,21 @@ func (c *ExtractCommand) writeError(w io.Writer, err error) {
 	_, _ = fmt.Fprintf(w, "error: %v\n", err)
 }
 
-func backendDescriptors(report envcheck.Report) []extract.BackendDescriptor {
-	backends := make([]extract.BackendDescriptor, 0, len(report.Backends))
+func ffmpegDescriptor(report envcheck.Report) extract.BackendDescriptor {
 	for _, backend := range report.Backends {
-		name, ok := parseRequestedBackend(backend.Name)
-		if !ok || name == extract.BackendAuto {
-			continue
+		if strings.ToLower(backend.Name) == string(extract.BackendFFmpeg) {
+			tools := make([]string, 0, len(backend.Tools))
+			for _, tool := range backend.Tools {
+				tools = append(tools, tool.Name)
+			}
+			return extract.BackendDescriptor{
+				Name:    extract.BackendFFmpeg,
+				Healthy: backend.Healthy,
+				Tools:   tools,
+			}
 		}
-
-		tools := make([]string, 0, len(backend.Tools))
-		for _, tool := range backend.Tools {
-			tools = append(tools, tool.Name)
-		}
-		backends = append(backends, extract.BackendDescriptor{
-			Name:    name,
-			Healthy: backend.Healthy,
-			Tools:   tools,
-		})
 	}
-	return backends
-}
-
-func parseRequestedBackend(value string) (extract.BackendName, bool) {
-	switch strings.ToLower(strings.TrimSpace(value)) {
-	case "", string(extract.BackendAuto):
-		return extract.BackendAuto, true
-	case string(extract.BackendFFmpeg):
-		return extract.BackendFFmpeg, true
-	case string(extract.BackendGStreamer):
-		return extract.BackendGStreamer, true
-	default:
-		return "", false
-	}
-}
-
-func validateRequestedBackend(report envcheck.Report, backend extract.BackendName) error {
-	if backend == extract.BackendAuto {
-		return nil
-	}
-	for _, candidate := range backendDescriptors(report) {
-		if candidate.Name != backend {
-			continue
-		}
-		if candidate.Healthy {
-			return nil
-		}
-		return model.MissingDependency(fmt.Errorf("requested backend is unavailable: %s", backend))
-	}
-	return model.MissingDependency(fmt.Errorf("requested backend is unavailable: %s", backend))
+	return extract.BackendDescriptor{Name: extract.BackendFFmpeg}
 }
 
 func exitCodeForError(err error) int {

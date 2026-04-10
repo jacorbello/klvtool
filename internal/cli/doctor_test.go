@@ -22,7 +22,7 @@ func TestDoctorCommandRuns(t *testing.T) {
 			Platform:        "linux",
 			GuidanceSummary: "Install the backend tools with apt.",
 			Guidance: []string{
-				"sudo apt update && sudo apt install ffmpeg gstreamer1.0-tools gstreamer1.0-plugins-base-apps gstreamer1.0-plugins-bad",
+				"sudo apt update && sudo apt install ffmpeg",
 			},
 			Backends: []envcheck.BackendHealth{
 				{
@@ -40,32 +40,6 @@ func TestDoctorCommandRuns(t *testing.T) {
 							Path:    "/usr/bin/ffprobe",
 							Version: "ffprobe version 7.1 Copyright (c) 2007-2024 the FFmpeg developers",
 							Healthy: true,
-						},
-					},
-				},
-				{
-					Name:           "gstreamer",
-					Healthy:        false,
-					MissingTools:   []string{"gst-launch-1.0", "gst-inspect-1.0", "gst-discoverer-1.0"},
-					MissingModules: []string{"tsdemux"},
-					Tools: []envcheck.ToolHealth{
-						{
-							Name:  "gst-launch-1.0",
-							Error: "missing",
-						},
-						{
-							Name:  "gst-inspect-1.0",
-							Error: "missing",
-						},
-						{
-							Name:  "gst-discoverer-1.0",
-							Error: "missing",
-						},
-					},
-					Modules: []envcheck.ModuleHealth{
-						{
-							Name:  "tsdemux",
-							Error: "gst-inspect-1.0 unavailable",
 						},
 					},
 				},
@@ -104,17 +78,6 @@ func TestDoctorCommandRuns(t *testing.T) {
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("missing healthy backend line %q in output:\n%s", want, text)
-		}
-	}
-
-	// Unhealthy backend assertions
-	for _, want := range []string{
-		"gstreamer \xe2\x9c\x97 not installed",
-		"missing: gst-launch-1.0, gst-inspect-1.0, gst-discoverer-1.0, tsdemux",
-		"install: sudo apt update && sudo apt install ffmpeg gstreamer1.0-tools gstreamer1.0-plugins-base-apps gstreamer1.0-plugins-bad",
-	} {
-		if !strings.Contains(text, want) {
-			t.Errorf("missing unhealthy backend line %q in output:\n%s", want, text)
 		}
 	}
 

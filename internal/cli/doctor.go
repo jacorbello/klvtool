@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"github.com/jacorbello/klvtool/internal/backends/ffmpeg"
-	"github.com/jacorbello/klvtool/internal/backends/gstreamer"
 	"github.com/jacorbello/klvtool/internal/envcheck"
 )
 
@@ -83,11 +82,10 @@ func (c *DoctorCommand) writeUsage(w io.Writer) {
 	}
 	_, _ = fmt.Fprintln(w, "Usage: klvtool doctor [--help|-h]")
 	_, _ = fmt.Fprintln(w)
-	_, _ = fmt.Fprintln(w, "Check backend availability, detected versions, required modules, and install guidance.")
+	_, _ = fmt.Fprintln(w, "Check backend availability, detected versions, and install guidance.")
 	_, _ = fmt.Fprintln(w)
 	_, _ = fmt.Fprintln(w, "Required tools:")
-	_, _ = fmt.Fprintln(w, "  ffmpeg:     ffmpeg, ffprobe")
-	_, _ = fmt.Fprintln(w, "  gstreamer:  gst-launch-1.0, gst-inspect-1.0, gst-discoverer-1.0, tsdemux module")
+	_, _ = fmt.Fprintln(w, "  ffmpeg:  ffmpeg, ffprobe")
 }
 
 func defaultIsTerminal() bool {
@@ -115,8 +113,6 @@ func parseToolVersion(backendName, rawVersion string) string {
 	switch backendName {
 	case "ffmpeg":
 		return ffmpeg.ParseVersion(rawVersion)
-	case "gstreamer":
-		return gstreamer.ParseVersion(rawVersion)
 	default:
 		return rawVersion
 	}
@@ -148,22 +144,16 @@ func (c *DoctorCommand) writeReport(w io.Writer, report envcheck.Report) {
 				ver := parseToolVersion(backend.Name, tool.Version)
 				_, _ = fmt.Fprintf(w, "  %-20s%s   %s\n", tool.Name, ver, clr.dim(tool.Path))
 			}
-		} else if len(backend.MissingTools) == 0 && len(backend.MissingModules) == 0 {
+		} else if len(backend.MissingTools) == 0 {
 			_, _ = fmt.Fprintf(w, "%s %s\n", clr.red(backend.Name), clr.red("\xe2\x9c\x97 unhealthy"))
 			for _, tool := range backend.Tools {
 				if tool.Error != "" {
 					_, _ = fmt.Fprintf(w, "  %s %s\n", clr.red(tool.Name+":"), tool.Error)
 				}
 			}
-			for _, mod := range backend.Modules {
-				if mod.Error != "" {
-					_, _ = fmt.Fprintf(w, "  %s %s\n", clr.red(mod.Name+":"), mod.Error)
-				}
-			}
 		} else {
 			_, _ = fmt.Fprintf(w, "%s %s\n", clr.red(backend.Name), clr.red("\xe2\x9c\x97 not installed"))
-			missing := append([]string(nil), backend.MissingTools...)
-			missing = append(missing, backend.MissingModules...)
+			missing := backend.MissingTools
 			if len(missing) > 0 {
 				_, _ = fmt.Fprintf(w, "  %s %s\n", clr.red("missing:"), strings.Join(missing, ", "))
 			}

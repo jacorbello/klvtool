@@ -67,7 +67,6 @@ func TestExtractStopsOnExplicitBackendFailure(t *testing.T) {
 		return envcheck.Report{
 			Backends: []envcheck.BackendHealth{
 				{Name: "ffmpeg", Healthy: false},
-				{Name: "gstreamer", Healthy: true},
 			},
 		}
 	}
@@ -78,7 +77,7 @@ func TestExtractStopsOnExplicitBackendFailure(t *testing.T) {
 		},
 	}
 
-	if got := cmd.Execute([]string{"extract", "--input", "a.ts", "--out", "out", "--backend", "ffmpeg"}); got != 1 {
+	if got := cmd.Execute([]string{"extract", "--input", "a.ts", "--out", "out"}); got != 1 {
 		t.Fatalf("expected runtime failure exit code 1, got %d", got)
 	}
 	if text := stderr.String(); !strings.Contains(text, "missing_dependency") {
@@ -98,17 +97,16 @@ func TestExtractWritesManifestAndPayloads(t *testing.T) {
 		return envcheck.Report{
 			Backends: []envcheck.BackendHealth{
 				{Name: "ffmpeg", Healthy: true},
-				{Name: "gstreamer", Healthy: false},
 			},
 		}
 	}
 	cmd.Extract.Extractor = stubExtractor{
 		run: func(ctx context.Context, req extract.RunRequest) (extract.RunResult, error) {
-			if req.Backend != extract.BackendAuto {
-				t.Fatalf("expected auto backend request, got %q", req.Backend)
+			if req.Backend.Name != extract.BackendFFmpeg {
+				t.Fatalf("expected ffmpeg backend, got %q", req.Backend.Name)
 			}
 			return extract.RunResult{
-				Selected:       extract.BackendDescriptor{Name: extract.BackendFFmpeg, Healthy: true},
+				Backend:        extract.BackendDescriptor{Name: extract.BackendFFmpeg, Healthy: true},
 				BackendVersion: "7.1",
 				Records: []extract.PayloadRecord{
 					{
