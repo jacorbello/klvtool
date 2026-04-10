@@ -18,33 +18,33 @@ import (
 func ReadRawPayloadManifest(root string) ([]extract.RawPayloadRecord, error) {
 	data, err := os.ReadFile(filepath.Join(root, "manifest.ndjson"))
 	if err != nil {
-		return nil, model.OutputWrite(fmt.Errorf("read raw manifest: %w", err))
+		return nil, model.CheckpointRead(fmt.Errorf("read raw manifest: %w", err))
 	}
 
 	var manifest model.Manifest
 	if err := json.Unmarshal(bytes.TrimSpace(data), &manifest); err != nil {
-		return nil, model.OutputWrite(fmt.Errorf("decode raw manifest: %w", err))
+		return nil, model.CheckpointRead(fmt.Errorf("decode raw manifest: %w", err))
 	}
 
 	records := make([]extract.RawPayloadRecord, 0, len(manifest.Records))
 	for _, rec := range manifest.Records {
 		payloadPath, err := resolveCheckpointPath(root, rec.PayloadPath)
 		if err != nil {
-			return nil, model.OutputWrite(fmt.Errorf("resolve payload path %q: %w", rec.PayloadPath, err))
+			return nil, model.CheckpointRead(fmt.Errorf("resolve payload path %q: %w", rec.PayloadPath, err))
 		}
 		payload, err := os.ReadFile(payloadPath)
 		if err != nil {
-			return nil, model.OutputWrite(fmt.Errorf("read payload %q: %w", payloadPath, err))
+			return nil, model.CheckpointRead(fmt.Errorf("read payload %q: %w", payloadPath, err))
 		}
 
 		if got, want := int64(len(payload)), rec.PayloadSize; got != want {
-			return nil, model.OutputWrite(fmt.Errorf("payload size mismatch for %q: got %d, want %d", rec.RecordID, got, want))
+			return nil, model.CheckpointRead(fmt.Errorf("payload size mismatch for %q: got %d, want %d", rec.RecordID, got, want))
 		}
 
 		sum := sha256.Sum256(payload)
 		gotHash := "sha256:" + hex.EncodeToString(sum[:])
 		if gotHash != rec.PayloadHash {
-			return nil, model.OutputWrite(fmt.Errorf("payload hash mismatch for %q: got %s, want %s", rec.RecordID, gotHash, rec.PayloadHash))
+			return nil, model.CheckpointRead(fmt.Errorf("payload hash mismatch for %q: got %s, want %s", rec.RecordID, gotHash, rec.PayloadHash))
 		}
 
 		records = append(records, extract.RawPayloadRecord{

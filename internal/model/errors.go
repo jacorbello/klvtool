@@ -12,6 +12,7 @@ const (
 	CodeBackendExecution   Code = "backend_execution_failure"
 	CodeBackendParse       Code = "backend_parse_failure"
 	CodePacketParse        Code = "packet_parse_failure"
+	CodeCheckpointRead     Code = "checkpoint_read_failure"
 	CodeOutputWrite        Code = "output_write_failure"
 )
 
@@ -75,6 +76,10 @@ func BackendParse(err error) *Error {
 
 func PacketParse(err error) *Error {
 	return NewError(CodePacketParse, err)
+}
+
+func CheckpointRead(err error) *Error {
+	return NewError(CodeCheckpointRead, err)
 }
 
 func OutputWrite(err error) *Error {
