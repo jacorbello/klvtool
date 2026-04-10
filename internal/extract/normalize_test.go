@@ -1,6 +1,9 @@
 package extract
 
-import "testing"
+import (
+	"reflect"
+	"testing"
+)
 
 func TestCanonicalizeRecordsSortsByPIDAndAssignsStableIDs(t *testing.T) {
 	records := []PayloadRecord{
@@ -34,27 +37,79 @@ func TestCanonicalizeRecordsNormalizesNilWarningsToEmpty(t *testing.T) {
 	}
 }
 
-func TestCanonicalizeRecordsDeterministicallyOrdersEqualPIDs(t *testing.T) {
-	records := []PayloadRecord{
-		{PID: 0x045, Payload: []byte("b")},
-		{PID: 0x045, Payload: []byte("a")},
+func TestCanonicalizeRecordsDeterministicAcrossEquivalentInputs(t *testing.T) {
+	tsid := uint16Ptr(7)
+	offset10 := int64Ptr(10)
+	offset30 := int64Ptr(30)
+	packetIndex := int64Ptr(2)
+	continuityCounter := uint8Ptr(4)
+	pts := int64Ptr(100)
+	dts := int64Ptr(90)
+
+	recordNilTSID := PayloadRecord{
+		PID:               0x045,
+		Payload:           []byte("same"),
+		PacketOffset:      offset30,
+		PacketIndex:       packetIndex,
+		ContinuityCounter: continuityCounter,
+		PTS:               pts,
+		DTS:               dts,
+		Warnings:          []string{"z"},
+	}
+	recordShortWarnings := PayloadRecord{
+		PID:               0x045,
+		Payload:           []byte("same"),
+		TransportStreamID: tsid,
+		PacketOffset:      offset10,
+		PacketIndex:       packetIndex,
+		ContinuityCounter: continuityCounter,
+		PTS:               pts,
+		DTS:               dts,
+		Warnings:          []string{"a"},
+	}
+	recordLongWarnings := PayloadRecord{
+		PID:               0x045,
+		Payload:           []byte("same"),
+		TransportStreamID: tsid,
+		PacketOffset:      offset10,
+		PacketIndex:       packetIndex,
+		ContinuityCounter: continuityCounter,
+		PTS:               pts,
+		DTS:               dts,
+		Warnings:          []string{"a", "b"},
 	}
 
-	got := CanonicalizeRecords(records)
+	gotA := CanonicalizeRecords([]PayloadRecord{recordLongWarnings, recordNilTSID, recordShortWarnings})
+	gotB := CanonicalizeRecords([]PayloadRecord{recordShortWarnings, recordLongWarnings, recordNilTSID})
 
-	if len(got) != 2 {
-		t.Fatalf("expected 2 records, got %d", len(got))
+	if !reflect.DeepEqual(gotA, gotB) {
+		t.Fatalf("expected canonicalized outputs to match across equivalent inputs\nA: %#v\nB: %#v", gotA, gotB)
 	}
-	if string(got[0].Payload) != "a" {
-		t.Fatalf("expected first payload a, got %q", got[0].Payload)
+	if len(gotA) != 3 {
+		t.Fatalf("expected 3 records, got %d", len(gotA))
 	}
-	if got[0].RecordID != "klv-001" {
-		t.Fatalf("expected first record id klv-001, got %q", got[0].RecordID)
+	if gotA[0].TransportStreamID != nil {
+		t.Fatal("expected nil TransportStreamID record first")
 	}
-	if string(got[1].Payload) != "b" {
-		t.Fatalf("expected second payload b, got %q", got[1].Payload)
+	if gotA[0].RecordID != "klv-001" || gotA[1].RecordID != "klv-002" || gotA[2].RecordID != "klv-003" {
+		t.Fatalf("expected stable record ids, got %#v", []string{gotA[0].RecordID, gotA[1].RecordID, gotA[2].RecordID})
 	}
-	if got[1].RecordID != "klv-002" {
-		t.Fatalf("expected second record id klv-002, got %q", got[1].RecordID)
+	if len(gotA[1].Warnings) != 1 || gotA[1].Warnings[0] != "a" {
+		t.Fatalf("expected shorter warnings slice before longer one, got %#v", gotA[1].Warnings)
 	}
+	if len(gotA[2].Warnings) != 2 {
+		t.Fatalf("expected longer warnings slice last, got %#v", gotA[2].Warnings)
+	}
+}
+
+func uint16Ptr(v uint16) *uint16 {
+	return &v
+}
+
+func int64Ptr(v int64) *int64 {
+	return &v
+}
+
+func uint8Ptr(v uint8) *uint8 {
+	return &v
 }
