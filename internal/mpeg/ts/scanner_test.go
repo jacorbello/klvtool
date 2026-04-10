@@ -92,3 +92,64 @@ func TestScannerTrailingBytesError(t *testing.T) {
 		t.Error("expected non-EOF error for trailing bytes, got io.EOF")
 	}
 }
+
+func TestScannerPIDFilteringReadsTargetPayloadsOnly(t *testing.T) {
+	target := buildPacket(0x100, 0, false, []byte{0xAA})
+	other := buildPacket(0x200, 0, false, []byte{0xBB})
+	r := bytes.NewReader(append(target, other...))
+
+	cfg := ScanConfig{PayloadPIDs: map[uint16]bool{0x100: true}}
+	s := NewPacketScanner(r, cfg)
+
+	pkt1, err := s.Next()
+	if err != nil {
+		t.Fatalf("packet 1: %v", err)
+	}
+	if pkt1.Payload == nil {
+		t.Error("target PID payload is nil, want non-nil")
+	}
+
+	pkt2, err := s.Next()
+	if err != nil {
+		t.Fatalf("packet 2: %v", err)
+	}
+	if pkt2.Payload != nil {
+		t.Error("non-target PID payload is non-nil, want nil")
+	}
+}
+
+func TestScannerNilPayloadPIDsReadsAll(t *testing.T) {
+	p1 := buildPacket(0x100, 0, false, []byte{0xAA})
+	p2 := buildPacket(0x200, 0, false, []byte{0xBB})
+	r := bytes.NewReader(append(p1, p2...))
+
+	s := NewPacketScanner(r, ScanConfig{PayloadPIDs: nil})
+
+	for i, want := range []uint16{0x100, 0x200} {
+		pkt, err := s.Next()
+		if err != nil {
+			t.Fatalf("packet %d: %v", i, err)
+		}
+		if pkt.PID != want {
+			t.Errorf("packet %d PID = 0x%X, want 0x%X", i, pkt.PID, want)
+		}
+		if pkt.Payload == nil {
+			t.Errorf("packet %d payload is nil, want non-nil", i)
+		}
+	}
+}
+
+func TestScannerEmptyPayloadPIDsReadsNone(t *testing.T) {
+	p1 := buildPacket(0x100, 0, false, []byte{0xAA})
+	r := bytes.NewReader(p1)
+
+	s := NewPacketScanner(r, ScanConfig{PayloadPIDs: map[uint16]bool{}})
+
+	pkt, err := s.Next()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if pkt.Payload != nil {
+		t.Error("payload is non-nil with empty PayloadPIDs, want nil")
+	}
+}
