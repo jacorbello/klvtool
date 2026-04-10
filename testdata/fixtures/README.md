@@ -1,16 +1,19 @@
 # Fixture Guidance
 
-This directory is reserved for MPEG-TS samples used by `klvtool extract` integration tests.
+This directory holds MPEG-TS samples used by `klvtool extract` integration tests.
 
-## Expected Fixture
+## sample.ts
 
-- `sample.ts`: a small MPEG-TS file that contains at least one KLV or other data stream that `ffmpeg` can expose through `ffprobe` and extract through `ffmpeg`.
+- **Source:** [Esri FMV tutorial dataset](https://www.arcgis.com/sharing/rest/content/items/55ec6f32d5e342fcbfba376ca2cc409a/data)
+- **Original filename:** `Truck.ts` from `FMV_tutorial_data.zip`
+- **Size:** ~98 MB
+- **SHA256:** `8667276b2c2fb36baa089b00e3978f55893cacf6e0d8f6e6d480bb934747cc79`
+- **Provisioning:** Run `make test-data` to download and verify automatically.
 
-## Requirements
+This file is gitignored. Integration tests skip cleanly when it is absent.
 
-- Only commit fixtures that are legally redistributable.
-- Do not commit assets that contain sensitive telemetry, location data, or personal information.
-- Prefer short clips with the minimum payload needed to exercise `klvtool doctor` and `klvtool extract`.
-- Document the provenance of any committed fixture in this file.
+## Adding New Fixtures
 
-Until a vetted sample is added, integration tests that depend on `testdata/fixtures/sample.ts` will skip cleanly.
+- Only add fixtures that are legally redistributable.
+- Do not add assets that contain sensitive telemetry, location data, or personal information.
+- Document provenance in this file.
