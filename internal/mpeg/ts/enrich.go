@@ -15,10 +15,6 @@ func EnrichRecords(r io.ReadSeeker, records []extract.RawPayloadRecord) ([]extra
 		return nil, nil
 	}
 
-	if _, _, err := DiscoverStreams(r); err != nil {
-		return nil, fmt.Errorf("discover streams: %w", err)
-	}
-
 	targetPIDs := make(map[uint16]bool)
 	for _, rec := range records {
 		targetPIDs[rec.PID] = true
