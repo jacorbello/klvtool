@@ -86,10 +86,19 @@ func TestExtractorRunCanonicalizesRecords(t *testing.T) {
 	if got.Records[0].PID != 0x045 {
 		t.Fatalf("expected first pid 0x045, got %#x", got.Records[0].PID)
 	}
+	if string(got.Records[0].Payload) != "a" {
+		t.Fatalf("expected first payload a, got %q", got.Records[0].Payload)
+	}
 	if got.Records[0].RecordID != "klv-001" {
 		t.Fatalf("expected first record id klv-001, got %q", got.Records[0].RecordID)
 	}
 	if got.Records[1].RecordID != "klv-002" {
 		t.Fatalf("expected second record id klv-002, got %q", got.Records[1].RecordID)
+	}
+	if got.Records[0].Warnings == nil {
+		t.Fatal("expected first record warnings to be non-nil")
+	}
+	if len(got.Records[0].Warnings) != 0 {
+		t.Fatalf("expected first record warnings to be empty, got %v", got.Records[0].Warnings)
 	}
 }
