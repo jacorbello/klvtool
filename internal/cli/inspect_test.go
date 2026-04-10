@@ -2,6 +2,8 @@ package cli
 
 import (
 	"bytes"
+	"os"
+	"path/filepath"
 	"testing"
 
 	ts "github.com/jacorbello/klvtool/internal/mpeg/ts"
@@ -65,4 +67,81 @@ func TestInspectHelp(t *testing.T) {
 	if out.Len() == 0 {
 		t.Error("expected usage output")
 	}
+}
+
+// TestInspectSurfacesPESDiagnosticsEndToEnd builds a synthetic .ts file
+// containing a PAT, PMT, and a data stream with a deliberate continuity
+// counter gap, runs defaultInspect against it, and verifies the continuity
+// gap diagnostic makes it into the final report.
+func TestInspectSurfacesPESDiagnosticsEndToEnd(t *testing.T) {
+	pat := buildTSPacket(0x0000, 0, true, []byte{
+		0x00, 0x00, 0xB0, 0x0D,
+		0x00, 0x01, 0xC1, 0x00, 0x00,
+		0x00, 0x01, 0xF0, 0x00,
+		0x00, 0x00, 0x00, 0x00,
+	})
+	pmt := buildTSPacket(0x1000, 0, true, []byte{
+		0x00, 0x02, 0xB0, 0x12,
+		0x00, 0x01, 0xC1, 0x00, 0x00,
+		0xE1, 0x00, 0xF0, 0x00,
+		0x06, 0xE3, 0x00, 0xF0, 0x00,
+		0x00, 0x00, 0x00, 0x00,
+	})
+
+	// First PES unit: CC=0, PUSI=true, PES header with no PTS.
+	pes1 := buildTSPacket(0x0300, 0, true, []byte{
+		0x00, 0x00, 0x01, 0xBD, 0x00, 0x05, 0x80, 0x00, 0x00,
+		0xAA,
+	})
+	// Continuation: CC=2 (expected 1, so gap).
+	pes2 := buildTSPacket(0x0300, 2, false, []byte{0xBB})
+	// Trigger emit of the first unit with a new PUSI (CC=3 — continues from CC=2).
+	pes3 := buildTSPacket(0x0300, 3, true, []byte{
+		0x00, 0x00, 0x01, 0xBD, 0x00, 0x05, 0x80, 0x00, 0x00,
+		0xCC,
+	})
+
+	var file bytes.Buffer
+	file.Write(pat)
+	file.Write(pmt)
+	file.Write(pes1)
+	file.Write(pes2)
+	file.Write(pes3)
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "sample.ts")
+	if err := os.WriteFile(path, file.Bytes(), 0o600); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
+
+	_, stats, err := defaultInspect(path)
+	if err != nil {
+		t.Fatalf("defaultInspect: %v", err)
+	}
+
+	foundGap := false
+	for _, d := range stats.Diagnostics {
+		if d.Code == "continuity_gap" {
+			foundGap = true
+			break
+		}
+	}
+	if !foundGap {
+		t.Errorf("expected continuity_gap diagnostic, got %+v", stats.Diagnostics)
+	}
+}
+
+// buildTSPacket constructs a synthetic 188-byte TS packet — a test-local
+// duplicate of internal/mpeg/ts.buildPacket since that helper is unexported.
+func buildTSPacket(pid uint16, cc uint8, pusi bool, payload []byte) []byte {
+	pkt := make([]byte, 188)
+	pkt[0] = 0x47
+	pkt[1] = byte(pid>>8) & 0x1F
+	if pusi {
+		pkt[1] |= 0x40
+	}
+	pkt[2] = byte(pid)
+	pkt[3] = 0x10 | (cc & 0x0F) // payload only, no adaptation
+	copy(pkt[4:], payload)
+	return pkt
 }

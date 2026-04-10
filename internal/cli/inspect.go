@@ -230,7 +230,7 @@ func defaultInspect(path string) (ts.StreamTable, InspectStats, error) {
 		recordPESStats(&stats, &u)
 	}
 
-	stats.Diagnostics = scanner.Diagnostics()
+	stats.Diagnostics = append(stats.Diagnostics, scanner.Diagnostics()...)
 	return table, stats, nil
 }
 
