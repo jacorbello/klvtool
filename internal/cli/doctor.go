@@ -31,7 +31,7 @@ func NewDoctorCommand() *DoctorCommand {
 		GOOS:       runtime.GOOS,
 		Env:        currentEnvMap(),
 		Detect:     defaultDoctorDetect,
-		IsTerminal: defaultIsTerminal,
+		IsTerminal: nil,
 	}
 }
 
@@ -90,8 +90,12 @@ func (c *DoctorCommand) writeUsage(w io.Writer) {
 	_, _ = fmt.Fprintln(w, "  gstreamer:  gst-launch-1.0, gst-inspect-1.0, gst-discoverer-1.0, tsdemux module")
 }
 
-func defaultIsTerminal() bool {
-	info, err := os.Stdout.Stat()
+func isTerminalWriter(w io.Writer) bool {
+	f, ok := w.(*os.File)
+	if !ok {
+		return false
+	}
+	info, err := f.Stat()
 	if err != nil {
 		return false
 	}
@@ -105,12 +109,16 @@ func (c *DoctorCommand) colorEnabled() bool {
 	if c.IsTerminal != nil {
 		return c.IsTerminal()
 	}
-	return false
+	return isTerminalWriter(c.Out)
 }
 
 func parseToolVersion(backendName, rawVersion string) string {
 	if rawVersion == "" {
 		return ""
+	}
+	// Limit to first line to avoid multi-line banners in tabular output.
+	if i := strings.IndexByte(rawVersion, '\n'); i >= 0 {
+		rawVersion = rawVersion[:i]
 	}
 	switch backendName {
 	case "ffmpeg":
@@ -149,14 +157,29 @@ func (c *DoctorCommand) writeReport(w io.Writer, report envcheck.Report) {
 				_, _ = fmt.Fprintf(w, "  %-10s%s   %s\n", tool.Name, ver, clr.dim(tool.Path))
 			}
 		} else {
-			_, _ = fmt.Fprintf(w, "%s %s\n", clr.red(backend.Name), clr.red("\xe2\x9c\x97 not installed"))
-			missing := append([]string(nil), backend.MissingTools...)
-			missing = append(missing, backend.MissingModules...)
-			if len(missing) > 0 {
-				_, _ = fmt.Fprintf(w, "  %s %s\n", clr.red("missing:"), strings.Join(missing, ", "))
-			}
-			for _, step := range report.Guidance {
-				_, _ = fmt.Fprintf(w, "  install: %s\n", clr.dim(step))
+			if len(backend.MissingTools) == 0 && len(backend.MissingModules) == 0 {
+				// Tools present but unhealthy (e.g., version command failed)
+				_, _ = fmt.Fprintf(w, "%s %s\n", clr.red(backend.Name), clr.red("\xe2\x9c\x97 unhealthy"))
+				for _, tool := range backend.Tools {
+					if tool.Error != "" {
+						_, _ = fmt.Fprintf(w, "  %s %s\n", tool.Name, clr.red(tool.Error))
+					}
+				}
+				for _, module := range backend.Modules {
+					if module.Error != "" {
+						_, _ = fmt.Fprintf(w, "  %s %s\n", module.Name, clr.red(module.Error))
+					}
+				}
+			} else {
+				_, _ = fmt.Fprintf(w, "%s %s\n", clr.red(backend.Name), clr.red("\xe2\x9c\x97 not installed"))
+				missing := append([]string(nil), backend.MissingTools...)
+				missing = append(missing, backend.MissingModules...)
+				if len(missing) > 0 {
+					_, _ = fmt.Fprintf(w, "  %s %s\n", clr.red("missing:"), strings.Join(missing, ", "))
+				}
+				for _, step := range report.Guidance {
+					_, _ = fmt.Fprintf(w, "  install: %s\n", clr.dim(step))
+				}
 			}
 		}
 

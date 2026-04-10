@@ -15,6 +15,7 @@ func TestDoctorIntegration(t *testing.T) {
 	cmd := cli.NewRootCommand()
 	cmd.Out = &stdout
 	cmd.Err = &stderr
+	cmd.Doctor.IsTerminal = func() bool { return false }
 
 	if got := cmd.Execute([]string{"doctor"}); got != 0 {
 		t.Fatalf("expected doctor command to succeed, got %d with stderr %q", got, stderr.String())

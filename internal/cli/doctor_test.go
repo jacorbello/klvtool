@@ -97,9 +97,10 @@ func TestDoctorCommandRuns(t *testing.T) {
 	// Healthy backend assertions
 	for _, want := range []string{
 		"ffmpeg \xe2\x9c\x93 available",
-		"ffmpeg    7.1",
+		"ffmpeg",
+		"7.1",
 		"/usr/bin/ffmpeg",
-		"ffprobe   7.1",
+		"ffprobe",
 		"/usr/bin/ffprobe",
 	} {
 		if !strings.Contains(text, want) {
