@@ -14,6 +14,15 @@ type ScanConfig struct {
 }
 
 // PacketScanner reads sequential MPEG-TS packets from a stream.
+//
+// Contract: the input stream is assumed to begin at a real TS packet
+// boundary — i.e., a file or byte slice whose first byte is the sync
+// byte of the first packet. Mid-stream inputs (UDP/RTP captures that
+// started in the middle of a packet) are out of scope; callers that
+// need to handle such inputs should pre-align the stream before wiring
+// it into the scanner. Once alignment is lost mid-stream, recoverSync
+// performs a +188 verified search to avoid locking onto spurious 0x47
+// bytes in payload data.
 type PacketScanner struct {
 	r           *bufio.Reader
 	cfg         ScanConfig
@@ -79,10 +88,22 @@ func (s *PacketScanner) Diagnostics() []Diagnostic {
 func (s *PacketScanner) readAlignedPacket() error {
 	peeked, err := s.r.Peek(PacketSize)
 	if err != nil {
+		// Zero bytes available: EOF cleanly, anything else is an I/O
+		// failure (TSRead) — bufio.Reader.Peek surfaces the underlying
+		// reader's error when its buffer can't be filled.
 		if len(peeked) == 0 {
-			return io.EOF
+			if err == io.EOF {
+				return io.EOF
+			}
+			return model.TSRead(fmt.Errorf("peek packet: %w", err))
 		}
-		return model.TSParse(fmt.Errorf("incomplete TS packet: read %d of %d bytes", len(peeked), PacketSize))
+		// Partial data available: io.EOF means the stream ended mid-packet
+		// (a parse-level problem); any other error is an I/O failure
+		// that happened to return some bytes.
+		if err == io.EOF {
+			return model.TSParse(fmt.Errorf("incomplete TS packet: read %d of %d bytes: %w", len(peeked), PacketSize, err))
+		}
+		return model.TSRead(fmt.Errorf("peek packet: read %d of %d bytes: %w", len(peeked), PacketSize, err))
 	}
 
 	if peeked[0] == SyncByte {

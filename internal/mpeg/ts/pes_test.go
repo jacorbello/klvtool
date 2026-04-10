@@ -71,6 +71,25 @@ func TestParsePESHeaderTooShort(t *testing.T) {
 	}
 }
 
+// TestParsePESHeaderRejectsOverreachingHeaderDataLength verifies that a
+// PES header whose declared pes_header_data_length extends beyond the
+// bytes actually available fails cleanly rather than returning a
+// headerLen that exceeds the buffer.
+func TestParsePESHeaderRejectsOverreachingHeaderDataLength(t *testing.T) {
+	// 9-byte header claiming 200 bytes of optional header data follow.
+	data := []byte{
+		0x00, 0x00, 0x01, 0xBD, // start code + stream_id
+		0x00, 0xD0, // PES packet length (not used for bounds)
+		0x80,       // flags
+		0x00,       // PTS/DTS flags = none
+		0xC8,       // pes_header_data_length = 200
+	}
+	_, _, _, err := parsePESHeader(data)
+	if err == nil {
+		t.Fatal("expected error for overreaching header_data_length")
+	}
+}
+
 func TestPESAssemblerEmitsUnitOnNextPUSI(t *testing.T) {
 	asm := NewPESAssembler()
 

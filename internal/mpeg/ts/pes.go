@@ -29,6 +29,9 @@ func parsePESHeader(data []byte) (pts *int64, dts *int64, headerLen int, err err
 	ptsDTSFlags := (data[7] >> 6) & 0x03
 	pesHeaderDataLength := int(data[8])
 	headerLen = 9 + pesHeaderDataLength
+	if len(data) < headerLen {
+		return nil, nil, 0, fmt.Errorf("PES header too short for declared optional header length: have %d bytes, need %d", len(data), headerLen)
+	}
 
 	switch ptsDTSFlags {
 	case 0x02:

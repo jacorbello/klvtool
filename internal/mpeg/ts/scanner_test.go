@@ -24,6 +24,39 @@ func buildPacket(pid uint16, cc uint8, pusi bool, payload []byte) []byte {
 	return pkt
 }
 
+// errReader returns (0, errInjected) on every Read call, simulating an
+// I/O failure from the underlying stream. bufio.Reader.Peek surfaces this
+// error once its buffer can't be filled.
+type errReader struct{}
+
+var errInjected = errors.New("injected I/O error")
+
+func (errReader) Read(p []byte) (int, error) { return 0, errInjected }
+
+// TestScannerPeekIOErrorIsTSRead verifies that a non-EOF read failure
+// from the underlying reader is reported as a TSRead model error, not
+// swallowed as io.EOF or misclassified as a TSParse.
+func TestScannerPeekIOErrorIsTSRead(t *testing.T) {
+	s := NewPacketScanner(errReader{}, ScanConfig{})
+	_, err := s.Next()
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if errors.Is(err, io.EOF) {
+		t.Fatalf("non-EOF read error was swallowed as io.EOF: %v", err)
+	}
+	var typed *model.Error
+	if !errors.As(err, &typed) {
+		t.Fatalf("error is not *model.Error: %v", err)
+	}
+	if typed.Code != model.CodeTSRead {
+		t.Errorf("Code = %q, want %q", typed.Code, model.CodeTSRead)
+	}
+	if !errors.Is(err, errInjected) {
+		t.Errorf("underlying error not preserved in chain: %v", err)
+	}
+}
+
 func TestScannerReadsSequentialPackets(t *testing.T) {
 	p1 := buildPacket(0x100, 0, true, []byte{0xAA, 0xBB})
 	p2 := buildPacket(0x200, 3, false, []byte{0xCC})
