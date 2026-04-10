@@ -2,10 +2,11 @@
 
 `klvtool` is a Go CLI for working with MPEG-TS video assets and KLV payloads.
 
-The current bootstrap milestone ships two top-level commands:
+The current bootstrap milestone ships three top-level commands:
 
 - `klvtool doctor` checks local `ffmpeg` and `gstreamer` availability, reports detected versions, and prints install guidance.
 - `klvtool extract` validates backend health, selects `gstreamer` or `ffmpeg`, and writes extracted payloads plus a JSON manifest line to `manifest.ndjson`.
+- `klvtool packetize` replays a raw extraction checkpoint directory and writes packet checkpoint output plus a packet manifest.
 
 `ffmpeg` and `gstreamer` are both supported extraction backends. `--backend auto` prefers `gstreamer` when it is healthy and falls back to `ffmpeg`, while explicit backend requests do not fall back.
 
@@ -15,7 +16,8 @@ The current bootstrap milestone ships two top-level commands:
 make test
 make build
 ./bin/klvtool doctor
-./bin/klvtool extract --input testdata/fixtures/sample.ts --out /tmp/klvtool-out --backend auto
+./bin/klvtool extract --input testdata/fixtures/sample.ts --out /tmp/klvtool-raw --backend auto
+./bin/klvtool packetize --input /tmp/klvtool-raw --out /tmp/klvtool-packets --mode best-effort
 ```
 
 ## Dependencies
