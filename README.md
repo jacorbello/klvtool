@@ -4,11 +4,9 @@
 
 The current bootstrap milestone ships three top-level commands:
 
-- `klvtool doctor` checks local `ffmpeg` and `gstreamer` availability, reports detected versions, and prints install guidance.
-- `klvtool extract` validates backend health, selects `gstreamer` or `ffmpeg`, and writes extracted payloads plus a JSON manifest line to `manifest.ndjson`.
+- `klvtool doctor` checks local `ffmpeg` availability, reports detected versions, and prints install guidance.
+- `klvtool extract` validates backend health, extracts KLV/data payloads using `ffmpeg`, and writes extracted payloads plus a JSON manifest line to `manifest.ndjson`.
 - `klvtool packetize` replays a raw extraction checkpoint directory and writes packet checkpoint output plus a packet manifest.
-
-`ffmpeg` and `gstreamer` are both supported extraction backends. `--backend auto` prefers `gstreamer` when it is healthy and falls back to `ffmpeg`, while explicit backend requests do not fall back.
 
 ## Usage
 
@@ -16,7 +14,7 @@ The current bootstrap milestone ships three top-level commands:
 make test
 make build
 ./bin/klvtool doctor
-./bin/klvtool extract --input testdata/fixtures/sample.ts --out /tmp/klvtool-raw --backend auto
+./bin/klvtool extract --input testdata/fixtures/sample.ts --out /tmp/klvtool-raw
 ./bin/klvtool packetize --input /tmp/klvtool-raw --out /tmp/klvtool-packets --mode best-effort
 ```
 
@@ -24,7 +22,7 @@ The `testdata/fixtures/sample.ts` path is a local fixture reference. If that fil
 
 ## Dependencies
 
-At least one media backend is required. Either can be used independently via `--backend`, or `--backend auto` (the default) will prefer GStreamer and fall back to FFmpeg.
+FFmpeg is required as the extraction backend.
 
 ### FFmpeg
 
@@ -38,27 +36,6 @@ At least one media backend is required. Either can be used independently via `--
 | macOS (Homebrew) | `brew install ffmpeg` |
 | Debian / Ubuntu / WSL | `sudo apt update && sudo apt install ffmpeg` |
 | Other | <https://ffmpeg.org/download.html> |
-
-### GStreamer
-
-| Tool | Purpose |
-|------|---------|
-| `gst-launch-1.0` | Pipeline execution for payload extraction |
-| `gst-inspect-1.0` | Element and plugin introspection |
-| `gst-discoverer-1.0` | Stream discovery and metadata inspection |
-| `tsdemux` module | MPEG-TS demuxer element required by the extraction pipeline |
-
-| Platform | Install |
-|----------|---------|
-| macOS (Homebrew) | `brew install gstreamer` |
-| Debian / Ubuntu / WSL | `sudo apt update && sudo apt install gstreamer1.0-tools` |
-| Other | <https://gstreamer.freedesktop.org/download/> |
-
-Verify the required demux element is present:
-
-```bash
-gst-inspect-1.0 tsdemux
-```
 
 ### Verifying the installation
 
