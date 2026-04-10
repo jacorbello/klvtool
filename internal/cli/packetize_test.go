@@ -32,6 +32,26 @@ func TestPacketizeRequiresInputAndOutput(t *testing.T) {
 	}
 }
 
+func TestPacketizeRejectsSameInputAndOutputDirectory(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	dir := t.TempDir()
+	cmd := NewRootCommand()
+	cmd.Out = &stdout
+	cmd.Err = &stderr
+
+	if got := cmd.Execute([]string{"packetize", "--input", dir, "--out", dir}); got != usageExitCode {
+		t.Fatalf("expected usage exit code %d, got %d", usageExitCode, got)
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("expected validation failure to keep stdout empty, got %q", stdout.String())
+	}
+	if text := stderr.String(); !strings.Contains(text, "input and output directories must be different") {
+		t.Fatalf("expected same-directory validation error, got %q", text)
+	}
+}
+
 func TestPacketizeWritesPacketCheckpointOutputs(t *testing.T) {
 	inputDir := t.TempDir()
 	outputDir := t.TempDir()

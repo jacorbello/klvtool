@@ -87,6 +87,17 @@ func (c *PacketizeCommand) Execute(args []string) int {
 		c.writeError(c.Err, model.InvalidUsage(fmt.Errorf("output directory is required")))
 		return usageExitCode
 	}
+	sameDir, err := sameDirectory(inputDir, outDir)
+	if err != nil {
+		c.writeUsage(c.Err)
+		c.writeError(c.Err, model.InvalidUsage(err))
+		return usageExitCode
+	}
+	if sameDir {
+		c.writeUsage(c.Err)
+		c.writeError(c.Err, model.InvalidUsage(fmt.Errorf("input and output directories must be different")))
+		return usageExitCode
+	}
 
 	packetMode := packetize.Mode(mode)
 	if packetMode != packetize.ModeStrict && packetMode != packetize.ModeBestEffort {
@@ -267,4 +278,28 @@ func toPacketDiagnostics(diags []packetize.Diagnostic) []model.PacketDiagnostic 
 		})
 	}
 	return out
+}
+
+func sameDirectory(inputDir, outDir string) (bool, error) {
+	inputPath, err := canonicalDirPath(inputDir)
+	if err != nil {
+		return false, fmt.Errorf("resolve input directory %q: %w", inputDir, err)
+	}
+	outPath, err := canonicalDirPath(outDir)
+	if err != nil {
+		return false, fmt.Errorf("resolve output directory %q: %w", outDir, err)
+	}
+	return inputPath == outPath, nil
+}
+
+func canonicalDirPath(path string) (string, error) {
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return "", err
+	}
+	cleanPath := filepath.Clean(absPath)
+	if resolved, err := filepath.EvalSymlinks(cleanPath); err == nil {
+		return resolved, nil
+	}
+	return cleanPath, nil
 }
