@@ -10,6 +10,10 @@ import (
 // EnrichRecords scans the .ts file and attaches per-PES metadata to existing
 // RawPayloadRecords by matching on PID. Returns enriched copies — does not
 // mutate the input.
+//
+// EnrichRecords assumes each input record corresponds to a unique PID. If
+// two records share a PID, EnrichRecords returns an error — this assumption
+// matches the current ffmpeg backend contract (one record per data stream).
 func EnrichRecords(r io.ReadSeeker, records []extract.RawPayloadRecord) ([]extract.RawPayloadRecord, error) {
 	if len(records) == 0 {
 		return nil, nil
@@ -17,6 +21,9 @@ func EnrichRecords(r io.ReadSeeker, records []extract.RawPayloadRecord) ([]extra
 
 	targetPIDs := make(map[uint16]bool)
 	for _, rec := range records {
+		if targetPIDs[rec.PID] {
+			return nil, fmt.Errorf("duplicate PID 0x%04X in input records: EnrichRecords requires unique PIDs", rec.PID)
+		}
 		targetPIDs[rec.PID] = true
 	}
 

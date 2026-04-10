@@ -106,6 +106,26 @@ func TestEnrichRecordsPIDMismatchAddsWarning(t *testing.T) {
 	}
 }
 
+func TestEnrichRecordsRejectsDuplicatePIDs(t *testing.T) {
+	var file bytes.Buffer
+	patPkt := buildPacket(0x0000, 0, true, []byte{
+		0x00, 0x00, 0xB0, 0x0D, 0x00, 0x01, 0xC1, 0x00, 0x00,
+		0x00, 0x01, 0xF0, 0x00, 0x00, 0x00, 0x00, 0x00,
+	})
+	file.Write(patPkt)
+
+	records := []extract.RawPayloadRecord{
+		{RecordID: "klv-001", PID: 0x0300, Payload: []byte{0xAA}},
+		{RecordID: "klv-002", PID: 0x0300, Payload: []byte{0xBB}},
+	}
+
+	r := bytes.NewReader(file.Bytes())
+	_, err := EnrichRecords(r, records)
+	if err == nil {
+		t.Fatal("expected error for duplicate PIDs, got nil")
+	}
+}
+
 func TestEnrichRecordsDoesNotMutateInput(t *testing.T) {
 	var file bytes.Buffer
 	patPkt := buildPacket(0x0000, 0, true, []byte{
