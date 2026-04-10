@@ -4,6 +4,8 @@ import (
 	"bufio"
 	"fmt"
 	"io"
+
+	"github.com/jacorbello/klvtool/internal/model"
 )
 
 // ScanConfig controls which packet payloads are read.
@@ -44,7 +46,7 @@ func (s *PacketScanner) Next() (Packet, error) {
 	if pkt.HasAdaptation {
 		af, err := parseAdaptationField(s.buf[pos:])
 		if err != nil {
-			return Packet{}, fmt.Errorf("adaptation field at offset %d: %w", s.offset, err)
+			return Packet{}, model.TSParse(fmt.Errorf("adaptation field at offset %d: %w", s.offset, err))
 		}
 		pkt.Adaptation = &af
 		pos += 1 + int(af.Length)
@@ -80,13 +82,13 @@ func (s *PacketScanner) readAlignedPacket() error {
 		if len(peeked) == 0 {
 			return io.EOF
 		}
-		return fmt.Errorf("incomplete TS packet: read %d of %d bytes", len(peeked), PacketSize)
+		return model.TSParse(fmt.Errorf("incomplete TS packet: read %d of %d bytes", len(peeked), PacketSize))
 	}
 
 	if peeked[0] == SyncByte {
 		copy(s.buf[:], peeked)
 		if _, derr := s.r.Discard(PacketSize); derr != nil {
-			return fmt.Errorf("discard packet: %w", derr)
+			return model.TSRead(fmt.Errorf("discard packet: %w", derr))
 		}
 		return nil
 	}
@@ -112,19 +114,19 @@ func (s *PacketScanner) recoverSync() error {
 		if err != nil {
 			// Fewer than 189 bytes remain.
 			if len(peeked) < PacketSize {
-				return fmt.Errorf("sync recovery: EOF while searching for sync byte")
+				return model.TSSync(fmt.Errorf("EOF while searching for sync byte"))
 			}
 			// Exactly 188 bytes left: last-packet fallback.
 			if peeked[0] == SyncByte {
 				copy(s.buf[:], peeked[:PacketSize])
 				if _, derr := s.r.Discard(PacketSize); derr != nil {
-					return fmt.Errorf("sync recovery: discard: %w", derr)
+					return model.TSRead(fmt.Errorf("sync recovery: discard: %w", derr))
 				}
 				break
 			}
 			// Advance one byte and retry (will hit EOF quickly).
 			if _, derr := s.r.Discard(1); derr != nil {
-				return fmt.Errorf("sync recovery: discard: %w", derr)
+				return model.TSRead(fmt.Errorf("sync recovery: discard: %w", derr))
 			}
 			skipped++
 			continue
@@ -132,12 +134,12 @@ func (s *PacketScanner) recoverSync() error {
 		if peeked[0] == SyncByte && peeked[PacketSize] == SyncByte {
 			copy(s.buf[:], peeked[:PacketSize])
 			if _, derr := s.r.Discard(PacketSize); derr != nil {
-				return fmt.Errorf("sync recovery: discard: %w", derr)
+				return model.TSRead(fmt.Errorf("sync recovery: discard: %w", derr))
 			}
 			break
 		}
 		if _, derr := s.r.Discard(1); derr != nil {
-			return fmt.Errorf("sync recovery: discard: %w", derr)
+			return model.TSRead(fmt.Errorf("sync recovery: discard: %w", derr))
 		}
 		skipped++
 	}

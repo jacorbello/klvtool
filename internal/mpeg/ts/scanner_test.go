@@ -2,8 +2,11 @@ package ts
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"testing"
+
+	"github.com/jacorbello/klvtool/internal/model"
 )
 
 // buildPacket creates a valid 188-byte TS packet with the given PID, CC, PUSI,
@@ -90,6 +93,27 @@ func TestScannerTrailingBytesError(t *testing.T) {
 	}
 	if err == io.EOF {
 		t.Error("expected non-EOF error for trailing bytes, got io.EOF")
+	}
+}
+
+func TestScannerTrailingBytesErrorIsTSParse(t *testing.T) {
+	data := append(buildPacket(0x100, 0, false, nil), 0x00, 0x00, 0x00)
+	s := NewPacketScanner(bytes.NewReader(data), ScanConfig{})
+
+	if _, err := s.Next(); err != nil {
+		t.Fatalf("first packet: unexpected error: %v", err)
+	}
+
+	_, err := s.Next()
+	if err == nil {
+		t.Fatal("expected error for trailing bytes")
+	}
+	var mErr *model.Error
+	if !errors.As(err, &mErr) {
+		t.Fatalf("expected *model.Error, got %T: %v", err, err)
+	}
+	if mErr.Code != model.CodeTSParse {
+		t.Errorf("Code = %q, want %q", mErr.Code, model.CodeTSParse)
 	}
 }
 

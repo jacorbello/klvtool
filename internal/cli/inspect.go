@@ -184,7 +184,7 @@ func defaultInspect(path string) (ts.StreamTable, InspectStats, error) {
 
 	table, err := ts.DiscoverStreams(file)
 	if err != nil {
-		return ts.StreamTable{}, InspectStats{}, model.TSParse(fmt.Errorf("discover streams: %w", err))
+		return ts.StreamTable{}, InspectStats{}, err
 	}
 
 	dataPIDs := make(map[uint16]bool)
@@ -216,7 +216,7 @@ func defaultInspect(path string) (ts.StreamTable, InspectStats, error) {
 			if err == io.EOF {
 				break
 			}
-			return ts.StreamTable{}, InspectStats{}, model.TSRead(fmt.Errorf("scan: %w", err))
+			return ts.StreamTable{}, InspectStats{}, err
 		}
 		stats.TotalPackets++
 		stats.PacketCounts[pkt.PID]++

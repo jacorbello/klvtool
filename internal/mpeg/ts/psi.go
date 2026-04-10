@@ -4,6 +4,8 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+
+	"github.com/jacorbello/klvtool/internal/model"
 )
 
 const (
@@ -166,7 +168,7 @@ func DiscoverStreams(r io.ReadSeeker) (StreamTable, error) {
 		pkt, err := scanner.Next()
 		if err != nil {
 			if err == io.EOF {
-				return StreamTable{}, fmt.Errorf("PAT not found in stream")
+				return StreamTable{}, model.TSParse(fmt.Errorf("PAT not found in stream"))
 			}
 			return StreamTable{}, err
 		}
@@ -180,7 +182,7 @@ func DiscoverStreams(r io.ReadSeeker) (StreamTable, error) {
 	}
 
 	if _, err := r.Seek(0, io.SeekStart); err != nil {
-		return StreamTable{}, fmt.Errorf("seek to start: %w", err)
+		return StreamTable{}, model.TSRead(fmt.Errorf("seek to start: %w", err))
 	}
 
 	allPIDs := map[uint16]bool{pidPAT: true}
