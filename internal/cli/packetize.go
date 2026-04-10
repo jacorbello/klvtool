@@ -147,7 +147,7 @@ func (c *PacketizeCommand) writeOutputs(outDir, sourcePath string, streams []pac
 		return model.OutputWrite(fmt.Errorf("create packet checkpoint directory %q: %w", packetDir, err))
 	}
 
-	manifest.SchemaVersion = "1"
+	manifest.SchemaVersion = model.PacketSchemaVersion
 	manifest.SourcePath = sourcePath
 	manifest.Records = make([]model.PacketManifestEntry, 0, len(streams))
 
@@ -283,6 +283,7 @@ func toPacketDiagnostics(diags []packetize.Diagnostic) []model.PacketDiagnostic 
 
 func toPacketCheckpoint(stream packetize.PacketizedStream) model.PacketCheckpoint {
 	checkpoint := model.PacketCheckpoint{
+		SchemaVersion: model.PacketSchemaVersion,
 		RecordID:      stream.Source.RecordID,
 		Mode:          string(stream.Mode),
 		ParserVersion: stream.ParserVersion,
@@ -300,7 +301,7 @@ func toPacketCheckpoint(stream packetize.PacketizedStream) model.PacketCheckpoin
 			KeyStart:       packet.KeyStart,
 			LengthStart:    packet.LengthStart,
 			ValueStart:     packet.ValueStart,
-			PacketEnd:      packet.PacketEndExclusive,
+			PacketEnd:      packet.PacketEndExclusive - 1,
 			RawKeyHex:      hex.EncodeToString(packet.Key),
 			Length:         packet.Length,
 			RawValueHex:    hex.EncodeToString(packet.Value),

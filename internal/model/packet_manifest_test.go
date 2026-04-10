@@ -8,7 +8,7 @@ import (
 
 func TestPacketManifestMarshalJSONUsesStableEmptySlices(t *testing.T) {
 	manifest := PacketManifest{
-		SchemaVersion: "1",
+		SchemaVersion: PacketSchemaVersion,
 		SourcePath:    "/tmp/raw",
 		Records: []PacketManifestEntry{
 			{
@@ -25,6 +25,9 @@ func TestPacketManifestMarshalJSONUsesStableEmptySlices(t *testing.T) {
 	}
 
 	got := string(data)
+	if !strings.Contains(got, `"schemaVersion":"2"`) {
+		t.Fatalf("expected packet manifest schema version 2 in %s", got)
+	}
 	for _, want := range []string{`"records":[`, `"diagnostics":[]`} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("expected %q in %s", want, got)
@@ -46,8 +49,9 @@ func TestPacketManifestMarshalJSONNormalizesNilRecords(t *testing.T) {
 
 func TestPacketCheckpointMarshalJSONUsesStablePacketAndDiagnosticArrays(t *testing.T) {
 	data, err := json.Marshal(PacketCheckpoint{
-		RecordID: "klv-001",
-		Mode:     "best-effort",
+		SchemaVersion: PacketSchemaVersion,
+		RecordID:      "klv-001",
+		Mode:          "best-effort",
 		Packets: []PacketRecord{
 			{
 				PacketIndex:    0,
@@ -55,7 +59,7 @@ func TestPacketCheckpointMarshalJSONUsesStablePacketAndDiagnosticArrays(t *testi
 				KeyStart:       0,
 				LengthStart:    16,
 				ValueStart:     17,
-				PacketEnd:      20,
+				PacketEnd:      19,
 				RawKeyHex:      "060e2b34",
 				Length:         3,
 				RawValueHex:    "aabbcc",
@@ -68,7 +72,7 @@ func TestPacketCheckpointMarshalJSONUsesStablePacketAndDiagnosticArrays(t *testi
 	}
 
 	got := string(data)
-	for _, want := range []string{`"packets":[`, `"packetEnd":20`, `"rawKeyHex":"060e2b34"`, `"rawValueHex":"aabbcc"`, `"diagnostics":[]`} {
+	for _, want := range []string{`"schemaVersion":"2"`, `"packets":[`, `"packetEnd":19`, `"rawKeyHex":"060e2b34"`, `"rawValueHex":"aabbcc"`, `"diagnostics":[]`} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("expected %q in %s", want, got)
 		}

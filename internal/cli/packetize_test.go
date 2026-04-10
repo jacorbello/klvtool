@@ -117,10 +117,16 @@ func TestPacketizeWritesPacketCheckpointOutputs(t *testing.T) {
 	if !bytes.Contains(manifestBytes, []byte(`"packetPath":"packets/klv-001.json"`)) {
 		t.Fatalf("expected packet manifest to reference packet checkpoint path, got %s", manifestBytes)
 	}
+	if !bytes.Contains(manifestBytes, []byte(`"schemaVersion":"2"`)) {
+		t.Fatalf("expected packet manifest schema version 2, got %s", manifestBytes)
+	}
 
 	packetBytes, err := os.ReadFile(filepath.Join(outputDir, "packets", "klv-001.json"))
 	if err != nil {
 		t.Fatalf("read packet checkpoint: %v", err)
+	}
+	if !bytes.Contains(packetBytes, []byte(`"schemaVersion":"2"`)) {
+		t.Fatalf("expected packet checkpoint schema version 2, got %s", packetBytes)
 	}
 	if !bytes.Contains(packetBytes, []byte(`"mode":"best-effort"`)) {
 		t.Fatalf("expected packet checkpoint to record mode, got %s", packetBytes)
@@ -135,7 +141,7 @@ func TestPacketizeWritesPacketCheckpointOutputs(t *testing.T) {
 		t.Fatalf("expected packet checkpoint to include parsed count, got %s", packetBytes)
 	}
 	for _, want := range [][]byte{
-		[]byte(`"packetEnd":20`),
+		[]byte(`"packetEnd":19`),
 		[]byte(`"rawKeyHex":"060e2b34000000000000000000000000"`),
 		[]byte(`"rawValueHex":"aabbcc"`),
 	} {

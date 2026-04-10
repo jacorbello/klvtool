@@ -2,6 +2,8 @@ package model
 
 import "encoding/json"
 
+const PacketSchemaVersion = "2"
+
 // PacketManifest captures the packet checkpoint output for one extraction record.
 type PacketManifest struct {
 	SchemaVersion string                `json:"schemaVersion"`
@@ -40,6 +42,7 @@ func (e PacketManifestEntry) MarshalJSON() ([]byte, error) {
 
 // PacketCheckpoint captures one parsed raw record and its packet checkpoint output.
 type PacketCheckpoint struct {
+	SchemaVersion string             `json:"schemaVersion"`
 	RecordID      string             `json:"recordId"`
 	Mode          string             `json:"mode"`
 	ParserVersion string             `json:"parserVersion"`
@@ -53,6 +56,9 @@ type PacketCheckpoint struct {
 
 func (c PacketCheckpoint) MarshalJSON() ([]byte, error) {
 	type alias PacketCheckpoint
+	if c.SchemaVersion == "" {
+		c.SchemaVersion = PacketSchemaVersion
+	}
 	if c.Packets == nil {
 		c.Packets = []PacketRecord{}
 	}

@@ -14,7 +14,7 @@ func TestPacketManifestWriterWritesManifestLine(t *testing.T) {
 	writer := NewPacketManifestWriter(&buf)
 
 	err := writer.WriteManifest(model.PacketManifest{
-		SchemaVersion: "1",
+		SchemaVersion: model.PacketSchemaVersion,
 		SourcePath:    "/tmp/raw",
 		Records: []model.PacketManifestEntry{
 			{
@@ -29,7 +29,7 @@ func TestPacketManifestWriterWritesManifestLine(t *testing.T) {
 	}
 
 	got := buf.String()
-	if !strings.Contains(got, `"schemaVersion":"1"`) {
+	if !strings.Contains(got, `"schemaVersion":"2"`) {
 		t.Fatalf("expected schema version in output, got %q", got)
 	}
 	if !strings.HasSuffix(got, "\n") {
@@ -41,7 +41,7 @@ func TestPacketManifestWriterWrapsWriteErrors(t *testing.T) {
 	boom := errors.New("boom")
 	writer := NewPacketManifestWriter(failingWriter{err: boom})
 
-	err := writer.WriteManifest(model.PacketManifest{SchemaVersion: "1"})
+	err := writer.WriteManifest(model.PacketManifest{SchemaVersion: model.PacketSchemaVersion})
 	if err == nil {
 		t.Fatal("expected error")
 	}
