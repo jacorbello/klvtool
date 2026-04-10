@@ -130,7 +130,6 @@ func (c *DoctorCommand) writeReport(w io.Writer, report envcheck.Report) {
 	}
 
 	_, _ = fmt.Fprintf(w, "klvtool: %s\n", v)
-	_, _ = fmt.Fprintln(w, "backend preference: auto")
 	_, _ = fmt.Fprintf(w, "platform: %s\n", report.Platform)
 	if report.GuidanceSummary != "" {
 		_, _ = fmt.Fprintf(w, "install guidance: %s\n", report.GuidanceSummary)

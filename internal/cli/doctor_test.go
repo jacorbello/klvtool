@@ -59,7 +59,6 @@ func TestDoctorCommandRuns(t *testing.T) {
 	// Header assertions
 	for _, want := range []string{
 		"klvtool: ",
-		"backend preference: auto",
 		"platform: linux",
 		"install guidance: Install the backend tools with apt.",
 	} {

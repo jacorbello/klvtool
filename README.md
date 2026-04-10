@@ -39,7 +39,7 @@ FFmpeg is required as the extraction backend.
 
 ### Verifying the installation
 
-Run `klvtool doctor` to check that all required tools and modules are detected:
+Run `klvtool doctor` to check that all required tools are detected:
 
 ```bash
 klvtool doctor
