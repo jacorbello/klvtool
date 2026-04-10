@@ -32,28 +32,28 @@ type Diagnostic struct {
 
 // Packet captures a parsed KLV packet and its byte provenance.
 type Packet struct {
-	PacketIndex    int
-	PacketStart    int
-	KeyStart       int
-	LengthStart    int
-	ValueStart     int
-	PacketEnd      int
-	Key            []byte
-	Length         int
-	Value          []byte
-	Classification Classification
-	Diagnostics    []Diagnostic
+	PacketIndex        int            `json:"packetIndex"`
+	PacketStart        int            `json:"packetStart"`
+	KeyStart           int            `json:"keyStart"`
+	LengthStart        int            `json:"lengthStart"`
+	ValueStart         int            `json:"valueStart"`
+	PacketEndExclusive int            `json:"packetEndExclusive"`
+	Key                []byte         `json:"key"`
+	Length             int            `json:"length"`
+	Value              []byte         `json:"value"`
+	Classification     Classification `json:"classification"`
+	Diagnostics        []Diagnostic   `json:"diagnostics"`
 }
 
 // PacketizedStream captures the packetization result for one raw extraction record.
 type PacketizedStream struct {
-	Source        extract.RawPayloadRecord
-	Mode          Mode
-	ParserVersion string
-	Packets       []Packet
-	Diagnostics   []Diagnostic
-	ParsedCount   int
-	WarningCount  int
-	ErrorCount    int
-	Recovered     bool
+	Source        extract.RawPayloadRecord `json:"source"`
+	Mode          Mode                     `json:"mode"`
+	ParserVersion string                   `json:"parserVersion"`
+	Packets       []Packet                 `json:"packets"`
+	Diagnostics   []Diagnostic             `json:"diagnostics"`
+	ParsedCount   int                      `json:"parsedCount"`
+	WarningCount  int                      `json:"warningCount"`
+	ErrorCount    int                      `json:"errorCount"`
+	Recovered     bool                     `json:"recovered"`
 }
