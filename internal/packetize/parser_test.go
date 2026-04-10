@@ -143,3 +143,45 @@ func TestParserParsesValidPacket(t *testing.T) {
 		t.Fatalf("expected length 3, got %d", got)
 	}
 }
+
+func TestParserRejectsInvalidMode(t *testing.T) {
+	parser := NewParser()
+
+	_, err := parser.Parse(Request{
+		Mode: "best-effort-ish",
+		Record: extract.RawPayloadRecord{
+			RecordID: "klv-001",
+		},
+	})
+	if err == nil {
+		t.Fatal("expected invalid mode error")
+	}
+}
+
+func TestParserRejectsOverflowingBERLengthWithoutPanic(t *testing.T) {
+	parser := NewParser()
+	payload := append(bytes.Repeat([]byte{0x06}, 16), []byte{0x88, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}...)
+
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("parse panicked: %v", r)
+		}
+	}()
+
+	stream, err := parser.Parse(Request{
+		Mode: ModeBestEffort,
+		Record: extract.RawPayloadRecord{
+			RecordID: "klv-001",
+			Payload:  payload,
+		},
+	})
+	if err != nil {
+		t.Fatalf("best-effort parse returned error: %v", err)
+	}
+	if len(stream.Diagnostics) != 1 {
+		t.Fatalf("expected 1 diagnostic, got %d", len(stream.Diagnostics))
+	}
+	if !stream.Recovered {
+		t.Fatal("expected recovered=true")
+	}
+}

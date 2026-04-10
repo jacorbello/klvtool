@@ -34,3 +34,11 @@ func TestDecodeBERLengthHandlesShortAndLongForm(t *testing.T) {
 		})
 	}
 }
+
+func TestDecodeBERLengthRejectsOverflowingLongForm(t *testing.T) {
+	overflowing := []byte{0x88, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}
+
+	if _, _, err := decodeBERLength(overflowing); err == nil {
+		t.Fatal("expected overflow error")
+	}
+}

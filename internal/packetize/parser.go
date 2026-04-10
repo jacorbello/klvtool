@@ -2,6 +2,7 @@ package packetize
 
 import (
 	"fmt"
+	"math"
 	"slices"
 
 	"github.com/jacorbello/klvtool/internal/extract"
@@ -25,6 +26,8 @@ func (p *Parser) Parse(req Request) (PacketizedStream, error) {
 	mode := req.Mode
 	if mode == "" {
 		mode = ModeStrict
+	} else if mode != ModeStrict && mode != ModeBestEffort {
+		return PacketizedStream{}, model.InvalidUsage(fmt.Errorf("invalid packetization mode %q", mode))
 	}
 
 	stream := PacketizedStream{
@@ -78,8 +81,22 @@ func parsePacket(payload []byte, offset int, packetIndex int) (Packet, int, Diag
 		return Packet{}, 0, diag, err
 	}
 
-	valueStart := offset + keySize + lengthRead
-	valueEnd := valueStart + length
+	valueStart, ok := safeAddInt(offset, keySize)
+	if !ok {
+		diag := malformedPacketDiagnostic("packet_bounds_overflow", "packet start exceeds supported bounds", offset, packetIndex)
+		return Packet{}, 0, diag, fmt.Errorf(diag.Message)
+	}
+	valueStart, ok = safeAddInt(valueStart, lengthRead)
+	if !ok {
+		diag := malformedPacketDiagnostic("packet_bounds_overflow", "packet length exceeds supported bounds", offset, packetIndex)
+		return Packet{}, 0, diag, fmt.Errorf(diag.Message)
+	}
+
+	valueEnd, ok := safeAddInt(valueStart, length)
+	if !ok {
+		diag := malformedPacketDiagnostic("packet_bounds_overflow", "declared value length exceeds supported bounds", offset, packetIndex)
+		return Packet{}, 0, diag, fmt.Errorf(diag.Message)
+	}
 	if valueEnd > len(payload) {
 		diag := malformedPacketDiagnostic("value_out_of_range", "declared value length exceeds payload size", offset, packetIndex)
 		return Packet{}, 0, diag, fmt.Errorf(diag.Message)
@@ -123,4 +140,14 @@ func malformedPacketDiagnostic(code, message string, offset int, packetIndex int
 		PacketIndex: &pktIndex,
 		ByteOffset:  &byteOffset,
 	}
+}
+
+func safeAddInt(a, b int) (int, bool) {
+	if b > 0 && a > math.MaxInt-b {
+		return 0, false
+	}
+	if b < 0 && a < math.MinInt-b {
+		return 0, false
+	}
+	return a + b, true
 }
