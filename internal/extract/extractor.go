@@ -12,9 +12,7 @@ import (
 type BackendName string
 
 const (
-	BackendAuto      BackendName = "auto"
-	BackendGStreamer BackendName = "gstreamer"
-	BackendFFmpeg    BackendName = "ffmpeg"
+	BackendFFmpeg BackendName = "ffmpeg"
 )
 
 // BackendDescriptor is the normalized, extract-layer view of a backend health report.
@@ -42,18 +40,15 @@ type RawPayloadRecord struct {
 // PayloadRecord is kept as a compatibility alias for existing callers.
 type PayloadRecord = RawPayloadRecord
 
-// RunRequest captures the input path, backend preference, and validated backend
-// catalog used for backend resolution.
+// RunRequest captures the input path and validated backend descriptor.
 type RunRequest struct {
 	InputPath string
-	Backend   BackendName
-	Backends  []BackendDescriptor
+	Backend   BackendDescriptor
 }
 
-// RunResult captures the selected backend, resolved version, and extracted payloads.
+// RunResult captures the backend, resolved version, and extracted payloads.
 type RunResult struct {
-	Selected       BackendDescriptor
-	Backends       []BackendDescriptor
+	Backend        BackendDescriptor
 	BackendVersion string
 	Records        []PayloadRecord
 }
@@ -65,99 +60,42 @@ type Backend interface {
 	Extract(context.Context, string) ([]PayloadRecord, error)
 }
 
-// Selector chooses a backend for a request.
-type Selector interface {
-	Select(ExtractionRequest) (ExtractionResponse, error)
-}
-
-// ExtractionRequest captures the backend preference and backend catalog used for selection.
-type ExtractionRequest struct {
-	Backend  BackendName
-	Backends []BackendDescriptor
-}
-
-// ExtractionResponse captures the selected backend and the normalized backend catalog.
-type ExtractionResponse struct {
-	Selected BackendDescriptor
-	Backends []BackendDescriptor
-}
-
-// Extractor orchestrates backend selection and invocation.
+// Extractor orchestrates backend invocation.
 type Extractor struct {
-	Selector Selector
-	Backends map[BackendName]Backend
+	backend Backend
 }
 
-// NewExtractor constructs an extractor backed by the provided backend implementations.
-func NewExtractor(backends ...Backend) *Extractor {
-	registry := make(map[BackendName]Backend, len(backends))
-	for _, backend := range backends {
-		if backend == nil {
-			continue
-		}
-		descriptor, ok := normalizeBackendDescriptor(backend.Descriptor())
-		if !ok {
-			continue
-		}
-		registry[descriptor.Name] = backend
-	}
-
-	return &Extractor{
-		Selector: NewSelector(),
-		Backends: registry,
-	}
+// NewExtractor constructs an extractor backed by the provided backend implementation.
+func NewExtractor(backend Backend) *Extractor {
+	return &Extractor{backend: backend}
 }
 
-// Run chooses a backend, resolves its version, and extracts payload records.
+// Run resolves the backend version and extracts payload records.
 func (e *Extractor) Run(ctx context.Context, req RunRequest) (RunResult, error) {
 	var result RunResult
 
-	if e == nil {
+	if e == nil || e.backend == nil {
 		return result, model.BackendExecution(fmt.Errorf("extractor is not initialized"))
 	}
 
-	selector := e.Selector
-	if selector == nil {
-		selector = NewSelector()
+	if !req.Backend.Healthy {
+		return result, model.MissingDependency(fmt.Errorf("backend is unavailable: %s", req.Backend.Name))
 	}
 
-	selection, err := selector.Select(ExtractionRequest{
-		Backend:  req.Backend,
-		Backends: req.Backends,
-	})
-	if err != nil {
-		switch {
-		case isUnsupportedBackendError(err):
-			return result, model.UnsupportedBackend(err)
-		default:
-			return result, model.MissingDependency(err)
-		}
-	}
-
-	backend, ok := e.Backends[selection.Selected.Name]
-	if !ok {
-		return result, model.UnsupportedBackend(fmt.Errorf("backend implementation unavailable: %s", selection.Selected.Name))
-	}
-
-	version, err := backend.Version(ctx)
+	version, err := e.backend.Version(ctx)
 	if err != nil {
 		return result, wrapBackendError(err)
 	}
 
-	records, err := backend.Extract(ctx, req.InputPath)
+	records, err := e.backend.Extract(ctx, req.InputPath)
 	if err != nil {
 		return result, wrapBackendError(err)
 	}
 
-	result.Selected = selection.Selected
-	result.Backends = selection.Backends
+	result.Backend = req.Backend
 	result.BackendVersion = version
 	result.Records = CanonicalizeRecords(records)
 	return result, nil
-}
-
-func isUnsupportedBackendError(err error) bool {
-	return errors.Is(err, ErrUnsupportedBackend)
 }
 
 func wrapBackendError(err error) error {
@@ -165,12 +103,8 @@ func wrapBackendError(err error) error {
 		return nil
 	}
 	var typed *model.Error
-	if containsModelError(err, &typed) {
+	if errors.As(err, &typed) {
 		return err
 	}
 	return model.BackendExecution(err)
-}
-
-func containsModelError(err error, target **model.Error) bool {
-	return errors.As(err, target)
 }
