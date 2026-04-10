@@ -26,7 +26,6 @@ type StreamTable struct {
 // PSIParser accumulates PSI sections and builds a StreamTable.
 type PSIParser struct {
 	pmtPIDs map[uint16]uint16 // program number → PMT PID
-	pmtBufs map[uint16][]byte
 	table   StreamTable
 }
 
@@ -34,7 +33,6 @@ type PSIParser struct {
 func NewPSIParser() *PSIParser {
 	return &PSIParser{
 		pmtPIDs: make(map[uint16]uint16),
-		pmtBufs: make(map[uint16][]byte),
 		table:   StreamTable{Programs: make(map[uint16][]Stream)},
 	}
 }
