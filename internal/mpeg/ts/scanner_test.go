@@ -191,3 +191,42 @@ func TestScannerParsesAdaptationField(t *testing.T) {
 		t.Fatal("Payload is nil, want non-nil")
 	}
 }
+
+func TestScannerRecoversSyncAfterGarbage(t *testing.T) {
+	p1 := buildPacket(0x100, 0, false, []byte{0xAA})
+	p2 := buildPacket(0x200, 1, false, []byte{0xBB})
+	var buf bytes.Buffer
+	buf.Write(p1)
+	buf.Write([]byte{0x00, 0x11, 0x22}) // 3 garbage bytes
+	buf.Write(p2)
+
+	s := NewPacketScanner(&buf, ScanConfig{})
+
+	got1, err := s.Next()
+	if err != nil {
+		t.Fatalf("packet 1: %v", err)
+	}
+	if got1.PID != 0x100 {
+		t.Errorf("packet 1 PID = 0x%X, want 0x100", got1.PID)
+	}
+
+	got2, err := s.Next()
+	if err != nil {
+		t.Fatalf("packet 2: %v", err)
+	}
+	if got2.PID != 0x200 {
+		t.Errorf("packet 2 PID = 0x%X, want 0x200", got2.PID)
+	}
+
+	diags := s.Diagnostics()
+	found := false
+	for _, d := range diags {
+		if d.Code == "sync_recovery" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected sync_recovery diagnostic, got %+v", diags)
+	}
+}

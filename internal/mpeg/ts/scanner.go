@@ -1,6 +1,7 @@
 package ts
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 )
@@ -36,7 +37,9 @@ func (s *PacketScanner) Next() (Packet, error) {
 	}
 
 	if s.buf[0] != SyncByte {
-		return Packet{}, fmt.Errorf("sync byte mismatch at offset %d: got 0x%02X", s.offset, s.buf[0])
+		if err := s.recoverSync(); err != nil {
+			return Packet{}, err
+		}
 	}
 
 	var header [4]byte
@@ -70,6 +73,57 @@ func (s *PacketScanner) Diagnostics() []Diagnostic {
 	d := s.diagnostics
 	s.diagnostics = nil
 	return d
+}
+
+// recoverSync attempts to resynchronize after a sync byte mismatch.
+// On entry, s.buf contains 188 bytes not starting with 0x47.
+// On success, s.buf is refilled starting at the next 0x47, a diagnostic is
+// recorded, and s.offset is advanced by the number of skipped bytes.
+func (s *PacketScanner) recoverSync() error {
+	startOffset := s.offset
+	skipped := int64(0)
+
+	// Search the current 188-byte buffer for a 0x47.
+	idx := bytes.IndexByte(s.buf[:], SyncByte)
+	if idx > 0 {
+		skipped = int64(idx)
+		// Shift buffer left by idx.
+		copy(s.buf[:], s.buf[idx:])
+		// Fill the remaining idx bytes.
+		if _, err := io.ReadFull(s.r, s.buf[PacketSize-idx:]); err != nil {
+			return fmt.Errorf("sync recovery: failed to refill buffer: %w", err)
+		}
+	} else if idx < 0 {
+		// No 0x47 in buffer: scan forward one byte at a time.
+		skipped = int64(PacketSize)
+		var one [1]byte
+		for {
+			n, err := io.ReadFull(s.r, one[:])
+			if err != nil {
+				if err == io.EOF || err == io.ErrUnexpectedEOF && n == 0 {
+					return fmt.Errorf("sync recovery: EOF while searching for sync byte")
+				}
+				return fmt.Errorf("sync recovery: %w", err)
+			}
+			if one[0] == SyncByte {
+				break
+			}
+			skipped++
+		}
+		// Place 0x47 at buf[0] and read the remaining 187 bytes.
+		s.buf[0] = SyncByte
+		if _, err := io.ReadFull(s.r, s.buf[1:]); err != nil {
+			return fmt.Errorf("sync recovery: failed to read packet body: %w", err)
+		}
+	}
+
+	s.offset += skipped
+	s.diagnostics = append(s.diagnostics, Diagnostic{
+		Severity: "warning",
+		Code:     "sync_recovery",
+		Message:  fmt.Sprintf("resynced after skipping %d bytes at offset %d", skipped, startOffset),
+	})
+	return nil
 }
 
 func (s *PacketScanner) shouldReadPayload(pid uint16) bool {
