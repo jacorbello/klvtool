@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"flag"
@@ -9,10 +10,13 @@ import (
 	"os"
 	"strings"
 
+	ffmpegbackend "github.com/jacorbello/klvtool/internal/backends/ffmpeg"
+	"github.com/jacorbello/klvtool/internal/extract"
 	"github.com/jacorbello/klvtool/internal/klv"
 	"github.com/jacorbello/klvtool/internal/klv/record"
 	"github.com/jacorbello/klvtool/internal/klv/specs/st0601"
 	"github.com/jacorbello/klvtool/internal/model"
+	"github.com/jacorbello/klvtool/internal/packetize"
 )
 
 // DecodeCommand decodes MISB ST 0601 KLV from an MPEG-TS file into
@@ -25,21 +29,57 @@ type DecodeCommand struct {
 }
 
 // NewDecodeCommand returns a DecodeCommand with default runtime dependencies.
-// The default Decode is wired in Task 14 (integration). For now it returns
-// an error so isolated unit tests must inject a fake.
 func NewDecodeCommand() *DecodeCommand {
-	return &DecodeCommand{
+	c := &DecodeCommand{
 		Out: os.Stdout,
 		Err: os.Stderr,
-		Decode: func(path string, pid int) ([]record.Record, error) {
-			return nil, fmt.Errorf("decode pipeline not wired in unit-test build")
-		},
 		Registry: func() *klv.Registry {
 			r := klv.NewRegistry()
 			r.Register(st0601.V19())
 			return r
 		},
 	}
+	c.Decode = func(path string, pid int) ([]record.Record, error) {
+		report := defaultDoctorDetect(context.Background(), "", currentEnvMap())
+		desc := ffmpegDescriptor(report)
+		if !desc.Healthy {
+			return nil, model.MissingDependency(fmt.Errorf("ffmpeg backend is unavailable"))
+		}
+
+		extractor := extract.NewExtractor(ffmpegbackend.NewBackend())
+		result, err := extractor.Run(context.Background(), extract.RunRequest{
+			InputPath: path,
+			Backend:   desc,
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		reg := c.Registry()
+		parser := packetize.NewParser()
+		var out []record.Record
+		for _, raw := range result.Records {
+			if pid != 0 && int(raw.PID) != pid {
+				continue
+			}
+			stream, err := parser.Parse(packetize.Request{
+				Mode:   packetize.ModeBestEffort,
+				Record: raw,
+			})
+			if err != nil {
+				return nil, err
+			}
+			for _, pkt := range stream.Packets {
+				rec, err := klv.DecodeLocalSet(reg, pkt.Key, pkt.Value)
+				if err != nil {
+					return nil, err
+				}
+				out = append(out, rec)
+			}
+		}
+		return out, nil
+	}
+	return c
 }
 
 func (c *DecodeCommand) Execute(args []string) int {
