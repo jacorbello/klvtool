@@ -1,0 +1,33 @@
+{
+  "schema": "urn:misb:KLV:bin:0601.19",
+  "ul": "Bg4rNAILAQEOAQMBAQAAAA==",
+  "lsVersion": 19,
+  "totalLength": 17,
+  "items": [
+    {
+      "tag": 2,
+      "name": "Precision Time Stamp",
+      "value": "1970-01-01T00:00:00.000Z",
+      "units": "μs",
+      "raw": "AAAAAAAAAAA="
+    },
+    {
+      "tag": 65,
+      "name": "UAS Datalink LS Version Number",
+      "value": 19,
+      "raw": "Ew=="
+    },
+    {
+      "tag": 1,
+      "name": "Checksum",
+      "value": 25000,
+      "raw": "Yag="
+    }
+  ],
+  "checksum": {
+    "expected": 25000,
+    "computed": 25000,
+    "valid": true
+  },
+  "diagnostics": []
+}
