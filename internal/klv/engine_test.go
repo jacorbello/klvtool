@@ -1,10 +1,12 @@
 package klv
 
 import (
+	"math"
 	"testing"
 	"time"
 
 	"github.com/jacorbello/klvtool/internal/klv/record"
+	"github.com/jacorbello/klvtool/internal/klv/specs"
 	"github.com/jacorbello/klvtool/internal/klv/specs/st0601"
 )
 
@@ -202,5 +204,54 @@ func TestDecodeTruncatedPacket(t *testing.T) {
 	_, err := Decode(reg, truncated)
 	if err == nil {
 		t.Errorf("expected error for truncated packet")
+	}
+}
+
+func TestDispatchDecodeAppliesScale(t *testing.T) {
+	// Unsigned 0..360 over uint16 — encoded 0xFFFF ≈ 360°
+	unsignedTD := specs.TagDefinition{
+		Tag: 5, Name: "Test Heading", Format: specs.FormatUint16, Length: 2,
+		Scale: &specs.LinearScale{Min: 0, Max: 360},
+	}
+	v, err := dispatchDecode(unsignedTD, []byte{0xFF, 0xFF})
+	if err != nil {
+		t.Fatalf("unsigned scale: %v", err)
+	}
+	fv, ok := v.(record.FloatValue)
+	if !ok {
+		t.Fatalf("unsigned scale: got %T, want FloatValue", v)
+	}
+	if float64(fv) < 359.99 || float64(fv) > 360.001 {
+		t.Errorf("unsigned scale: got %v, want ~360", float64(fv))
+	}
+
+	// Signed -20..20 over int16 — encoded 0 → 0°
+	signedTD := specs.TagDefinition{
+		Tag: 6, Name: "Test Pitch", Format: specs.FormatInt16, Length: 2,
+		Scale: &specs.LinearScale{Min: -20, Max: 20, ErrorIndicator: true},
+	}
+	v, err = dispatchDecode(signedTD, []byte{0x00, 0x00})
+	if err != nil {
+		t.Fatalf("signed scale: %v", err)
+	}
+	fv, ok = v.(record.FloatValue)
+	if !ok {
+		t.Fatalf("signed scale: got %T, want FloatValue", v)
+	}
+	if float64(fv) < -0.001 || float64(fv) > 0.001 {
+		t.Errorf("signed scale: got %v, want ~0", float64(fv))
+	}
+
+	// Signed error indicator: -2^15 → NaN + error
+	v, err = dispatchDecode(signedTD, []byte{0x80, 0x00})
+	if err == nil {
+		t.Errorf("signed error indicator: expected error")
+	}
+	fv, ok = v.(record.FloatValue)
+	if !ok {
+		t.Fatalf("error indicator: got %T, want FloatValue", v)
+	}
+	if !math.IsNaN(float64(fv)) {
+		t.Errorf("error indicator: got %v, want NaN", float64(fv))
 	}
 }

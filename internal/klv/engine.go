@@ -32,7 +32,7 @@ func Decode(reg *Registry, full []byte) (record.Record, error) {
 		return record.Record{}, model.KLVDecode(fmt.Errorf("value length %d exceeds packet (%d bytes remaining)", length, len(full)-valueStart))
 	}
 	value := full[valueStart : valueStart+length]
-	return decodeLocalSetInternal(reg, ul, value, full[:valueStart+length])
+	return decodeLocalSetInternal(reg, ul, value, full[:valueStart+length], valueStart)
 }
 
 // DecodeLocalSet parses a pre-split packet. Caller supplies UL key and
@@ -44,10 +44,11 @@ func DecodeLocalSet(reg *Registry, ul []byte, value []byte) (record.Record, erro
 	header := append([]byte{}, ul...)
 	header = append(header, encodeBERLengthInternal(len(value))...)
 	full := append(header, value...)
-	return decodeLocalSetInternal(reg, ul, value, full)
+	valueStart := len(header)
+	return decodeLocalSetInternal(reg, ul, value, full, valueStart)
 }
 
-func decodeLocalSetInternal(reg *Registry, ul []byte, value []byte, fullForChecksum []byte) (record.Record, error) {
+func decodeLocalSetInternal(reg *Registry, ul []byte, value []byte, fullForChecksum []byte, valueStart int) (record.Record, error) {
 	rec := record.Record{
 		UL:          append([]byte{}, ul...),
 		LSVersion:   -1,
@@ -113,10 +114,13 @@ func decodeLocalSetInternal(reg *Registry, ul []byte, value []byte, fullForCheck
 			rec.LSVersion = int(raw[0])
 		}
 		// Tag 1: capture checksum value for comparison with computed.
+		// cursor is now past the length bytes but before the value bytes have been
+		// consumed (raw was sliced before cursor += length). Record the byte
+		// offset within fullForChecksum at the start of Tag 1's value bytes.
 		if tag == 1 && len(raw) == 2 {
 			checksumFromTag = binary.BigEndian.Uint16(raw)
 			sawChecksum = true
-			checksumItemEndsAt = len(fullForChecksum) - 2 // length byte of tag 1 is just before value
+			checksumItemEndsAt = valueStart + cursor - length // points to start of tag 1 value
 		}
 
 		val, derr := dispatchDecode(td, raw)
