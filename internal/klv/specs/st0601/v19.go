@@ -37,25 +37,180 @@ func (v *v19) AllTags() []specs.TagDefinition {
 func v19Tags() map[int]specs.TagDefinition {
 	tags := map[int]specs.TagDefinition{}
 
-	// Tag 1: Checksum. Captured specially by the runner; a TagDefinition
-	// still exists so validation sees it as Mandatory.
+	// ---- Mandatory items ----
 	tags[1] = specs.TagDefinition{
-		Tag: 1, Name: "Checksum", Units: "",
+		Tag: 1, Name: "Checksum",
 		Format: specs.FormatUint16, Length: 2, Mandatory: true,
 	}
-
-	// Tag 2: Precision Time Stamp. Custom Decode converts MISP microseconds
-	// since epoch (1970-01-01 00:00:00, no leap seconds) into a TimeValue.
 	tags[2] = specs.TagDefinition{
 		Tag: 2, Name: "Precision Time Stamp", Units: "μs",
 		Format: specs.FormatUint64, Length: 8, Mandatory: true,
 		Decode: decodeMISPTimestamp,
 	}
-
-	// Tag 65: UAS Datalink LS Version Number.
 	tags[65] = specs.TagDefinition{
-		Tag: 65, Name: "UAS Datalink LS Version Number", Units: "",
+		Tag: 65, Name: "UAS Datalink LS Version Number",
 		Format: specs.FormatUint8, Length: 1, Mandatory: true,
+	}
+
+	// ---- Platform identity strings ----
+	tags[3] = specs.TagDefinition{Tag: 3, Name: "Mission ID", Format: specs.FormatUTF8}
+	tags[4] = specs.TagDefinition{Tag: 4, Name: "Platform Tail Number", Format: specs.FormatUTF8}
+	tags[10] = specs.TagDefinition{Tag: 10, Name: "Platform Designation", Format: specs.FormatUTF8}
+	tags[11] = specs.TagDefinition{Tag: 11, Name: "Image Source Sensor", Format: specs.FormatUTF8}
+	tags[12] = specs.TagDefinition{Tag: 12, Name: "Image Coordinate System", Format: specs.FormatUTF8}
+
+	// ---- Platform attitude (short form, int16/uint16) ----
+	tags[5] = specs.TagDefinition{
+		Tag: 5, Name: "Platform Heading Angle", Units: "°",
+		Format: specs.FormatUint16, Length: 2,
+		Scale: &specs.LinearScale{Min: 0, Max: 360},
+	}
+	tags[6] = specs.TagDefinition{
+		Tag: 6, Name: "Platform Pitch Angle", Units: "°",
+		Format: specs.FormatInt16, Length: 2,
+		Scale: &specs.LinearScale{Min: -20, Max: 20, ErrorIndicator: true},
+	}
+	tags[7] = specs.TagDefinition{
+		Tag: 7, Name: "Platform Roll Angle", Units: "°",
+		Format: specs.FormatInt16, Length: 2,
+		Scale: &specs.LinearScale{Min: -50, Max: 50, ErrorIndicator: true},
+	}
+
+	// ---- Platform attitude (full form, int32) ----
+	tags[90] = specs.TagDefinition{
+		Tag: 90, Name: "Platform Pitch Angle (Full)", Units: "°",
+		Format: specs.FormatInt32, Length: 4,
+		Scale: &specs.LinearScale{Min: -90, Max: 90, ErrorIndicator: true},
+	}
+	tags[91] = specs.TagDefinition{
+		Tag: 91, Name: "Platform Roll Angle (Full)", Units: "°",
+		Format: specs.FormatInt32, Length: 4,
+		Scale: &specs.LinearScale{Min: -90, Max: 90, ErrorIndicator: true},
+	}
+	tags[92] = specs.TagDefinition{
+		Tag: 92, Name: "Platform Angle of Attack (Full)", Units: "°",
+		Format: specs.FormatInt32, Length: 4,
+		Scale: &specs.LinearScale{Min: -90, Max: 90, ErrorIndicator: true},
+	}
+
+	// ---- Sensor position ----
+	tags[13] = specs.TagDefinition{
+		Tag: 13, Name: "Sensor Latitude", Units: "°",
+		Format: specs.FormatInt32, Length: 4,
+		Scale: &specs.LinearScale{Min: -90, Max: 90, ErrorIndicator: true},
+	}
+	tags[14] = specs.TagDefinition{
+		Tag: 14, Name: "Sensor Longitude", Units: "°",
+		Format: specs.FormatInt32, Length: 4,
+		Scale: &specs.LinearScale{Min: -180, Max: 180, ErrorIndicator: true},
+	}
+	tags[15] = specs.TagDefinition{
+		Tag: 15, Name: "Sensor True Altitude", Units: "m",
+		Format: specs.FormatUint16, Length: 2,
+		Scale: &specs.LinearScale{Min: -900, Max: 19000},
+	}
+	tags[75] = specs.TagDefinition{
+		Tag: 75, Name: "Sensor Ellipsoid Height", Units: "m",
+		Format: specs.FormatUint16, Length: 2,
+		Scale: &specs.LinearScale{Min: -900, Max: 19000},
+	}
+
+	// ---- Sensor angles ----
+	tags[16] = specs.TagDefinition{
+		Tag: 16, Name: "Sensor Horizontal Field of View", Units: "°",
+		Format: specs.FormatUint16, Length: 2,
+		Scale: &specs.LinearScale{Min: 0, Max: 180},
+	}
+	tags[17] = specs.TagDefinition{
+		Tag: 17, Name: "Sensor Vertical Field of View", Units: "°",
+		Format: specs.FormatUint16, Length: 2,
+		Scale: &specs.LinearScale{Min: 0, Max: 180},
+	}
+	tags[18] = specs.TagDefinition{
+		Tag: 18, Name: "Sensor Relative Azimuth Angle", Units: "°",
+		Format: specs.FormatUint32, Length: 4,
+		Scale: &specs.LinearScale{Min: 0, Max: 360},
+	}
+	tags[19] = specs.TagDefinition{
+		Tag: 19, Name: "Sensor Relative Elevation Angle", Units: "°",
+		Format: specs.FormatInt32, Length: 4,
+		Scale: &specs.LinearScale{Min: -180, Max: 180, ErrorIndicator: true},
+	}
+	tags[20] = specs.TagDefinition{
+		Tag: 20, Name: "Sensor Relative Roll Angle", Units: "°",
+		Format: specs.FormatUint32, Length: 4,
+		Scale: &specs.LinearScale{Min: 0, Max: 360},
+	}
+
+	// ---- Frame center ----
+	tags[23] = specs.TagDefinition{
+		Tag: 23, Name: "Frame Center Latitude", Units: "°",
+		Format: specs.FormatInt32, Length: 4,
+		Scale: &specs.LinearScale{Min: -90, Max: 90, ErrorIndicator: true},
+	}
+	tags[24] = specs.TagDefinition{
+		Tag: 24, Name: "Frame Center Longitude", Units: "°",
+		Format: specs.FormatInt32, Length: 4,
+		Scale: &specs.LinearScale{Min: -180, Max: 180, ErrorIndicator: true},
+	}
+	tags[25] = specs.TagDefinition{
+		Tag: 25, Name: "Frame Center Elevation", Units: "m",
+		Format: specs.FormatUint16, Length: 2,
+		Scale: &specs.LinearScale{Min: -900, Max: 19000},
+	}
+
+	// ---- Frame corners (Full, int32) ----
+	cornerTag := func(tag int, name string, lon bool) {
+		scale := specs.LinearScale{Min: -90, Max: 90, ErrorIndicator: true}
+		if lon {
+			scale = specs.LinearScale{Min: -180, Max: 180, ErrorIndicator: true}
+		}
+		tags[tag] = specs.TagDefinition{
+			Tag: tag, Name: name, Units: "°",
+			Format: specs.FormatInt32, Length: 4,
+			Scale: &scale,
+		}
+	}
+	cornerTag(82, "Corner Latitude Point 1 (Full)", false)
+	cornerTag(83, "Corner Longitude Point 1 (Full)", true)
+	cornerTag(84, "Corner Latitude Point 2 (Full)", false)
+	cornerTag(85, "Corner Longitude Point 2 (Full)", true)
+	cornerTag(86, "Corner Latitude Point 3 (Full)", false)
+	cornerTag(87, "Corner Longitude Point 3 (Full)", true)
+	cornerTag(88, "Corner Latitude Point 4 (Full)", false)
+	cornerTag(89, "Corner Longitude Point 4 (Full)", true)
+
+	// ---- Environmental ----
+	tags[38] = specs.TagDefinition{
+		Tag: 38, Name: "Density Altitude", Units: "m",
+		Format: specs.FormatUint16, Length: 2,
+		Scale: &specs.LinearScale{Min: -900, Max: 19000},
+	}
+	tags[39] = specs.TagDefinition{
+		Tag: 39, Name: "Outside Air Temperature", Units: "°C",
+		Format: specs.FormatInt8, Length: 1,
+	}
+	tags[55] = specs.TagDefinition{
+		Tag: 55, Name: "Relative Humidity", Units: "%",
+		Format: specs.FormatUint8, Length: 1,
+		Scale: &specs.LinearScale{Min: 0, Max: 100},
+	}
+
+	// ---- Target location ----
+	tags[40] = specs.TagDefinition{
+		Tag: 40, Name: "Target Location Latitude", Units: "°",
+		Format: specs.FormatInt32, Length: 4,
+		Scale: &specs.LinearScale{Min: -90, Max: 90, ErrorIndicator: true},
+	}
+	tags[41] = specs.TagDefinition{
+		Tag: 41, Name: "Target Location Longitude", Units: "°",
+		Format: specs.FormatInt32, Length: 4,
+		Scale: &specs.LinearScale{Min: -180, Max: 180, ErrorIndicator: true},
+	}
+	tags[42] = specs.TagDefinition{
+		Tag: 42, Name: "Target Location Elevation", Units: "m",
+		Format: specs.FormatUint16, Length: 2,
+		Scale: &specs.LinearScale{Min: -900, Max: 19000},
 	}
 
 	return tags
