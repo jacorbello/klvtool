@@ -213,6 +213,59 @@ func v19Tags() map[int]specs.TagDefinition {
 		Scale: &specs.LinearScale{Min: -900, Max: 19000},
 	}
 
+	// ---- Timestamps ----
+	tags[72] = specs.TagDefinition{
+		Tag: 72, Name: "Event Start Time", Units: "μs",
+		Format: specs.FormatUint64, Length: 8,
+		Decode: decodeMISPTimestamp,
+	}
+	tags[131] = specs.TagDefinition{
+		Tag: 131, Name: "Take-off Time", Units: "μs",
+		Decode: decodeVariableMISPTimestamp,
+	}
+	tags[136] = specs.TagDefinition{
+		Tag: 136, Name: "Leap Seconds", Units: "s",
+		Decode: decodeVariableInt,
+	}
+	tags[137] = specs.TagDefinition{
+		Tag: 137, Name: "Correction Offset", Units: "μs",
+		Decode: decodeVariableInt,
+	}
+
+	// ---- Enumerated tags ----
+	tags[34] = specs.TagDefinition{
+		Tag: 34, Name: "Icing Detected",
+		Decode: decodeIcingDetected,
+		Enum:   map[int64]string{0: "Detector Off", 1: "No Icing Detected", 2: "Icing Detected"},
+	}
+	tags[77] = specs.TagDefinition{
+		Tag: 77, Name: "Operational Mode",
+		Decode: decodeOperationalMode,
+		Enum: map[int64]string{
+			0: "Other", 1: "Operational", 2: "Training",
+			3: "Exercise", 4: "Maintenance", 5: "Test",
+		},
+	}
+
+	// ---- Nested Local Sets (opaque passthrough) ----
+	nested := func(tag int, name, hint string) {
+		tags[tag] = specs.TagDefinition{
+			Tag: tag, Name: name,
+			Decode: func(raw []byte) (record.Value, error) {
+				return record.NestedValue{SpecHint: hint, Raw: append([]byte{}, raw...)}, nil
+			},
+		}
+	}
+	nested(48, "Security Local Set", "MISB ST 0102")
+	nested(73, "RVT Local Set", "MISB ST 0806")
+	nested(74, "VMTI Local Set", "MISB ST 0903")
+	nested(95, "SAR Motion Imagery Local Set", "MISB ST 1206")
+	nested(97, "Range Image Local Set", "MISB ST 1002")
+	nested(98, "Geo-Registration Local Set", "MISB ST 1601")
+	nested(99, "Composite Imaging Local Set", "MISB ST 1602")
+	nested(100, "Segment Local Set", "MISB ST 1607")
+	nested(101, "Amend Local Set", "MISB ST 1607")
+
 	return tags
 }
 
@@ -227,4 +280,70 @@ func decodeMISPTimestamp(raw []byte) (record.Value, error) {
 	secs := int64(micros / 1_000_000)
 	nanos := int64((micros % 1_000_000) * 1_000)
 	return record.TimeValue(time.Unix(secs, nanos).UTC()), nil
+}
+
+// decodeVariableMISPTimestamp reads a 1..8 byte big-endian unsigned integer
+// representing MISP microseconds and returns a TimeValue. Used for tag 131.
+func decodeVariableMISPTimestamp(raw []byte) (record.Value, error) {
+	if len(raw) == 0 || len(raw) > 8 {
+		return nil, fmt.Errorf("variable timestamp: expected 1..8 bytes, got %d", len(raw))
+	}
+	var micros uint64
+	for _, b := range raw {
+		micros = (micros << 8) | uint64(b)
+	}
+	secs := int64(micros / 1_000_000)
+	nanos := int64((micros % 1_000_000) * 1_000)
+	return record.TimeValue(time.Unix(secs, nanos).UTC()), nil
+}
+
+// decodeVariableInt reads a 1..8 byte big-endian signed integer (sign-extended
+// from the high bit of the first byte). Used for tags 136 (Leap Seconds) and
+// 137 (Correction Offset).
+func decodeVariableInt(raw []byte) (record.Value, error) {
+	if len(raw) == 0 || len(raw) > 8 {
+		return nil, fmt.Errorf("variable int: expected 1..8 bytes, got %d", len(raw))
+	}
+	var v uint64
+	for _, b := range raw {
+		v = (v << 8) | uint64(b)
+	}
+	// Sign-extend from the top bit of the first byte.
+	bits := uint(len(raw) * 8)
+	mask := uint64(1) << (bits - 1)
+	if v&mask != 0 {
+		v |= ^((uint64(1) << bits) - 1)
+	}
+	return record.IntValue(int64(v)), nil
+}
+
+func decodeIcingDetected(raw []byte) (record.Value, error) {
+	if len(raw) != 1 {
+		return nil, fmt.Errorf("icing detected: expected 1 byte, got %d", len(raw))
+	}
+	labels := map[byte]string{
+		0: "Detector Off",
+		1: "No Icing Detected",
+		2: "Icing Detected",
+	}
+	label, ok := labels[raw[0]]
+	if !ok {
+		return nil, fmt.Errorf("icing detected: invalid code %d", raw[0])
+	}
+	return record.EnumValue{Code: int64(raw[0]), Label: label}, nil
+}
+
+func decodeOperationalMode(raw []byte) (record.Value, error) {
+	if len(raw) != 1 {
+		return nil, fmt.Errorf("operational mode: expected 1 byte, got %d", len(raw))
+	}
+	labels := map[byte]string{
+		0: "Other", 1: "Operational", 2: "Training",
+		3: "Exercise", 4: "Maintenance", 5: "Test",
+	}
+	label, ok := labels[raw[0]]
+	if !ok {
+		return nil, fmt.Errorf("operational mode: invalid code %d", raw[0])
+	}
+	return record.EnumValue{Code: int64(raw[0]), Label: label}, nil
 }

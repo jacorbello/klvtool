@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"testing"
 
+	"github.com/jacorbello/klvtool/internal/klv/record"
 	"github.com/jacorbello/klvtool/internal/klv/specs"
 )
 
@@ -74,5 +75,63 @@ func TestV19CoreTagDecoding(t *testing.T) {
 				t.Errorf("tag %d has no decoder", tt.tag)
 			}
 		})
+	}
+}
+
+func TestV19IcingDetected(t *testing.T) {
+	sv := V19()
+	td, ok := sv.Tag(34)
+	if !ok || td.Decode == nil {
+		t.Fatalf("tag 34 missing or has no Decode")
+	}
+	v, err := td.Decode([]byte{1})
+	if err != nil {
+		t.Fatalf("Decode error: %v", err)
+	}
+	ev, ok := v.(record.EnumValue)
+	if !ok {
+		t.Fatalf("value type = %T, want EnumValue", v)
+	}
+	if ev.Label != "No Icing Detected" {
+		t.Errorf("label = %s", ev.Label)
+	}
+}
+
+func TestV19NestedLocalSetPassthrough(t *testing.T) {
+	sv := V19()
+	td, ok := sv.Tag(48) // Security Local Set
+	if !ok || td.Decode == nil {
+		t.Fatalf("tag 48 missing or has no Decode")
+	}
+	v, err := td.Decode([]byte{0x01, 0x02, 0x03})
+	if err != nil {
+		t.Fatalf("Decode error: %v", err)
+	}
+	nv, ok := v.(record.NestedValue)
+	if !ok {
+		t.Fatalf("value type = %T, want NestedValue", v)
+	}
+	if nv.SpecHint != "MISB ST 0102" {
+		t.Errorf("specHint = %s", nv.SpecHint)
+	}
+}
+
+func TestV19LeapSecondsVariableInt(t *testing.T) {
+	sv := V19()
+	td, ok := sv.Tag(136)
+	if !ok || td.Decode == nil {
+		t.Fatalf("tag 136 missing")
+	}
+	// -1 encoded as a single byte 0xFF.
+	v, err := td.Decode([]byte{0xFF})
+	if err != nil {
+		t.Fatalf("Decode error: %v", err)
+	}
+	iv, ok := v.(record.IntValue)
+	if !ok {
+		t.Fatalf("value type = %T, want IntValue", v)
+	}
+	if int64(iv) != -1 {
+		t.Errorf("value = %d, want -1", int64(iv))
 	}
 }

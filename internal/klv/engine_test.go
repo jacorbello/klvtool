@@ -139,11 +139,11 @@ func TestDecodeUnknownTagPassthrough(t *testing.T) {
 	reg := NewRegistry()
 	reg.Register(st0601.V19())
 
-	// Include tag 99 (not in the phase-1 minimal set) with arbitrary bytes.
+	// Include tag 50 (not defined in phase-1) with arbitrary bytes.
 	packet := buildPacket(t, map[int][]byte{
 		2:  make([]byte, 8),
 		65: {19},
-		99: {0xde, 0xad, 0xbe, 0xef},
+		50: {0xde, 0xad, 0xbe, 0xef},
 	})
 
 	rec, err := Decode(reg, packet)
@@ -152,18 +152,18 @@ func TestDecodeUnknownTagPassthrough(t *testing.T) {
 	}
 	var found bool
 	for _, it := range rec.Items {
-		if it.Tag == 99 {
+		if it.Tag == 50 {
 			found = true
 			if _, ok := it.Value.(record.BytesValue); !ok {
-				t.Errorf("tag 99 value type = %T, want BytesValue", it.Value)
+				t.Errorf("tag 50 value type = %T, want BytesValue", it.Value)
 			}
-			if it.Name != "Unknown Tag 99" {
-				t.Errorf("tag 99 name = %s", it.Name)
+			if it.Name != "Unknown Tag 50" {
+				t.Errorf("tag 50 name = %s", it.Name)
 			}
 		}
 	}
 	if !found {
-		t.Errorf("tag 99 not found in items")
+		t.Errorf("tag 50 not found in items")
 	}
 	// Expect an unknown_tag warning diagnostic.
 	var hasWarning bool
