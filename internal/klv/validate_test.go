@@ -159,3 +159,77 @@ func TestValidateChecksumMismatch(t *testing.T) {
 }
 
 var _ = specs.FormatUint8 // keep import
+
+// rangeEnumSpec is a minimal spec with two crafted tags used only by
+// TestValidateRangeViolation and TestValidateEnumInvalid.
+type rangeEnumSpec struct{}
+
+func (rangeEnumSpec) URN() string            { return "urn:test:range-enum" }
+func (rangeEnumSpec) UL() []byte             { return make([]byte, 16) }
+func (rangeEnumSpec) VersionTag() int        { return 65 }
+func (rangeEnumSpec) ExpectedVersion() int   { return 1 }
+func (rangeEnumSpec) Tag(n int) (specs.TagDefinition, bool) {
+	tags := rangeEnumSpec{}.AllTags()
+	for _, t := range tags {
+		if t.Tag == n {
+			return t, true
+		}
+	}
+	return specs.TagDefinition{}, false
+}
+func (rangeEnumSpec) AllTags() []specs.TagDefinition {
+	return []specs.TagDefinition{
+		{
+			Tag: 5, Name: "Bounded Float",
+			Format: specs.FormatUint16, Length: 2,
+			Scale: &specs.LinearScale{Min: 0, Max: 100},
+		},
+		{
+			Tag: 6, Name: "Enum Code",
+			Format: specs.FormatUint8, Length: 1,
+			Enum: map[int64]string{0: "zero", 1: "one"},
+		},
+	}
+}
+
+func TestValidateRangeViolation(t *testing.T) {
+	rec := &record.Record{
+		LSVersion: 1,
+		Checksum:  record.ChecksumInfo{Valid: true},
+		Items: []record.Item{
+			// Out of range: Scale is 0..100, value is 250.
+			{Tag: 5, Name: "Bounded Float", Value: record.FloatValue(250.0), Raw: []byte{0x00, 0x00}},
+		},
+	}
+	diags := Validate(rangeEnumSpec{}, rec)
+	var found bool
+	for _, d := range diags {
+		if d.Code == "tag_range_violation" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected tag_range_violation diagnostic; got %+v", diags)
+	}
+}
+
+func TestValidateEnumInvalid(t *testing.T) {
+	rec := &record.Record{
+		LSVersion: 1,
+		Checksum:  record.ChecksumInfo{Valid: true},
+		Items: []record.Item{
+			// Enum has keys 0 and 1; 99 is not in the enum.
+			{Tag: 6, Name: "Enum Code", Value: record.IntValue(99), Raw: []byte{99}},
+		},
+	}
+	diags := Validate(rangeEnumSpec{}, rec)
+	var found bool
+	for _, d := range diags {
+		if d.Code == "tag_enum_invalid" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected tag_enum_invalid diagnostic; got %+v", diags)
+	}
+}
