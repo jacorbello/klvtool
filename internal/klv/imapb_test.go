@@ -10,11 +10,11 @@ import (
 // with the lowest bit representing a quantum computed from the range.
 func TestIMAPBRoundTrip(t *testing.T) {
 	tests := []struct {
-		name       string
-		a, b       float64
-		length     int
-		val        float64
-		tolerance  float64
+		name      string
+		a, b      float64
+		length    int
+		val       float64
+		tolerance float64
 	}{
 		{"0 to 360 degrees, 2 bytes", 0, 360, 2, 159.9744, 0.01},
 		{"-90 to 90 degrees, 4 bytes", -90, 90, 4, 42.123456, 0.00001},

@@ -164,10 +164,10 @@ var _ = specs.FormatUint8 // keep import
 // TestValidateRangeViolation and TestValidateEnumInvalid.
 type rangeEnumSpec struct{}
 
-func (rangeEnumSpec) URN() string            { return "urn:test:range-enum" }
-func (rangeEnumSpec) UL() []byte             { return make([]byte, 16) }
-func (rangeEnumSpec) VersionTag() int        { return 65 }
-func (rangeEnumSpec) ExpectedVersion() int   { return 1 }
+func (rangeEnumSpec) URN() string          { return "urn:test:range-enum" }
+func (rangeEnumSpec) UL() []byte           { return make([]byte, 16) }
+func (rangeEnumSpec) VersionTag() int      { return 65 }
+func (rangeEnumSpec) ExpectedVersion() int { return 1 }
 func (rangeEnumSpec) Tag(n int) (specs.TagDefinition, bool) {
 	tags := rangeEnumSpec{}.AllTags()
 	for _, t := range tags {

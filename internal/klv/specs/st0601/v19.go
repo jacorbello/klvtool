@@ -18,11 +18,11 @@ type v19 struct {
 	tags map[int]specs.TagDefinition
 }
 
-func (v *v19) URN() string                            { return "urn:misb:KLV:bin:0601.19" }
-func (v *v19) UL() []byte                             { return UASDatalinkUL }
-func (v *v19) VersionTag() int                        { return 65 }
-func (v *v19) ExpectedVersion() int                   { return 19 }
-func (v *v19) Tag(n int) (specs.TagDefinition, bool)  { t, ok := v.tags[n]; return t, ok }
+func (v *v19) URN() string                           { return "urn:misb:KLV:bin:0601.19" }
+func (v *v19) UL() []byte                            { return UASDatalinkUL }
+func (v *v19) VersionTag() int                       { return 65 }
+func (v *v19) ExpectedVersion() int                  { return 19 }
+func (v *v19) Tag(n int) (specs.TagDefinition, bool) { t, ok := v.tags[n]; return t, ok }
 func (v *v19) AllTags() []specs.TagDefinition {
 	out := make([]specs.TagDefinition, 0, len(v.tags))
 	for _, t := range v.tags {

@@ -54,7 +54,7 @@ func TestV19CoreTagDecoding(t *testing.T) {
 		raw  []byte
 		name string
 	}{
-		{5, []byte{0x71, 0xC2}, "Platform Heading Angle"},     // 0x71C2 = 29122 → ~159.9° of 360
+		{5, []byte{0x71, 0xC2}, "Platform Heading Angle"}, // 0x71C2 = 29122 → ~159.9° of 360
 		{10, []byte("REAPER"), "Platform Designation"},
 		{13, []byte{0x04, 0x5D, 0x6D, 0x00}, "Sensor Latitude"},
 		{15, []byte{0x40, 0x00}, "Sensor True Altitude"},

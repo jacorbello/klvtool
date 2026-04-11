@@ -36,8 +36,8 @@ func buildPacket(t *testing.T, items map[int][]byte) []byte {
 	}
 	// Placeholder for checksum (Tag 1 with 2-byte value). We need the full
 	// bytes through "length of checksum item" to compute the checksum.
-	body = append(body, 0x01)       // tag 1
-	body = append(body, 0x02)       // length 2
+	body = append(body, 0x01) // tag 1
+	body = append(body, 0x02) // length 2
 	// The UL key + BER length + body (including tag 1, length 1) is what
 	// gets summed. We now know the full length.
 	valueLen := len(body) + 2 // +2 for the checksum value we're about to add
@@ -178,7 +178,7 @@ func TestDecodeUnknownTagPassthrough(t *testing.T) {
 }
 
 func TestDecodeUnknownSpec(t *testing.T) {
-	reg := NewRegistry() // empty
+	reg := NewRegistry()         // empty
 	packet := make([]byte, 16+1) // just a UL of zeros and an empty length byte
 	rec, err := Decode(reg, packet)
 	if err != nil {
