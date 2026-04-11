@@ -19,8 +19,6 @@ const (
 	CodeTSRead             Code = "ts_read_failure"
 	CodeKLVDecode          Code = "klv_decode_failure"
 	CodeKLVSpec            Code = "klv_spec_unknown"
-	CodeKLVChecksum        Code = "klv_checksum_mismatch"
-	CodeKLVValidate        Code = "klv_validation_error"
 )
 
 // Error classifies a failure with a stable code and optional wrapped cause.
@@ -111,12 +109,4 @@ func KLVDecode(err error) *Error {
 
 func KLVSpec(err error) *Error {
 	return NewError(CodeKLVSpec, err)
-}
-
-func KLVChecksum(err error) *Error {
-	return NewError(CodeKLVChecksum, err)
-}
-
-func KLVValidate(err error) *Error {
-	return NewError(CodeKLVValidate, err)
 }

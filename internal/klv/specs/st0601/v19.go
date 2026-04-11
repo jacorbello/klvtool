@@ -31,9 +31,8 @@ func (v *v19) AllTags() []specs.TagDefinition {
 	return out
 }
 
-// v19Tags builds the tag table. Phase 1 ships mandatory tags plus the core
-// subset in tasks 12/13. This function starts with just the mandatory items
-// and is extended in later tasks.
+// v19Tags returns the phase-1 tag table for ST 0601.19 — mandatory items,
+// declarative core subset, and custom-decode tags (timestamps, enums, nested local sets).
 func v19Tags() map[int]specs.TagDefinition {
 	tags := map[int]specs.TagDefinition{}
 

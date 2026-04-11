@@ -71,7 +71,7 @@ func decodeLocalSetInternal(reg *Registry, ul []byte, value []byte, fullForCheck
 	// Walk the TLV stream.
 	cursor := 0
 	var checksumFromTag uint16
-	var checksumItemEndsAt int // byte offset within fullForChecksum where checksum's length byte ends
+	var checksumValueStart int // byte offset in fullForChecksum where Tag 1's value begins; checksum range is fullForChecksum[:checksumValueStart]
 	var sawChecksum bool
 	for cursor < len(value) {
 		tag, tagN, terr := decodeBEROID(value[cursor:])
@@ -120,7 +120,7 @@ func decodeLocalSetInternal(reg *Registry, ul []byte, value []byte, fullForCheck
 		if tag == 1 && len(raw) == 2 {
 			checksumFromTag = binary.BigEndian.Uint16(raw)
 			sawChecksum = true
-			checksumItemEndsAt = valueStart + cursor - length // points to start of tag 1 value
+			checksumValueStart = valueStart + cursor - length // points to start of tag 1 value
 		}
 
 		val, derr := dispatchDecode(td, raw)
@@ -143,11 +143,12 @@ func decodeLocalSetInternal(reg *Registry, ul []byte, value []byte, fullForCheck
 		rec.Items = append(rec.Items, item)
 	}
 
-	// Compute checksum over fullForChecksum up to and including the length
-	// byte of the checksum item. When we didn't see Tag 1 we can't validate.
+	// Compute checksum over fullForChecksum[:checksumValueStart] — everything
+	// up to but not including Tag 1's value bytes. When we didn't see Tag 1
+	// we can't validate.
 	rec.Checksum.Expected = checksumFromTag
 	if sawChecksum {
-		rec.Checksum.Computed = computeChecksum(fullForChecksum[:checksumItemEndsAt])
+		rec.Checksum.Computed = computeChecksum(fullForChecksum[:checksumValueStart])
 		rec.Checksum.Valid = rec.Checksum.Computed == rec.Checksum.Expected
 	}
 
@@ -180,6 +181,18 @@ func dispatchDecode(td specs.TagDefinition, raw []byte) (record.Value, error) {
 			return applyScaleSigned(s, td.Format, *td.Scale)
 		}
 		return record.IntValue(s), nil
+	case specs.FormatIMAPB:
+		if td.Scale == nil {
+			return nil, fmt.Errorf("tag %d: FormatIMAPB requires Scale", td.Tag)
+		}
+		if td.Length > 0 && len(raw) != td.Length {
+			return nil, fmt.Errorf("tag %d: expected %d bytes, got %d", td.Tag, td.Length, len(raw))
+		}
+		f, err := fromIMAPB(td.Scale.Min, td.Scale.Max, len(raw), raw)
+		if err != nil {
+			return nil, err
+		}
+		return record.FloatValue(f), nil
 	case specs.FormatUTF8:
 		if !utf8.Valid(raw) {
 			return record.BytesValue(append([]byte{}, raw...)), fmt.Errorf("invalid utf-8")

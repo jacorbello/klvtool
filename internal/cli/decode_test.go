@@ -91,3 +91,11 @@ func TestDecodeCommandMissingInput(t *testing.T) {
 		t.Errorf("exit code = %d, want 2 (usage)", code)
 	}
 }
+
+func TestDecodeCommandRejectsUnknownSchema(t *testing.T) {
+	cmd := &DecodeCommand{Out: &bytes.Buffer{}, Err: &bytes.Buffer{}}
+	code := cmd.Execute([]string{"--input", "fake.ts", "--schema", "urn:misb:KLV:bin:0601.14"})
+	if code != 2 {
+		t.Errorf("exit code = %d, want 2 (usage)", code)
+	}
+}

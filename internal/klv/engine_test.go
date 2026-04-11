@@ -207,6 +207,30 @@ func TestDecodeTruncatedPacket(t *testing.T) {
 	}
 }
 
+func TestDispatchDecodeIMAPB(t *testing.T) {
+	td := specs.TagDefinition{
+		Tag: 100, Name: "Test IMAPB", Format: specs.FormatIMAPB, Length: 2,
+		Scale: &specs.LinearScale{Min: 0, Max: 360},
+	}
+	// Encoded 0xFFFF over 0..360 should map to ~360.
+	v, err := dispatchDecode(td, []byte{0xFF, 0xFF})
+	if err != nil {
+		t.Fatalf("dispatchDecode IMAPB: %v", err)
+	}
+	fv, ok := v.(record.FloatValue)
+	if !ok {
+		t.Fatalf("got %T, want FloatValue", v)
+	}
+	if float64(fv) < 359.99 || float64(fv) > 360.001 {
+		t.Errorf("IMAPB 0xFFFF over 0..360 = %v, want ~360", float64(fv))
+	}
+	// Missing Scale is an error.
+	bad := specs.TagDefinition{Tag: 101, Name: "Bad", Format: specs.FormatIMAPB, Length: 2}
+	if _, err := dispatchDecode(bad, []byte{0x00, 0x00}); err == nil {
+		t.Errorf("expected error when Scale is nil")
+	}
+}
+
 func TestDispatchDecodeAppliesScale(t *testing.T) {
 	// Unsigned 0..360 over uint16 — encoded 0xFFFF ≈ 360°
 	unsignedTD := specs.TagDefinition{

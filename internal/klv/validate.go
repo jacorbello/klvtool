@@ -91,6 +91,8 @@ func Validate(spec specs.SpecVersion, rec *record.Record) []record.Diagnostic {
 			}
 		}
 		// Enum validation.
+		// Note: tags that decode to EnumValue (via custom Decode) already validate
+		// their codes during decode. Only IntValue tags with an Enum map are checked here.
 		if td.Enum != nil {
 			if iv, ok := it.Value.(record.IntValue); ok {
 				if _, exists := td.Enum[int64(iv)]; !exists {

@@ -125,6 +125,11 @@ func (c *DecodeCommand) Execute(args []string) int {
 		c.writeError(c.Err, model.InvalidUsage(fmt.Errorf("invalid format %q (want ndjson|text)", format)))
 		return usageExitCode
 	}
+	if strings.TrimSpace(schema) != "" && schema != "urn:misb:KLV:bin:0601.19" {
+		c.writeUsage(c.Err)
+		c.writeError(c.Err, model.InvalidUsage(fmt.Errorf("unsupported schema %q (phase 1 only registers urn:misb:KLV:bin:0601.19)", schema)))
+		return usageExitCode
+	}
 
 	decode := c.Decode
 	if decode == nil {
