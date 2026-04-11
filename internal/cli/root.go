@@ -18,6 +18,7 @@ type RootCommand struct {
 	Doctor     *DoctorCommand
 	Extract    *ExtractCommand
 	Inspect    *InspectCommand
+	Decode     *DecodeCommand
 	Packetize  *PacketizeCommand
 	VersionCmd *VersionCommand
 }
@@ -31,6 +32,7 @@ func NewRootCommand() *RootCommand {
 		Doctor:     NewDoctorCommand(),
 		Extract:    NewExtractCommand(),
 		Inspect:    NewInspectCommand(),
+		Decode:     NewDecodeCommand(),
 		Packetize:  NewPacketizeCommand(),
 		VersionCmd: NewVersionCommand(),
 	}
@@ -59,6 +61,9 @@ func (c *RootCommand) Execute(args []string) int {
 	}
 	if len(args) > 0 && args[0] == "inspect" {
 		return c.inspectCommand().Execute(args[1:])
+	}
+	if len(args) > 0 && args[0] == "decode" {
+		return c.decodeCommand().Execute(args[1:])
 	}
 	if len(args) > 0 && args[0] == "packetize" {
 		return c.packetizeCommand().Execute(args[1:])
@@ -90,6 +95,7 @@ func (c *RootCommand) writeUsage(w io.Writer) {
 	_, _ = fmt.Fprintln(w, "  doctor   Check backend availability and environment health.")
 	_, _ = fmt.Fprintln(w, "  extract  Extract payloads and write manifest output.")
 	_, _ = fmt.Fprintln(w, "  inspect  Inspect MPEG-TS stream inventory and diagnostics.")
+	_, _ = fmt.Fprintln(w, "  decode   Decode MISB ST 0601 KLV records to NDJSON or text.")
 	_, _ = fmt.Fprintln(w, "  packetize Replay raw checkpoints and write packet output.")
 	_, _ = fmt.Fprintln(w)
 	_, _ = fmt.Fprintln(w, "Required tools:")
@@ -148,6 +154,20 @@ func (c *RootCommand) inspectCommand() *InspectCommand {
 	inspectCmd.Out = c.Out
 	inspectCmd.Err = c.Err
 	return inspectCmd
+}
+
+func (c *RootCommand) decodeCommand() *DecodeCommand {
+	if c == nil {
+		return NewDecodeCommand()
+	}
+	decodeCmd := c.Decode
+	if decodeCmd == nil {
+		decodeCmd = NewDecodeCommand()
+		c.Decode = decodeCmd
+	}
+	decodeCmd.Out = c.Out
+	decodeCmd.Err = c.Err
+	return decodeCmd
 }
 
 func (c *RootCommand) packetizeCommand() *PacketizeCommand {

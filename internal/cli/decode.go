@@ -1,0 +1,226 @@
+package cli
+
+import (
+	"encoding/base64"
+	"encoding/json"
+	"flag"
+	"fmt"
+	"io"
+	"os"
+	"strings"
+
+	"github.com/jacorbello/klvtool/internal/klv"
+	"github.com/jacorbello/klvtool/internal/klv/record"
+	"github.com/jacorbello/klvtool/internal/klv/specs/st0601"
+	"github.com/jacorbello/klvtool/internal/model"
+)
+
+// DecodeCommand decodes MISB ST 0601 KLV from an MPEG-TS file into
+// typed records.
+type DecodeCommand struct {
+	Out      io.Writer
+	Err      io.Writer
+	Decode   func(path string, pid int) ([]record.Record, error)
+	Registry func() *klv.Registry
+}
+
+// NewDecodeCommand returns a DecodeCommand with default runtime dependencies.
+// The default Decode is wired in Task 14 (integration). For now it returns
+// an error so isolated unit tests must inject a fake.
+func NewDecodeCommand() *DecodeCommand {
+	return &DecodeCommand{
+		Out: os.Stdout,
+		Err: os.Stderr,
+		Decode: func(path string, pid int) ([]record.Record, error) {
+			return nil, fmt.Errorf("decode pipeline not wired in unit-test build")
+		},
+		Registry: func() *klv.Registry {
+			r := klv.NewRegistry()
+			r.Register(st0601.V19())
+			return r
+		},
+	}
+}
+
+func (c *DecodeCommand) Execute(args []string) int {
+	if c == nil {
+		return 1
+	}
+	if len(args) == 1 && isHelpArg(args[0]) {
+		c.writeUsage(c.Out)
+		return 0
+	}
+
+	fs := flag.NewFlagSet("decode", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	var (
+		inputPath string
+		format    string
+		raw       bool
+		strict    bool
+		pid       int
+		outPath   string
+		schema    string
+	)
+	fs.StringVar(&inputPath, "input", "", "path to the MPEG-TS input file")
+	fs.StringVar(&format, "format", "ndjson", "output format: ndjson or text")
+	fs.BoolVar(&raw, "raw", false, "include raw bytes and units per item")
+	fs.BoolVar(&strict, "strict", false, "exit 1 if any error-severity diagnostic is emitted")
+	fs.IntVar(&pid, "pid", 0, "limit to a specific KLV data stream PID (0 = all)")
+	fs.StringVar(&outPath, "out", "", "write output to a file instead of stdout")
+	fs.StringVar(&schema, "schema", "", "override auto-detection with a specific spec URN")
+
+	if err := fs.Parse(args); err != nil {
+		c.writeUsage(c.Err)
+		c.writeError(c.Err, model.InvalidUsage(err))
+		return usageExitCode
+	}
+	if strings.TrimSpace(inputPath) == "" {
+		c.writeUsage(c.Err)
+		c.writeError(c.Err, model.InvalidUsage(fmt.Errorf("input path is required")))
+		return usageExitCode
+	}
+	if format != "ndjson" && format != "text" {
+		c.writeUsage(c.Err)
+		c.writeError(c.Err, model.InvalidUsage(fmt.Errorf("invalid format %q (want ndjson|text)", format)))
+		return usageExitCode
+	}
+
+	decode := c.Decode
+	if decode == nil {
+		decode = NewDecodeCommand().Decode
+	}
+
+	records, err := decode(inputPath, pid)
+	if err != nil {
+		c.writeError(c.Err, err)
+		return exitCodeForError(err)
+	}
+
+	sink := c.Out
+	if outPath != "" {
+		f, err := os.Create(outPath)
+		if err != nil {
+			c.writeError(c.Err, model.OutputWrite(err))
+			return exitCodeForError(err)
+		}
+		defer f.Close() //nolint:errcheck
+		sink = f
+	}
+
+	var errorCount int
+	for i, rec := range records {
+		if format == "ndjson" {
+			if err := writeNDJSON(sink, i, rec, raw); err != nil {
+				c.writeError(c.Err, model.OutputWrite(err))
+				return 1
+			}
+		} else {
+			if err := writeText(sink, i, rec, raw); err != nil {
+				c.writeError(c.Err, model.OutputWrite(err))
+				return 1
+			}
+		}
+		for _, d := range rec.Diagnostics {
+			if d.Severity == "error" {
+				errorCount++
+			}
+		}
+	}
+
+	fmt.Fprintf(c.Err, "decoded %d packet(s), %d validation error(s)\n", len(records), errorCount) //nolint:errcheck
+	if strict && errorCount > 0 {
+		return 1
+	}
+	return 0
+}
+
+func (c *DecodeCommand) writeUsage(w io.Writer) {
+	fmt.Fprintln(w, "Usage: klvtool decode --input <file.ts> [--format ndjson|text] [--raw] [--strict] [--pid N] [--out path] [--schema urn]") //nolint:errcheck
+}
+
+func (c *DecodeCommand) writeError(w io.Writer, err error) {
+	fmt.Fprintln(w, "error:", err) //nolint:errcheck
+}
+
+// ndjsonRecord is the serialization shape for one packet.
+type ndjsonRecord struct {
+	Schema      string              `json:"schema"`
+	PacketIndex int                 `json:"packetIndex"`
+	LSVersion   int                 `json:"lsVersion"`
+	TotalLength int                 `json:"totalLength"`
+	Checksum    record.ChecksumInfo `json:"checksum"`
+	Items       []ndjsonItem        `json:"items"`
+	Diagnostics []record.Diagnostic `json:"diagnostics"`
+}
+
+type ndjsonItem struct {
+	Tag   int          `json:"tag"`
+	Name  string       `json:"name"`
+	Value record.Value `json:"value"`
+	Units string       `json:"units,omitempty"`
+	Raw   string       `json:"raw,omitempty"`
+}
+
+func writeNDJSON(w io.Writer, index int, rec record.Record, includeRaw bool) error {
+	nr := ndjsonRecord{
+		Schema:      rec.Schema,
+		PacketIndex: index,
+		LSVersion:   rec.LSVersion,
+		TotalLength: rec.TotalLength,
+		Checksum:    rec.Checksum,
+		Diagnostics: rec.Diagnostics,
+	}
+	for _, it := range rec.Items {
+		ni := ndjsonItem{Tag: it.Tag, Name: it.Name, Value: it.Value}
+		if includeRaw {
+			ni.Units = it.Units
+			ni.Raw = encodeBase64(it.Raw)
+		}
+		nr.Items = append(nr.Items, ni)
+	}
+	b, err := json.Marshal(nr)
+	if err != nil {
+		return err
+	}
+	_, err = fmt.Fprintln(w, string(b))
+	return err
+}
+
+func writeText(w io.Writer, index int, rec record.Record, _ bool) error {
+	check := "OK"
+	if !rec.Checksum.Valid {
+		check = "MISMATCH"
+	}
+	fmt.Fprintf(w, "Packet %d   schema=%s  checksum=%s\n", index, rec.Schema, check) //nolint:errcheck
+	for _, it := range rec.Items {
+		fmt.Fprintf(w, "  [%d]\t%-40s\t%s\n", it.Tag, it.Name, formatValue(it.Value, it.Units)) //nolint:errcheck
+	}
+	for _, d := range rec.Diagnostics {
+		fmt.Fprintf(w, "  ! [%s] %s: %s\n", d.Severity, d.Code, d.Message) //nolint:errcheck
+	}
+	fmt.Fprintln(w) //nolint:errcheck
+	return nil
+}
+
+func formatValue(v record.Value, units string) string {
+	if v == nil {
+		return "<nil>"
+	}
+	b, err := json.Marshal(v)
+	if err != nil {
+		return "<error>"
+	}
+	s := strings.Trim(string(b), `"`)
+	if units != "" {
+		return s + units
+	}
+	return s
+}
+
+func encodeBase64(b []byte) string {
+	if len(b) == 0 {
+		return ""
+	}
+	return base64.StdEncoding.EncodeToString(b)
+}
