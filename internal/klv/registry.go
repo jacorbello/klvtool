@@ -26,11 +26,33 @@ func NewRegistry() *Registry {
 	}
 }
 
-// Register adds a SpecVersion to the registry. Duplicate URNs overwrite.
+// Register adds a SpecVersion to the registry. Duplicate URNs overwrite:
+// if a SpecVersion with the same URN is already registered, its byUL entry
+// is removed before the new SpecVersion is inserted so stale entries never
+// accumulate (even when the new version has a different UL from the old).
 func (r *Registry) Register(sv specs.SpecVersion) {
+	if prev, ok := r.byURN[sv.URN()]; ok {
+		prevKey := string(prev.UL())
+		r.byUL[prevKey] = removeSpec(r.byUL[prevKey], sv.URN())
+		if len(r.byUL[prevKey]) == 0 {
+			delete(r.byUL, prevKey)
+		}
+	}
 	r.byURN[sv.URN()] = sv
 	key := string(sv.UL())
 	r.byUL[key] = append(r.byUL[key], sv)
+}
+
+// removeSpec returns list with the SpecVersion matching urn removed.
+// Preserves relative order of remaining entries.
+func removeSpec(list []specs.SpecVersion, urn string) []specs.SpecVersion {
+	out := list[:0]
+	for _, sv := range list {
+		if sv.URN() != urn {
+			out = append(out, sv)
+		}
+	}
+	return out
 }
 
 // Lookup returns the SpecVersion registered for the given URN, or ok=false.

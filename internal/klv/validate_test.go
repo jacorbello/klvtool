@@ -233,3 +233,67 @@ func TestValidateEnumInvalid(t *testing.T) {
 		t.Errorf("expected tag_enum_invalid diagnostic; got %+v", diags)
 	}
 }
+
+// TestValidateMissingTag2SkipsOrderingDiag verifies that a packet missing
+// tag 2 entirely gets a missing_mandatory_item diagnostic but NOT a
+// "tag 2 must be first" ordering diagnostic — the two are redundant and
+// the ordering check is noise when the tag is absent.
+func TestValidateMissingTag2SkipsOrderingDiag(t *testing.T) {
+	rec := &record.Record{
+		LSVersion: 19,
+		Checksum:  record.ChecksumInfo{Valid: true},
+		Items: []record.Item{
+			// No tag 2 at all; tag 65 first, tag 1 last.
+			{Tag: 65, Name: "UAS Datalink LS Version Number", Raw: []byte{19}},
+			{Tag: 1, Name: "Checksum", Raw: []byte{0x00, 0x00}},
+		},
+	}
+	diags := Validate(st0601.V19(), rec)
+	var hasOrder, hasMissing bool
+	for _, d := range diags {
+		if d.Code == "tag_out_of_order" {
+			hasOrder = true
+		}
+		if d.Code == "missing_mandatory_item" && d.Tag != nil && *d.Tag == 2 {
+			hasMissing = true
+		}
+	}
+	if hasOrder {
+		t.Errorf("unexpected tag_out_of_order diagnostic when tag 2 is missing: %+v", diags)
+	}
+	if !hasMissing {
+		t.Errorf("expected missing_mandatory_item for tag 2; got %+v", diags)
+	}
+}
+
+// TestValidateMissingTag1SkipsChecksumDiag verifies that a packet missing
+// tag 1 does not produce a checksum_mismatch diagnostic (the checksum was
+// never computed, so the default Checksum.Valid == false is not a real
+// mismatch). Missing tag 1 is reported via missing_mandatory_item.
+func TestValidateMissingTag1SkipsChecksumDiag(t *testing.T) {
+	rec := &record.Record{
+		LSVersion: 19,
+		Checksum:  record.ChecksumInfo{Valid: false}, // default zero value
+		Items: []record.Item{
+			{Tag: 2, Name: "Precision Time Stamp", Raw: make([]byte, 8)},
+			{Tag: 65, Name: "UAS Datalink LS Version Number", Raw: []byte{19}},
+			// No tag 1.
+		},
+	}
+	diags := Validate(st0601.V19(), rec)
+	var hasChecksum, hasMissing bool
+	for _, d := range diags {
+		if d.Code == "checksum_mismatch" {
+			hasChecksum = true
+		}
+		if d.Code == "missing_mandatory_item" && d.Tag != nil && *d.Tag == 1 {
+			hasMissing = true
+		}
+	}
+	if hasChecksum {
+		t.Errorf("unexpected checksum_mismatch diagnostic when tag 1 is missing: %+v", diags)
+	}
+	if !hasMissing {
+		t.Errorf("expected missing_mandatory_item for tag 1; got %+v", diags)
+	}
+}

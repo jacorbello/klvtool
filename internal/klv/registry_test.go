@@ -98,3 +98,26 @@ func TestRegistryResolveUnknownULEmpty(t *testing.T) {
 		t.Errorf("Resolve on empty registry: expected error")
 	}
 }
+
+// TestRegistryReRegisterDoesNotAccumulate verifies that calling Register
+// with the same URN repeatedly replaces the previous entry instead of
+// leaving duplicates in the byUL slice.
+func TestRegistryReRegisterDoesNotAccumulate(t *testing.T) {
+	reg := NewRegistry()
+	sv := newFakeSpec("urn:misb:KLV:bin:0601.19")
+	reg.Register(sv)
+	reg.Register(sv)
+	reg.Register(sv)
+
+	candidates := reg.byUL[string(sv.UL())]
+	if len(candidates) != 1 {
+		t.Errorf("byUL has %d candidates after re-register, want 1", len(candidates))
+	}
+	got, err := reg.Resolve(sv.UL(), nil)
+	if err != nil {
+		t.Fatalf("Resolve after re-register: %v", err)
+	}
+	if got.URN() != sv.URN() {
+		t.Errorf("resolved URN = %s", got.URN())
+	}
+}

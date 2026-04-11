@@ -3,6 +3,7 @@ package st0601
 import (
 	"encoding/binary"
 	"fmt"
+	"sort"
 	"time"
 
 	"github.com/jacorbello/klvtool/internal/klv/record"
@@ -23,11 +24,15 @@ func (v *v19) UL() []byte                            { return UASDatalinkUL }
 func (v *v19) VersionTag() int                       { return 65 }
 func (v *v19) ExpectedVersion() int                  { return 19 }
 func (v *v19) Tag(n int) (specs.TagDefinition, bool) { t, ok := v.tags[n]; return t, ok }
+
+// AllTags returns tag definitions sorted by tag number so downstream
+// consumers (e.g. validate.Validate) see deterministic iteration order.
 func (v *v19) AllTags() []specs.TagDefinition {
 	out := make([]specs.TagDefinition, 0, len(v.tags))
 	for _, t := range v.tags {
 		out = append(out, t)
 	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Tag < out[j].Tag })
 	return out
 }
 

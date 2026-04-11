@@ -14,7 +14,7 @@ import (
 
 // fakeDecodePayloads returns a single synthetic decoded record for tests that
 // need to exercise the writers without going through ffmpeg.
-func fakeDecodePayloads(_ string, _ int) ([]record.Record, error) {
+func fakeDecodePayloads(_ string, _ int, _ string) ([]record.Record, error) {
 	rec := record.Record{
 		Schema:      "urn:misb:KLV:bin:0601.19",
 		LSVersion:   19,
@@ -111,7 +111,7 @@ func TestDecodeCommandRejectsStrayPositionalArgs(t *testing.T) {
 
 // fakeDecodeWithRaw returns a record with Raw bytes populated so --raw
 // behavior can be verified.
-func fakeDecodeWithRaw(_ string, _ int) ([]record.Record, error) {
+func fakeDecodeWithRaw(_ string, _ int, _ string) ([]record.Record, error) {
 	rec := record.Record{
 		Schema:    "urn:misb:KLV:bin:0601.19",
 		LSVersion: 19,
@@ -141,6 +141,46 @@ func TestDecodeCommandRawTextIncludesRawBytes(t *testing.T) {
 	got := out.String()
 	if !strings.Contains(got, "raw=0x71c2") {
 		t.Errorf("expected raw=0x71c2 in text output; got:\n%s", got)
+	}
+}
+
+// TestDecodeCommandSchemaPassedToDecode verifies that the --schema flag
+// reaches the Decode closure so the closure can honor it as an override.
+func TestDecodeCommandSchemaPassedToDecode(t *testing.T) {
+	var gotSchema string
+	cmd := &DecodeCommand{
+		Out: &bytes.Buffer{},
+		Err: &bytes.Buffer{},
+		Decode: func(_ string, _ int, schema string) ([]record.Record, error) {
+			gotSchema = schema
+			return nil, nil
+		},
+	}
+	code := cmd.Execute([]string{"--input", "fake.ts", "--schema", "urn:misb:KLV:bin:0601.19"})
+	if code != 0 {
+		t.Fatalf("exit code = %d", code)
+	}
+	if gotSchema != "urn:misb:KLV:bin:0601.19" {
+		t.Errorf("schema = %q, want urn:misb:KLV:bin:0601.19", gotSchema)
+	}
+}
+
+// TestDecodeCommandErrorDiagnosticSummary verifies the summary wording
+// mentions "error diagnostic(s)" rather than "validation error(s)" — the
+// counter includes decode and packetize errors, not just validation.
+func TestDecodeCommandErrorDiagnosticSummary(t *testing.T) {
+	errBuf := &bytes.Buffer{}
+	cmd := &DecodeCommand{
+		Out:    &bytes.Buffer{},
+		Err:    errBuf,
+		Decode: fakeDecodePayloads,
+	}
+	code := cmd.Execute([]string{"--input", "fake.ts"})
+	if code != 0 {
+		t.Fatalf("exit code = %d", code)
+	}
+	if !strings.Contains(errBuf.String(), "error diagnostic(s)") {
+		t.Errorf("expected 'error diagnostic(s)' in summary; got: %s", errBuf.String())
 	}
 }
 

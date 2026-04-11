@@ -22,9 +22,12 @@ import (
 // DecodeCommand decodes MISB ST 0601 KLV from an MPEG-TS file into
 // typed records.
 type DecodeCommand struct {
-	Out      io.Writer
-	Err      io.Writer
-	Decode   func(path string, pid int) ([]record.Record, error)
+	Out io.Writer
+	Err io.Writer
+	// Decode runs the decode pipeline. When schema is non-empty, the
+	// implementation must restrict decoding to the SpecVersion registered
+	// under that URN (bypassing UL-based auto-detection).
+	Decode   func(path string, pid int, schema string) ([]record.Record, error)
 	Registry func() *klv.Registry
 }
 
@@ -39,7 +42,7 @@ func NewDecodeCommand() *DecodeCommand {
 			return r
 		},
 	}
-	c.Decode = func(path string, pid int) ([]record.Record, error) {
+	c.Decode = func(path string, pid int, schema string) ([]record.Record, error) {
 		report := defaultDoctorDetect(context.Background(), "", currentEnvMap())
 		desc := ffmpegDescriptor(report)
 		if !desc.Healthy {
@@ -56,6 +59,17 @@ func NewDecodeCommand() *DecodeCommand {
 		}
 
 		reg := c.Registry()
+		// When --schema is set, restrict decoding to just the requested
+		// SpecVersion by building a single-entry registry. This makes the
+		// flag a genuine override rather than a no-op gate.
+		if schema != "" {
+			sv, ok := reg.Lookup(schema)
+			if !ok {
+				return nil, model.InvalidUsage(fmt.Errorf("schema %q not registered", schema))
+			}
+			reg = klv.NewRegistry()
+			reg.Register(sv)
+		}
 		parser := packetize.NewParser()
 		var out []record.Record
 		for _, raw := range result.Records {
@@ -161,7 +175,7 @@ func (c *DecodeCommand) Execute(args []string) int {
 		decode = NewDecodeCommand().Decode
 	}
 
-	records, err := decode(inputPath, pid)
+	records, err := decode(inputPath, pid, schema)
 	if err != nil {
 		c.writeError(c.Err, err)
 		return exitCodeForError(err)
@@ -198,7 +212,10 @@ func (c *DecodeCommand) Execute(args []string) int {
 		}
 	}
 
-	fmt.Fprintf(c.Err, "decoded %d packet(s), %d validation error(s)\n", len(records), errorCount) //nolint:errcheck
+	// errorCount includes structural decode errors (e.g. unknown_spec,
+	// tag_decode_error), packetize-layer diagnostics lifted in, and
+	// validation failures. The label reflects that.
+	fmt.Fprintf(c.Err, "decoded %d packet(s), %d error diagnostic(s)\n", len(records), errorCount) //nolint:errcheck
 	if strict && errorCount > 0 {
 		return 1
 	}

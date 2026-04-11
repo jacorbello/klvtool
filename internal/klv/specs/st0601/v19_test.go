@@ -46,6 +46,17 @@ func TestV19UnknownTag(t *testing.T) {
 	}
 }
 
+// TestV19AllTagsSortedByTag verifies that AllTags returns tag definitions
+// in deterministic ascending order so diagnostic iteration is stable.
+func TestV19AllTagsSortedByTag(t *testing.T) {
+	tags := V19().AllTags()
+	for i := 1; i < len(tags); i++ {
+		if tags[i-1].Tag >= tags[i].Tag {
+			t.Errorf("AllTags unsorted at index %d: %d then %d", i, tags[i-1].Tag, tags[i].Tag)
+		}
+	}
+}
+
 var _ = specs.SpecVersion(V19()) // compile-time interface check
 
 func TestV19CoreTagDecoding(t *testing.T) {

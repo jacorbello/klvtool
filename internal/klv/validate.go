@@ -30,8 +30,11 @@ func Validate(spec specs.SpecVersion, rec *record.Record) []record.Diagnostic {
 	}
 
 	// 2. Ordering: tag 2 first, tag 1 last (per ST 0601 §6.1 requirement 13-23).
+	// Only enforce when the tag is actually present — missing tags are
+	// already reported as missing_mandatory_item above, and emitting
+	// "tag 2 must be first" for a packet that lacks tag 2 entirely is noise.
 	if len(rec.Items) > 0 {
-		if rec.Items[0].Tag != 2 {
+		if present[2] && rec.Items[0].Tag != 2 {
 			two := 2
 			diags = append(diags, record.Diagnostic{
 				Severity: "error",
@@ -40,7 +43,7 @@ func Validate(spec specs.SpecVersion, rec *record.Record) []record.Diagnostic {
 				Tag:      &two,
 			})
 		}
-		if rec.Items[len(rec.Items)-1].Tag != 1 {
+		if present[1] && rec.Items[len(rec.Items)-1].Tag != 1 {
 			one := 1
 			diags = append(diags, record.Diagnostic{
 				Severity: "error",
@@ -108,8 +111,11 @@ func Validate(spec specs.SpecVersion, rec *record.Record) []record.Diagnostic {
 		}
 	}
 
-	// 5. Checksum.
-	if !rec.Checksum.Valid {
+	// 5. Checksum. Only emit when tag 1 is actually present and its
+	// computed value disagrees with the wire. When tag 1 is missing the
+	// Record's ChecksumInfo is zero-valued (Valid = false) but we should
+	// not report a mismatch — missing_mandatory_item above covers it.
+	if present[1] && !rec.Checksum.Valid {
 		one := 1
 		diags = append(diags, record.Diagnostic{
 			Severity: "error",
