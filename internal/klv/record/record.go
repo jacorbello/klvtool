@@ -99,7 +99,9 @@ func (v BytesValue) MarshalJSON() ([]byte, error) {
 }
 
 func (v TimeValue) MarshalJSON() ([]byte, error) {
-	return json.Marshal(time.Time(v).UTC().Format("2006-01-02T15:04:05.000Z"))
+	// Microsecond precision preserves ST 0601 Precision Time Stamp (tag 2)
+	// which is sourced from a uint64 of microseconds since the MISP epoch.
+	return json.Marshal(time.Time(v).UTC().Format("2006-01-02T15:04:05.000000Z"))
 }
 
 func (v NestedValue) MarshalJSON() ([]byte, error) {

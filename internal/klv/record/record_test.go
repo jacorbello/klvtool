@@ -43,7 +43,7 @@ func TestTimeValueJSONMarshaling(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Marshal error: %v", err)
 	}
-	want := `"2023-03-02T12:34:56.789Z"`
+	want := `"2023-03-02T12:34:56.789000Z"`
 	if string(b) != want {
 		t.Errorf("Marshal = %s, want %s", string(b), want)
 	}

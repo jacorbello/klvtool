@@ -69,10 +69,30 @@ func NewDecodeCommand() *DecodeCommand {
 			if err != nil {
 				return nil, err
 			}
-			for _, pkt := range stream.Packets {
+			// Lift packetize-layer diagnostics (recovery events, malformed
+			// packet scans) into record.Diagnostic so --strict and the final
+			// summary see them. Without this, best-effort recovery is silent.
+			sourceDiags := liftPacketizeDiagnostics(stream.Diagnostics)
+			if len(stream.Packets) == 0 && len(sourceDiags) > 0 {
+				// No KLV packets decoded from this raw stream but packetize
+				// recovered from or flagged problems. Emit a placeholder
+				// Record so the diagnostics aren't dropped.
+				out = append(out, record.Record{
+					Schema:      "",
+					Diagnostics: sourceDiags,
+				})
+				continue
+			}
+			for i, pkt := range stream.Packets {
 				rec, err := klv.DecodeLocalSet(reg, pkt.Key, pkt.Value)
 				if err != nil {
 					return nil, err
+				}
+				// Attach packetize diagnostics to the first decoded record
+				// from this raw stream so they flow through the normal
+				// reporting path.
+				if i == 0 && len(sourceDiags) > 0 {
+					rec.Diagnostics = append(sourceDiags, rec.Diagnostics...)
 				}
 				out = append(out, rec)
 			}
@@ -113,6 +133,11 @@ func (c *DecodeCommand) Execute(args []string) int {
 	if err := fs.Parse(args); err != nil {
 		c.writeUsage(c.Err)
 		c.writeError(c.Err, model.InvalidUsage(err))
+		return usageExitCode
+	}
+	if len(fs.Args()) > 0 {
+		c.writeUsage(c.Err)
+		c.writeError(c.Err, model.InvalidUsage(fmt.Errorf("unsupported arguments: %v", fs.Args())))
 		return usageExitCode
 	}
 	if strings.TrimSpace(inputPath) == "" {
@@ -232,7 +257,7 @@ func writeNDJSON(w io.Writer, index int, rec record.Record, includeRaw bool) err
 	return err
 }
 
-func writeText(w io.Writer, index int, rec record.Record, _ bool) error {
+func writeText(w io.Writer, index int, rec record.Record, includeRaw bool) error {
 	check := "OK"
 	if !rec.Checksum.Valid {
 		check = "MISMATCH"
@@ -240,6 +265,9 @@ func writeText(w io.Writer, index int, rec record.Record, _ bool) error {
 	fmt.Fprintf(w, "Packet %d   schema=%s  checksum=%s\n", index, rec.Schema, check) //nolint:errcheck
 	for _, it := range rec.Items {
 		fmt.Fprintf(w, "  [%d]\t%-40s\t%s\n", it.Tag, it.Name, formatValue(it.Value, it.Units)) //nolint:errcheck
+		if includeRaw && len(it.Raw) > 0 {
+			fmt.Fprintf(w, "       \traw=0x%x\n", it.Raw) //nolint:errcheck
+		}
 	}
 	for _, d := range rec.Diagnostics {
 		fmt.Fprintf(w, "  ! [%s] %s: %s\n", d.Severity, d.Code, d.Message) //nolint:errcheck
@@ -268,4 +296,22 @@ func encodeBase64(b []byte) string {
 		return ""
 	}
 	return base64.StdEncoding.EncodeToString(b)
+}
+
+// liftPacketizeDiagnostics converts packetize.Diagnostic entries into
+// record.Diagnostic entries so CLI reporting (counters, --strict, NDJSON
+// output) treats them the same as KLV-layer diagnostics.
+func liftPacketizeDiagnostics(in []packetize.Diagnostic) []record.Diagnostic {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]record.Diagnostic, 0, len(in))
+	for _, d := range in {
+		out = append(out, record.Diagnostic{
+			Severity: d.Severity,
+			Code:     "packetize_" + d.Code,
+			Message:  d.Message,
+		})
+	}
+	return out
 }

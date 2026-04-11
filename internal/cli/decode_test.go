@@ -9,6 +9,7 @@ import (
 	"github.com/jacorbello/klvtool/internal/klv"
 	"github.com/jacorbello/klvtool/internal/klv/record"
 	"github.com/jacorbello/klvtool/internal/klv/specs/st0601"
+	"github.com/jacorbello/klvtool/internal/packetize"
 )
 
 // fakeDecodePayloads returns a single synthetic decoded record for tests that
@@ -97,5 +98,81 @@ func TestDecodeCommandRejectsUnknownSchema(t *testing.T) {
 	code := cmd.Execute([]string{"--input", "fake.ts", "--schema", "urn:misb:KLV:bin:0601.14"})
 	if code != 2 {
 		t.Errorf("exit code = %d, want 2 (usage)", code)
+	}
+}
+
+func TestDecodeCommandRejectsStrayPositionalArgs(t *testing.T) {
+	cmd := &DecodeCommand{Out: &bytes.Buffer{}, Err: &bytes.Buffer{}}
+	code := cmd.Execute([]string{"--input", "fake.ts", "junk"})
+	if code != 2 {
+		t.Errorf("exit code = %d, want 2 (usage)", code)
+	}
+}
+
+// fakeDecodeWithRaw returns a record with Raw bytes populated so --raw
+// behavior can be verified.
+func fakeDecodeWithRaw(_ string, _ int) ([]record.Record, error) {
+	rec := record.Record{
+		Schema:    "urn:misb:KLV:bin:0601.19",
+		LSVersion: 19,
+		Checksum:  record.ChecksumInfo{Valid: true},
+		Items: []record.Item{
+			{
+				Tag: 5, Name: "Platform Heading Angle",
+				Value: record.FloatValue(159.97), Units: "°",
+				Raw: []byte{0x71, 0xC2},
+			},
+		},
+	}
+	return []record.Record{rec}, nil
+}
+
+func TestDecodeCommandRawTextIncludesRawBytes(t *testing.T) {
+	out := &bytes.Buffer{}
+	cmd := &DecodeCommand{
+		Out:    out,
+		Err:    &bytes.Buffer{},
+		Decode: fakeDecodeWithRaw,
+	}
+	code := cmd.Execute([]string{"--input", "fake.ts", "--format", "text", "--raw"})
+	if code != 0 {
+		t.Fatalf("exit code = %d", code)
+	}
+	got := out.String()
+	if !strings.Contains(got, "raw=0x71c2") {
+		t.Errorf("expected raw=0x71c2 in text output; got:\n%s", got)
+	}
+}
+
+func TestLiftPacketizeDiagnostics(t *testing.T) {
+	in := []packetize.Diagnostic{
+		{Severity: "warning", Code: "recovery_skip", Message: "skipped 4 bytes"},
+		{Severity: "error", Code: "invalid_ber_length", Message: "length overflow"},
+	}
+	got := liftPacketizeDiagnostics(in)
+	if len(got) != 2 {
+		t.Fatalf("got %d diagnostics, want 2", len(got))
+	}
+	if got[0].Code != "packetize_recovery_skip" || got[0].Severity != "warning" {
+		t.Errorf("diag[0] = %+v", got[0])
+	}
+	if got[1].Code != "packetize_invalid_ber_length" || got[1].Severity != "error" {
+		t.Errorf("diag[1] = %+v", got[1])
+	}
+}
+
+func TestDecodeCommandRawTextAbsentWithoutFlag(t *testing.T) {
+	out := &bytes.Buffer{}
+	cmd := &DecodeCommand{
+		Out:    out,
+		Err:    &bytes.Buffer{},
+		Decode: fakeDecodeWithRaw,
+	}
+	code := cmd.Execute([]string{"--input", "fake.ts", "--format", "text"})
+	if code != 0 {
+		t.Fatalf("exit code = %d", code)
+	}
+	if strings.Contains(out.String(), "raw=") {
+		t.Errorf("unexpected raw= in text output without --raw flag")
 	}
 }
