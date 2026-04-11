@@ -68,6 +68,7 @@ func TestDecodeBEROIDErrors(t *testing.T) {
 		{"empty", []byte{}},
 		{"continuation without follow-up", []byte{0x81}},
 		{"two-byte continuation truncated", []byte{0x81, 0x81}},
+		{"9-byte with high-bit continuation", []byte{0x81, 0x81, 0x81, 0x81, 0x81, 0x81, 0x81, 0x81, 0x81}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
