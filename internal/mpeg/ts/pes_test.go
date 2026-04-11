@@ -80,9 +80,9 @@ func TestParsePESHeaderRejectsOverreachingHeaderDataLength(t *testing.T) {
 	data := []byte{
 		0x00, 0x00, 0x01, 0xBD, // start code + stream_id
 		0x00, 0xD0, // PES packet length (not used for bounds)
-		0x80,       // flags
-		0x00,       // PTS/DTS flags = none
-		0xC8,       // pes_header_data_length = 200
+		0x80, // flags
+		0x00, // PTS/DTS flags = none
+		0xC8, // pes_header_data_length = 200
 	}
 	_, _, _, err := parsePESHeader(data)
 	if err == nil {
