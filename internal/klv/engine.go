@@ -151,7 +151,7 @@ func decodeLocalSetInternal(reg *Registry, ul []byte, value []byte, fullForCheck
 		rec.Checksum.Valid = rec.Checksum.Computed == rec.Checksum.Expected
 	}
 
-	// Validation is wired in Task 10 by appending here; leave unwired for now.
+	rec.Diagnostics = append(rec.Diagnostics, Validate(spec, &rec)...)
 	return rec, nil
 }
 
