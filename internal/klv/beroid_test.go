@@ -60,6 +60,15 @@ func TestDecodeBEROIDLongForm(t *testing.T) {
 	}
 }
 
+func TestDecodeBEROIDRejectsOverflow(t *testing.T) {
+	// 5-byte encoding: value = 2 << 28 = 0x20000000 (> 1<<28 cap).
+	// Bytes: 0x82 0x80 0x80 0x80 0x00 → (((((2<<7)|0)<<7)|0)<<7|0)<<7|0 = 2<<28.
+	input := []byte{0x82, 0x80, 0x80, 0x80, 0x00}
+	if _, _, err := decodeBEROID(input); err == nil {
+		t.Errorf("expected error for overflow encoding %v", input)
+	}
+}
+
 func TestDecodeBEROIDErrors(t *testing.T) {
 	tests := []struct {
 		name  string
