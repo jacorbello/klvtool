@@ -298,6 +298,61 @@ func TestValidateMissingTag1SkipsChecksumDiag(t *testing.T) {
 	}
 }
 
+// TestValidateDuplicateTag verifies that a packet containing the same tag
+// more than once emits exactly one duplicate_tag error diagnostic per
+// duplicated tag (not one per duplicate occurrence).
+func TestValidateDuplicateTag(t *testing.T) {
+	rec := &record.Record{
+		LSVersion: 1,
+		Checksum:  record.ChecksumInfo{Valid: true},
+		Items: []record.Item{
+			// Tag 6 appears three times; expect exactly one duplicate_tag diag.
+			{Tag: 6, Name: "Enum Code", Value: record.IntValue(0), Raw: []byte{0}},
+			{Tag: 6, Name: "Enum Code", Value: record.IntValue(1), Raw: []byte{1}},
+			{Tag: 6, Name: "Enum Code", Value: record.IntValue(0), Raw: []byte{0}},
+		},
+	}
+	diags := Validate(rangeEnumSpec{}, rec)
+	var count int
+	for _, d := range diags {
+		if d.Code == "duplicate_tag" {
+			count++
+			if d.Severity != "error" {
+				t.Errorf("expected severity=error, got %q", d.Severity)
+			}
+			if d.Tag == nil || *d.Tag != 6 {
+				t.Errorf("expected Tag pointer to 6, got %+v", d.Tag)
+			}
+			if d.Message == "" {
+				t.Errorf("expected non-empty message identifying duplicated tag")
+			}
+		}
+	}
+	if count != 1 {
+		t.Errorf("expected exactly 1 duplicate_tag diagnostic, got %d: %+v", count, diags)
+	}
+}
+
+// TestValidateNoDuplicateTagWhenUnique verifies that a well-formed record
+// with all unique tags emits no duplicate_tag diagnostics.
+func TestValidateNoDuplicateTagWhenUnique(t *testing.T) {
+	rec := &record.Record{
+		LSVersion: 19,
+		Checksum:  record.ChecksumInfo{Valid: true},
+		Items: []record.Item{
+			{Tag: 2, Name: "Precision Time Stamp", Raw: make([]byte, 8)},
+			{Tag: 65, Name: "UAS Datalink LS Version Number", Raw: []byte{19}},
+			{Tag: 1, Name: "Checksum", Raw: []byte{0x00, 0x00}},
+		},
+	}
+	diags := Validate(st0601.V19(), rec)
+	for _, d := range diags {
+		if d.Code == "duplicate_tag" {
+			t.Errorf("unexpected duplicate_tag diagnostic on unique-tag record: %+v", d)
+		}
+	}
+}
+
 // TestValidateTag1WrongLengthSkipsChecksumDiag verifies that when tag 1 is
 // present but has the wrong length, the checksum was never computed by the
 // engine, so Validate must not emit a misleading checksum_mismatch. The

@@ -2,6 +2,7 @@ package klv
 
 import (
 	"fmt"
+	"sort"
 
 	"github.com/jacorbello/klvtool/internal/klv/record"
 	"github.com/jacorbello/klvtool/internal/klv/specs"
@@ -12,13 +13,16 @@ import (
 func Validate(spec specs.SpecVersion, rec *record.Record) []record.Diagnostic {
 	var diags []record.Diagnostic
 
-	// 1. Mandatory items present.
-	present := make(map[int]bool, len(rec.Items))
+	// Build a per-tag occurrence count once; sections 1, 2, and 5 all need
+	// some view of "which tags are present and how often".
+	counts := make(map[int]int, len(rec.Items))
 	for _, it := range rec.Items {
-		present[it.Tag] = true
+		counts[it.Tag]++
 	}
+
+	// 1. Mandatory items present.
 	for _, td := range spec.AllTags() {
-		if td.Mandatory && !present[td.Tag] {
+		if td.Mandatory && counts[td.Tag] == 0 {
 			tag := td.Tag
 			diags = append(diags, record.Diagnostic{
 				Severity: "error",
@@ -34,7 +38,7 @@ func Validate(spec specs.SpecVersion, rec *record.Record) []record.Diagnostic {
 	// already reported as missing_mandatory_item above, and emitting
 	// "tag 2 must be first" for a packet that lacks tag 2 entirely is noise.
 	if len(rec.Items) > 0 {
-		if present[2] && rec.Items[0].Tag != 2 {
+		if counts[2] > 0 && rec.Items[0].Tag != 2 {
 			two := 2
 			diags = append(diags, record.Diagnostic{
 				Severity: "error",
@@ -43,7 +47,7 @@ func Validate(spec specs.SpecVersion, rec *record.Record) []record.Diagnostic {
 				Tag:      &two,
 			})
 		}
-		if present[1] && rec.Items[len(rec.Items)-1].Tag != 1 {
+		if counts[1] > 0 && rec.Items[len(rec.Items)-1].Tag != 1 {
 			one := 1
 			diags = append(diags, record.Diagnostic{
 				Severity: "error",
@@ -111,13 +115,33 @@ func Validate(spec specs.SpecVersion, rec *record.Record) []record.Diagnostic {
 		}
 	}
 
-	// 5. Checksum. Only emit when tag 1 is present with the correct 2-byte
+	// 5. Duplicate-tag detection (per ST 0601 §6.1: each tag at most once).
+	// Emit one diagnostic per duplicated tag, not per duplicate occurrence —
+	// map iteration order is random, so sort for deterministic output.
+	dupTags := make([]int, 0)
+	for tag, n := range counts {
+		if n > 1 {
+			dupTags = append(dupTags, tag)
+		}
+	}
+	sort.Ints(dupTags)
+	for _, tag := range dupTags {
+		tag := tag
+		diags = append(diags, record.Diagnostic{
+			Severity: "error",
+			Code:     "duplicate_tag",
+			Message:  fmt.Sprintf("tag %d appears %d times; each tag must appear at most once", tag, counts[tag]),
+			Tag:      &tag,
+		})
+	}
+
+	// 6. Checksum. Only emit when tag 1 is present with the correct 2-byte
 	// length (i.e. the engine actually computed a checksum) and the
 	// computed value disagrees with the wire. When tag 1 is missing or
 	// malformed the Record's ChecksumInfo is zero-valued (Valid = false)
 	// but we must not report a mismatch — missing_mandatory_item and
 	// tag_length_mismatch above already cover those cases.
-	if present[1] && !rec.Checksum.Valid {
+	if counts[1] > 0 && !rec.Checksum.Valid {
 		var tag1Raw []byte
 		for _, it := range rec.Items {
 			if it.Tag == 1 {
