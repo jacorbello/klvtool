@@ -93,6 +93,70 @@ func TestDecodeCommandTextOutput(t *testing.T) {
 	}
 }
 
+// TestWriteTextChecksumLabels verifies the text-mode Packet header reflects
+// the actual checksum state: OK when the engine computed a valid checksum,
+// MISMATCH only when tag 1 was present and comparison failed, N/A when tag
+// 1 was absent, and MALFORMED when tag 1 was present but the wrong length.
+func TestWriteTextChecksumLabels(t *testing.T) {
+	mkItem := func(tag int, raw []byte) record.Item {
+		return record.Item{Tag: tag, Name: "x", Raw: raw}
+	}
+	cases := []struct {
+		name  string
+		rec   record.Record
+		label string
+	}{
+		{
+			name: "valid",
+			rec: record.Record{
+				Schema:   "urn:misb:KLV:bin:0601.19",
+				Checksum: record.ChecksumInfo{Valid: true},
+				Items:    []record.Item{mkItem(1, []byte{0x12, 0x34})},
+			},
+			label: "OK",
+		},
+		{
+			name: "mismatch",
+			rec: record.Record{
+				Schema:   "urn:misb:KLV:bin:0601.19",
+				Checksum: record.ChecksumInfo{Valid: false, Expected: 0x1111, Computed: 0x2222},
+				Items:    []record.Item{mkItem(1, []byte{0x11, 0x11})},
+			},
+			label: "MISMATCH",
+		},
+		{
+			name: "missing_tag1",
+			rec: record.Record{
+				Schema:   "urn:misb:KLV:bin:0601.19",
+				Checksum: record.ChecksumInfo{Valid: false}, // never computed
+				Items:    []record.Item{mkItem(2, make([]byte, 8))},
+			},
+			label: "N/A",
+		},
+		{
+			name: "malformed_tag1",
+			rec: record.Record{
+				Schema:   "urn:misb:KLV:bin:0601.19",
+				Checksum: record.ChecksumInfo{Valid: false}, // never computed
+				Items:    []record.Item{mkItem(1, []byte{0x00})},
+			},
+			label: "MALFORMED",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			if err := writeText(&buf, 0, tc.rec, false); err != nil {
+				t.Fatalf("writeText error: %v", err)
+			}
+			want := "checksum=" + tc.label
+			if !strings.Contains(buf.String(), want) {
+				t.Errorf("expected %q in header, got: %s", want, buf.String())
+			}
+		})
+	}
+}
+
 func TestDecodeCommandMissingInput(t *testing.T) {
 	cmd := &DecodeCommand{Out: &bytes.Buffer{}, Err: &bytes.Buffer{}}
 	code := cmd.Execute([]string{})

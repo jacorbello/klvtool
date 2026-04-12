@@ -106,7 +106,13 @@ func NewDecodeCommand() *DecodeCommand {
 				continue
 			}
 			for i, pkt := range stream.Packets {
-				rec, err := klv.DecodeLocalSet(reg, pkt.Key, pkt.Value)
+				// Preserve the exact wire BER length bytes — the checksum
+				// covers them and may use a non-canonical encoding.
+				var lengthBytes []byte
+				if pkt.LengthStart >= 0 && pkt.ValueStart >= pkt.LengthStart && pkt.ValueStart <= len(raw.Payload) {
+					lengthBytes = raw.Payload[pkt.LengthStart:pkt.ValueStart]
+				}
+				rec, err := klv.DecodeLocalSet(reg, pkt.Key, lengthBytes, pkt.Value)
 				if err != nil {
 					return DecodeResult{}, err
 				}
@@ -303,11 +309,7 @@ func writeNDJSON(w io.Writer, index int, rec record.Record, includeRaw bool) err
 }
 
 func writeText(w io.Writer, index int, rec record.Record, includeRaw bool) error {
-	check := "OK"
-	if !rec.Checksum.Valid {
-		check = "MISMATCH"
-	}
-	if _, err := fmt.Fprintf(w, "Packet %d   schema=%s  checksum=%s\n", index, rec.Schema, check); err != nil {
+	if _, err := fmt.Fprintf(w, "Packet %d   schema=%s  checksum=%s\n", index, rec.Schema, checksumLabel(rec)); err != nil {
 		return err
 	}
 	for _, it := range rec.Items {
@@ -329,6 +331,26 @@ func writeText(w io.Writer, index int, rec record.Record, includeRaw bool) error
 		return err
 	}
 	return nil
+}
+
+// checksumLabel distinguishes the four states operator output needs:
+// OK (engine computed and matched), MISMATCH (computed and disagreed),
+// MALFORMED (tag 1 present but wrong length — engine couldn't compute),
+// and N/A (tag 1 absent). Validate emits the corresponding structural
+// diagnostics, so this label is purely for the human-readable header.
+func checksumLabel(rec record.Record) string {
+	for _, it := range rec.Items {
+		if it.Tag == 1 {
+			if len(it.Raw) != 2 {
+				return "MALFORMED"
+			}
+			if rec.Checksum.Valid {
+				return "OK"
+			}
+			return "MISMATCH"
+		}
+	}
+	return "N/A"
 }
 
 func formatValue(v record.Value, units string) string {

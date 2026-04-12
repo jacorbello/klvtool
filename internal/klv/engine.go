@@ -35,14 +35,16 @@ func Decode(reg *Registry, full []byte) (record.Record, error) {
 	return decodeLocalSetInternal(reg, ul, value, full[:valueStart+length], valueStart)
 }
 
-// DecodeLocalSet parses a pre-split packet. Caller supplies UL key and
-// value bytes; used by CLI pathways that have already consumed the outer
-// triplet (e.g. via packetize.Parse).
-func DecodeLocalSet(reg *Registry, ul []byte, value []byte) (record.Record, error) {
-	// Reconstruct the checksum range: UL + BER length + value.
-	// For the checksum we need the exact wire bytes, so we rebuild the header.
+// DecodeLocalSet parses a pre-split packet. Caller supplies the UL key,
+// the original wire BER length bytes, and the value bytes; used by CLI
+// pathways that have already consumed the outer triplet (e.g. via
+// packetize.Parse). The exact length bytes are required because the
+// checksum covers the wire representation — a reconstructed minimal-form
+// BER header would mis-validate any packet that used a valid non-canonical
+// long-form length encoding.
+func DecodeLocalSet(reg *Registry, ul []byte, lengthBytes []byte, value []byte) (record.Record, error) {
 	header := append([]byte{}, ul...)
-	header = append(header, encodeBERLengthInternal(len(value))...)
+	header = append(header, lengthBytes...)
 	full := append(header, value...)
 	valueStart := len(header)
 	return decodeLocalSetInternal(reg, ul, value, full, valueStart)
@@ -278,18 +280,4 @@ func applyScaleSigned(v int64, format specs.Format, scale specs.LinearScale) (re
 	// Center on (Min+Max)/2.
 	f += (scale.Min + scale.Max) / 2
 	return record.FloatValue(f), nil
-}
-
-// encodeBERLengthInternal is used by DecodeLocalSet to reconstruct the
-// checksum range. Kept internal; test helpers build their own.
-func encodeBERLengthInternal(length int) []byte {
-	if length < 0x80 {
-		return []byte{byte(length)}
-	}
-	var out []byte
-	for length > 0 {
-		out = append([]byte{byte(length & 0xFF)}, out...)
-		length >>= 8
-	}
-	return append([]byte{0x80 | byte(len(out))}, out...)
 }
