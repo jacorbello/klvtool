@@ -1,0 +1,42 @@
+{
+  "schema": "urn:misb:KLV:bin:0601.19",
+  "ul": "Bg4rNAILAQEOAQMBAQAAAA==",
+  "lsVersion": 19,
+  "totalLength": 22,
+  "items": [
+    {
+      "tag": 2,
+      "name": "Precision Time Stamp",
+      "value": "1970-01-01T00:00:00.000000Z",
+      "units": "μs",
+      "raw": "AAAAAAAAAAA="
+    },
+    {
+      "tag": 48,
+      "name": "Security Local Set",
+      "value": {
+        "specHint": "MISB ST 0102",
+        "raw": "AQID"
+      },
+      "raw": "AQID"
+    },
+    {
+      "tag": 65,
+      "name": "UAS Datalink LS Version Number",
+      "value": 19,
+      "raw": "Ew=="
+    },
+    {
+      "tag": 1,
+      "name": "Checksum",
+      "value": 49032,
+      "raw": "v4g="
+    }
+  ],
+  "checksum": {
+    "expected": 49032,
+    "computed": 49032,
+    "valid": true
+  },
+  "diagnostics": []
+}

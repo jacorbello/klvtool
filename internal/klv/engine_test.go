@@ -122,6 +122,57 @@ func encodeBERLength(length int) []byte {
 	return append([]byte{0x80 | byte(len(bytes_))}, bytes_...)
 }
 
+// buildLongFormPacket assembles a full ST 0601 LS packet whose outer BER
+// length uses long-form encoding (0x81 LL) even though the value fits in
+// short form. This bypasses buildPacket's encodeBERLength helper, which
+// always picks the shortest form. Returns the full packet plus the parts
+// (UL, longFormLen header, body-with-checksum) that DecodeLocalSet expects,
+// so callers can exercise either the top-level Decode entry point or the
+// lower-level DecodeLocalSet split.
+//
+// The items arg is identical in shape to buildPacket's: tag 2 is emitted
+// first, tags 3-199 in ascending order, and tag 1 (checksum) is appended
+// last with its value computed over the wire header+body.
+func buildLongFormPacket(t *testing.T, items map[int][]byte) (packet, ul, longFormLen, body []byte) {
+	t.Helper()
+	appendItem := func(dst []byte, tag int, val []byte) []byte {
+		dst = append(dst, encodeBEROID(tag)...)
+		dst = append(dst, encodeBERLength(len(val))...)
+		return append(dst, val...)
+	}
+	body = make([]byte, 0, 64)
+	if val, ok := items[2]; ok {
+		body = appendItem(body, 2, val)
+	}
+	for tag := 3; tag < 200; tag++ {
+		if val, ok := items[tag]; ok {
+			body = appendItem(body, tag, val)
+		}
+	}
+	body = append(body, 0x01, 0x02) // Tag 1 (checksum), length 2 placeholder
+
+	valueLen := len(body) + 2 // +2 for checksum value bytes to be appended
+	if valueLen >= 0x80 {
+		t.Fatalf("buildLongFormPacket: value len must be < 0x80 for long-form test; got %d", valueLen)
+	}
+	// Force long-form: 0x81 <1-byte length>. encodeBERLength picks short form.
+	longFormLen = []byte{0x81, byte(valueLen)}
+	ul = st0601.UASDatalinkUL
+
+	sumRange := make([]byte, 0, len(ul)+len(longFormLen)+len(body))
+	sumRange = append(sumRange, ul...)
+	sumRange = append(sumRange, longFormLen...)
+	sumRange = append(sumRange, body...)
+	sum := computeChecksum(sumRange)
+	body = append(body, byte(sum>>8), byte(sum))
+
+	packet = make([]byte, 0, len(ul)+len(longFormLen)+len(body))
+	packet = append(packet, ul...)
+	packet = append(packet, longFormLen...)
+	packet = append(packet, body...)
+	return packet, ul, longFormLen, body
+}
+
 // TestDecodeLocalSetPreservesNonCanonicalBERLength verifies the checksum
 // validates when the wire used a valid but non-canonical (long-form) BER
 // length encoding. The CLI path splits the outer triplet via packetize
@@ -131,32 +182,10 @@ func TestDecodeLocalSetPreservesNonCanonicalBERLength(t *testing.T) {
 	reg := NewRegistry()
 	reg.Register(st0601.V19())
 
-	// Build body with Tag 2 (PTS) + Tag 65 (LS Version) + Tag 1 (checksum placeholder).
-	ptsBytes := make([]byte, 8)
-	var body []byte
-	body = append(body, encodeBEROID(2)...)
-	body = append(body, encodeBERLength(8)...)
-	body = append(body, ptsBytes...)
-	body = append(body, encodeBEROID(65)...)
-	body = append(body, encodeBERLength(1)...)
-	body = append(body, 19)
-	body = append(body, 0x01, 0x02) // Tag 1, length 2
-
-	valueLen := len(body) + 2 // +2 checksum value bytes
-	// Force NON-canonical long-form BER length: use 2 bytes (0x81 LL) even
-	// though the value fits in the short form. encodeBERLength would pick
-	// short form, so write the long form directly.
-	if valueLen >= 0x80 {
-		t.Fatalf("test assumes value len < 0x80; got %d", valueLen)
-	}
-	longFormLen := []byte{0x81, byte(valueLen)}
-
-	ul := st0601.UASDatalinkUL
-	sumRange := append([]byte{}, ul...)
-	sumRange = append(sumRange, longFormLen...)
-	sumRange = append(sumRange, body...)
-	sum := computeChecksum(sumRange)
-	body = append(body, byte(sum>>8), byte(sum))
+	_, ul, longFormLen, body := buildLongFormPacket(t, map[int][]byte{
+		2:  make([]byte, 8),
+		65: {19},
+	})
 
 	// Caller (e.g. CLI via packetize) supplies the exact wire length bytes.
 	rec, err := DecodeLocalSet(reg, ul, longFormLen, body)
@@ -166,6 +195,34 @@ func TestDecodeLocalSetPreservesNonCanonicalBERLength(t *testing.T) {
 	if !rec.Checksum.Valid {
 		t.Errorf("checksum invalid: expected=%04x computed=%04x (non-canonical BER length must roundtrip)",
 			rec.Checksum.Expected, rec.Checksum.Computed)
+	}
+}
+
+// TestV19SensorLatitudeIMAPBDecodeRange guards the ST 0601.19 tag 13
+// FormatIMAPB migration: the raw bytes {0x04, 0x5D, 0x6D, 0x00} must
+// decode via the IMAPB path into a value that lies inside the spec range
+// [-90, 90]. A silent revert to FormatInt32 would produce a value on a
+// completely different numeric scale and fail this bound check.
+func TestV19SensorLatitudeIMAPBDecodeRange(t *testing.T) {
+	sv := st0601.V19()
+	td, ok := sv.Tag(13)
+	if !ok {
+		t.Fatalf("tag 13 missing")
+	}
+	if td.Format != specs.FormatIMAPB {
+		t.Fatalf("tag 13 format = %v, want FormatIMAPB", td.Format)
+	}
+	v, err := dispatchDecode(td, []byte{0x04, 0x5D, 0x6D, 0x00})
+	if err != nil {
+		t.Fatalf("dispatchDecode: %v", err)
+	}
+	fv, ok := v.(record.FloatValue)
+	if !ok {
+		t.Fatalf("value type = %T, want FloatValue", v)
+	}
+	f := float64(fv)
+	if f < -90 || f > 90 {
+		t.Errorf("decoded = %v, want within [-90, 90]", f)
 	}
 }
 
