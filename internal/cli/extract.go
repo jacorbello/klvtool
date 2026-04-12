@@ -68,11 +68,9 @@ func (c *ExtractCommand) Execute(args []string) int {
 
 	var inputPath string
 	var outDir string
-	var backend string
 
 	fs.StringVar(&inputPath, "input", "", "path to the MPEG-TS input file")
 	fs.StringVar(&outDir, "out", "", "directory for extracted payloads and manifest")
-	fs.StringVar(&backend, "backend", string(extract.BackendFFmpeg), "extraction backend (ffmpeg)")
 
 	if err := fs.Parse(args); err != nil {
 		c.writeUsage(c.Err)
@@ -85,11 +83,6 @@ func (c *ExtractCommand) Execute(args []string) int {
 		return usageExitCode
 	}
 
-	if strings.TrimSpace(backend) != "" && strings.ToLower(strings.TrimSpace(backend)) != string(extract.BackendFFmpeg) {
-		c.writeUsage(c.Err)
-		c.writeError(c.Err, model.InvalidUsage(fmt.Errorf("unsupported backend %q", backend)))
-		return usageExitCode
-	}
 	if strings.TrimSpace(inputPath) == "" {
 		c.writeUsage(c.Err)
 		c.writeError(c.Err, model.InvalidUsage(fmt.Errorf("input path is required")))
@@ -141,7 +134,7 @@ func (c *ExtractCommand) writeOutputs(outDir, inputPath string, result extract.R
 	payloadDir := filepath.Join(outDir, "payloads")
 	manifest.SchemaVersion = "1"
 	manifest.SourceInputPath = inputPath
-	manifest.BackendName = string(result.Backend.Name)
+	manifest.BackendName = result.Backend.Name
 	manifest.BackendVersion = result.BackendVersion
 	manifest.Records = make([]model.Record, 0, len(result.Records))
 
@@ -252,26 +245,26 @@ func (c *ExtractCommand) writeError(w io.Writer, err error) {
 
 func ffmpegDescriptor(report envcheck.Report) extract.BackendDescriptor {
 	for _, backend := range report.Backends {
-		if strings.ToLower(backend.Name) == string(extract.BackendFFmpeg) {
+		if strings.ToLower(backend.Name) == "ffmpeg" {
 			tools := make([]string, 0, len(backend.Tools))
 			for _, tool := range backend.Tools {
 				tools = append(tools, tool.Name)
 			}
 			return extract.BackendDescriptor{
-				Name:    extract.BackendFFmpeg,
+				Name:    "ffmpeg",
 				Healthy: backend.Healthy,
 				Tools:   tools,
 			}
 		}
 	}
-	return extract.BackendDescriptor{Name: extract.BackendFFmpeg}
+	return extract.BackendDescriptor{Name: "ffmpeg"}
 }
 
 func exitCodeForError(err error) int {
 	var typed *model.Error
 	if errorsAs(err, &typed) {
 		switch typed.Code {
-		case model.CodeInvalidUsage, model.CodeUnsupportedBackend:
+		case model.CodeInvalidUsage:
 			return usageExitCode
 		default:
 			return 1

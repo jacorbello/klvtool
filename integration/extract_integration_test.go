@@ -35,7 +35,7 @@ func TestExtractIntegrationFFmpeg(t *testing.T) {
 	cmd.Out = &stdout
 	cmd.Err = &stderr
 
-	if got := cmd.Execute([]string{"extract", "--input", fixture, "--out", outDir, "--backend", "ffmpeg"}); got != 0 {
+	if got := cmd.Execute([]string{"extract", "--input", fixture, "--out", outDir}); got != 0 {
 		t.Fatalf("expected extract command to succeed, got %d with stderr %q", got, stderr.String())
 	}
 

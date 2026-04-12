@@ -16,7 +16,7 @@
 ## Commands
 
 - `klvtool doctor` reports backend health.
-- `klvtool extract` supports `--input`, `--out`, and `--backend ffmpeg`.
+- `klvtool extract` supports `--input` and `--out`.
 - `klvtool packetize` splits raw extraction output into KLV packets.
 - `klvtool decode` decodes MISB ST 0601.19 KLV from an MPEG-TS file into typed records with NDJSON or text output.
 - `ffmpeg` is the sole extraction backend.

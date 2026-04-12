@@ -42,21 +42,6 @@ func TestExtractRequiresInputAndOutput(t *testing.T) {
 	}
 }
 
-func TestExtractRejectsUnknownBackend(t *testing.T) {
-	var stderr bytes.Buffer
-
-	cmd := NewRootCommand()
-	cmd.Err = &stderr
-	cmd.Out = nil
-
-	if got := cmd.Execute([]string{"extract", "--input", "a.ts", "--out", "out", "--backend", "bogus"}); got != usageExitCode {
-		t.Fatalf("expected usage exit code %d, got %d", usageExitCode, got)
-	}
-	if text := stderr.String(); !strings.Contains(text, `unsupported backend "bogus"`) {
-		t.Fatalf("expected unsupported backend error, got %q", text)
-	}
-}
-
 func TestExtractStopsOnExplicitBackendFailure(t *testing.T) {
 	var stderr bytes.Buffer
 
@@ -102,11 +87,11 @@ func TestExtractWritesManifestAndPayloads(t *testing.T) {
 	}
 	cmd.Extract.Extractor = stubExtractor{
 		run: func(ctx context.Context, req extract.RunRequest) (extract.RunResult, error) {
-			if req.Backend.Name != extract.BackendFFmpeg {
+			if req.Backend.Name != "ffmpeg" {
 				t.Fatalf("expected ffmpeg backend, got %q", req.Backend.Name)
 			}
 			return extract.RunResult{
-				Backend:        extract.BackendDescriptor{Name: extract.BackendFFmpeg, Healthy: true},
+				Backend:        extract.BackendDescriptor{Name: "ffmpeg", Healthy: true},
 				BackendVersion: "7.1",
 				Records: []extract.PayloadRecord{
 					{

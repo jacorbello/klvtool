@@ -37,7 +37,7 @@ func NewBackend() *Backend {
 
 func (b *Backend) Descriptor() extract.BackendDescriptor {
 	return extract.BackendDescriptor{
-		Name:    extract.BackendFFmpeg,
+		Name:    "ffmpeg",
 		Healthy: true,
 		Tools:   []string{"ffmpeg", "ffprobe"},
 	}

@@ -6,19 +6,18 @@ import "fmt"
 type Code string
 
 const (
-	CodeInvalidUsage       Code = "invalid_usage"
-	CodeMissingDependency  Code = "missing_dependency"
-	CodeUnsupportedBackend Code = "unsupported_backend"
-	CodeBackendExecution   Code = "backend_execution_failure"
-	CodeBackendParse       Code = "backend_parse_failure"
-	CodePacketParse        Code = "packet_parse_failure"
-	CodeCheckpointRead     Code = "checkpoint_read_failure"
-	CodeOutputWrite        Code = "output_write_failure"
-	CodeTSSync             Code = "ts_sync_failure"
-	CodeTSParse            Code = "ts_parse_failure"
-	CodeTSRead             Code = "ts_read_failure"
-	CodeKLVDecode          Code = "klv_decode_failure"
-	CodeKLVSpec            Code = "klv_spec_unknown"
+	CodeInvalidUsage      Code = "invalid_usage"
+	CodeMissingDependency Code = "missing_dependency"
+	CodeBackendExecution  Code = "backend_execution_failure"
+	CodeBackendParse      Code = "backend_parse_failure"
+	CodePacketParse       Code = "packet_parse_failure"
+	CodeCheckpointRead    Code = "checkpoint_read_failure"
+	CodeOutputWrite       Code = "output_write_failure"
+	CodeTSSync            Code = "ts_sync_failure"
+	CodeTSParse           Code = "ts_parse_failure"
+	CodeTSRead            Code = "ts_read_failure"
+	CodeKLVDecode         Code = "klv_decode_failure"
+	CodeKLVSpec           Code = "klv_spec_unknown"
 )
 
 // Error classifies a failure with a stable code and optional wrapped cause.
@@ -65,10 +64,6 @@ func InvalidUsage(err error) *Error {
 
 func MissingDependency(err error) *Error {
 	return NewError(CodeMissingDependency, err)
-}
-
-func UnsupportedBackend(err error) *Error {
-	return NewError(CodeUnsupportedBackend, err)
 }
 
 func BackendExecution(err error) *Error {
