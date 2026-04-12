@@ -92,6 +92,32 @@ func TestDecodeCommandNDJSONOutput(t *testing.T) {
 	}
 }
 
+func TestTextOutputOmitsUnitsWithoutRawFlag(t *testing.T) {
+	var buf bytes.Buffer
+	rec := record.Record{
+		Schema:    "urn:misb:KLV:bin:0601.19",
+		LSVersion: 19,
+		Checksum:  record.ChecksumInfo{Valid: true},
+		Items: []record.Item{
+			{Tag: 5, Name: "Platform Heading Angle", Value: record.FloatValue(159.97), Units: "°"},
+		},
+	}
+	if err := writeText(&buf, 0, rec, false); err != nil {
+		t.Fatalf("writeText: %v", err)
+	}
+	if strings.Contains(buf.String(), "°") {
+		t.Errorf("text output without --raw should not include units; got: %s", buf.String())
+	}
+
+	buf.Reset()
+	if err := writeText(&buf, 0, rec, true); err != nil {
+		t.Fatalf("writeText: %v", err)
+	}
+	if !strings.Contains(buf.String(), "°") {
+		t.Errorf("text output with --raw should include units; got: %s", buf.String())
+	}
+}
+
 func TestDecodeCommandTextOutput(t *testing.T) {
 	out := &bytes.Buffer{}
 	cmd := &DecodeCommand{

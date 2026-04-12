@@ -320,7 +320,11 @@ func writeText(w io.Writer, index int, rec record.Record, includeRaw bool) error
 		return err
 	}
 	for _, it := range rec.Items {
-		if _, err := fmt.Fprintf(w, "  [%d]\t%-40s\t%s\n", it.Tag, it.Name, formatValue(it.Value, it.Units)); err != nil {
+		units := ""
+		if includeRaw {
+			units = it.Units
+		}
+		if _, err := fmt.Fprintf(w, "  [%d]\t%-40s\t%s\n", it.Tag, it.Name, formatValue(it.Value, units)); err != nil {
 			return err
 		}
 		if includeRaw && len(it.Raw) > 0 {
