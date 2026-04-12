@@ -1,0 +1,46 @@
+{
+  "schema": "urn:misb:KLV:bin:0601.19",
+  "ul": "Bg4rNAILAQEOAQMBAQAAAA==",
+  "lsVersion": 19,
+  "totalLength": 21,
+  "items": [
+    {
+      "tag": 2,
+      "name": "Precision Time Stamp",
+      "value": "1970-01-01T00:00:00.000000Z",
+      "raw": "AAAAAAAAAAA="
+    },
+    {
+      "tag": 6,
+      "name": "Platform Pitch Angle",
+      "value": null,
+      "units": "°",
+      "raw": "gAA="
+    },
+    {
+      "tag": 65,
+      "name": "UAS Datalink LS Version Number",
+      "value": 19,
+      "raw": "Ew=="
+    },
+    {
+      "tag": 1,
+      "name": "Checksum",
+      "value": 26670,
+      "raw": "aC4="
+    }
+  ],
+  "checksum": {
+    "expected": 26670,
+    "computed": 26670,
+    "valid": true
+  },
+  "diagnostics": [
+    {
+      "severity": "error",
+      "code": "tag_decode_error",
+      "message": "value out of range (error indicator)",
+      "tag": 6
+    }
+  ]
+}

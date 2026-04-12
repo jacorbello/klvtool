@@ -8,13 +8,17 @@
 - `internal/backends/ffmpeg` isolates command construction and backend-specific behavior.
 - `internal/output` writes payload files and `manifest.ndjson`.
 - `internal/model` contains shared manifest and typed error models.
+- `internal/klv/` is the MISB KLV engine: BER-OID tag decoder, checksum, IMAPB, spec registry, decode runner, and structural/per-tag validation.
+- `internal/klv/record/` defines the decoded `Record`, `Item`, and closed-sum `Value` types with custom JSON marshaling.
+- `internal/klv/specs/` defines the `SpecVersion` interface and per-standard tag tables (currently ST 0601.19).
+- `internal/packetize/` splits raw extraction output into individual KLV packets for the decode pipeline.
 
-## Current Milestone
-
-The bootstrap scope is intentionally narrow:
+## Commands
 
 - `klvtool doctor` reports backend health.
 - `klvtool extract` supports `--input`, `--out`, and `--backend ffmpeg`.
+- `klvtool packetize` splits raw extraction output into KLV packets.
+- `klvtool decode` decodes MISB ST 0601.19 KLV from an MPEG-TS file into typed records with NDJSON or text output.
 - `ffmpeg` is the sole extraction backend.
 
 ## Extraction Flow

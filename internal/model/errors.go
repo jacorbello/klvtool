@@ -17,6 +17,8 @@ const (
 	CodeTSSync             Code = "ts_sync_failure"
 	CodeTSParse            Code = "ts_parse_failure"
 	CodeTSRead             Code = "ts_read_failure"
+	CodeKLVDecode          Code = "klv_decode_failure"
+	CodeKLVSpec            Code = "klv_spec_unknown"
 )
 
 // Error classifies a failure with a stable code and optional wrapped cause.
@@ -99,4 +101,12 @@ func TSParse(err error) *Error {
 
 func TSRead(err error) *Error {
 	return NewError(CodeTSRead, err)
+}
+
+func KLVDecode(err error) *Error {
+	return NewError(CodeKLVDecode, err)
+}
+
+func KLVSpec(err error) *Error {
+	return NewError(CodeKLVSpec, err)
 }
