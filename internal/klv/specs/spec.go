@@ -48,13 +48,12 @@ type TagDefinition struct {
 	Scale  *LinearScale
 
 	// Function-pointer escape hatch. When non-nil, takes precedence over
-	// Format for decoding. Length/Min/Max/Enum/Mandatory still apply for
-	// validation regardless of which decoder path runs.
+	// Format for decoding. Length/Enum/Mandatory and Scale-range still
+	// apply for validation regardless of which decoder path runs.
 	Decode func(raw []byte) (record.Value, error)
 
 	// Validation metadata.
 	Mandatory bool
-	Min, Max  *float64
 	Enum      map[int64]string
 }
 

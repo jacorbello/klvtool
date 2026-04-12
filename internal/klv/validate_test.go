@@ -297,3 +297,35 @@ func TestValidateMissingTag1SkipsChecksumDiag(t *testing.T) {
 		t.Errorf("expected missing_mandatory_item for tag 1; got %+v", diags)
 	}
 }
+
+// TestValidateTag1WrongLengthSkipsChecksumDiag verifies that when tag 1 is
+// present but has the wrong length, the checksum was never computed by the
+// engine, so Validate must not emit a misleading checksum_mismatch. The
+// length problem is reported via tag_length_mismatch instead.
+func TestValidateTag1WrongLengthSkipsChecksumDiag(t *testing.T) {
+	rec := &record.Record{
+		LSVersion: 19,
+		Checksum:  record.ChecksumInfo{Valid: false}, // never computed
+		Items: []record.Item{
+			{Tag: 2, Name: "Precision Time Stamp", Raw: make([]byte, 8)},
+			{Tag: 65, Name: "UAS Datalink LS Version Number", Raw: []byte{19}},
+			{Tag: 1, Name: "Checksum", Raw: []byte{0x00}}, // 1 byte, wrong length
+		},
+	}
+	diags := Validate(st0601.V19(), rec)
+	var hasChecksum, hasLength bool
+	for _, d := range diags {
+		if d.Code == "checksum_mismatch" {
+			hasChecksum = true
+		}
+		if d.Code == "tag_length_mismatch" && d.Tag != nil && *d.Tag == 1 {
+			hasLength = true
+		}
+	}
+	if hasChecksum {
+		t.Errorf("unexpected checksum_mismatch when tag 1 has wrong length: %+v", diags)
+	}
+	if !hasLength {
+		t.Errorf("expected tag_length_mismatch for tag 1; got %+v", diags)
+	}
+}

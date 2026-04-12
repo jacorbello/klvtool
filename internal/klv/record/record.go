@@ -86,7 +86,7 @@ func (NestedValue) isKLVValue() {}
 
 // JSON marshaling. Scalars marshal as primitives. BytesValue, NestedValue.Raw,
 // and Item.Raw marshal as base64 strings. TimeValue uses RFC 3339 with
-// millisecond precision.
+// microsecond precision.
 
 func (v IntValue) MarshalJSON() ([]byte, error)    { return json.Marshal(int64(v)) }
 func (v UintValue) MarshalJSON() ([]byte, error)   { return json.Marshal(uint64(v)) }

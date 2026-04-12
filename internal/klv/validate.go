@@ -111,18 +111,29 @@ func Validate(spec specs.SpecVersion, rec *record.Record) []record.Diagnostic {
 		}
 	}
 
-	// 5. Checksum. Only emit when tag 1 is actually present and its
-	// computed value disagrees with the wire. When tag 1 is missing the
-	// Record's ChecksumInfo is zero-valued (Valid = false) but we should
-	// not report a mismatch — missing_mandatory_item above covers it.
+	// 5. Checksum. Only emit when tag 1 is present with the correct 2-byte
+	// length (i.e. the engine actually computed a checksum) and the
+	// computed value disagrees with the wire. When tag 1 is missing or
+	// malformed the Record's ChecksumInfo is zero-valued (Valid = false)
+	// but we must not report a mismatch — missing_mandatory_item and
+	// tag_length_mismatch above already cover those cases.
 	if present[1] && !rec.Checksum.Valid {
-		one := 1
-		diags = append(diags, record.Diagnostic{
-			Severity: "error",
-			Code:     "checksum_mismatch",
-			Message:  fmt.Sprintf("checksum expected=0x%04X computed=0x%04X", rec.Checksum.Expected, rec.Checksum.Computed),
-			Tag:      &one,
-		})
+		var tag1Raw []byte
+		for _, it := range rec.Items {
+			if it.Tag == 1 {
+				tag1Raw = it.Raw
+				break
+			}
+		}
+		if len(tag1Raw) == 2 {
+			one := 1
+			diags = append(diags, record.Diagnostic{
+				Severity: "error",
+				Code:     "checksum_mismatch",
+				Message:  fmt.Sprintf("checksum expected=0x%04X computed=0x%04X", rec.Checksum.Expected, rec.Checksum.Computed),
+				Tag:      &one,
+			})
+		}
 	}
 
 	return diags

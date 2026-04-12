@@ -261,8 +261,9 @@ func applyScaleUnsigned(v uint64, format specs.Format, scale specs.LinearScale) 
 
 // applyScaleSigned maps a signed integer onto [Min, Max] linearly.
 // For an L-byte signed integer, encoded -(2^(8L-1)-1) → Min, encoded 2^(8L-1)-1 → Max.
-// If ErrorIndicator is true, the encoded value -2^(8L-1) (0x80..0) yields
-// a NaN FloatValue and a range diagnostic should be emitted by the caller.
+// If ErrorIndicator is true, the encoded value -2^(8L-1) (0x80..0) returns a
+// NaN FloatValue together with an error; current callers surface that as a
+// tag_decode_error diagnostic via dispatchDecode.
 func applyScaleSigned(v int64, format specs.Format, scale specs.LinearScale) (record.Value, error) {
 	bytes := map[specs.Format]int{
 		specs.FormatInt8: 1, specs.FormatInt16: 2,
