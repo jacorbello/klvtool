@@ -199,7 +199,8 @@ func TestDecodeLocalSetPreservesNonCanonicalBERLength(t *testing.T) {
 }
 
 // TestCoordinateTagsMatchSpecExamples validates that coordinate tags decode
-// to the exact software values published in ST 0601.19 Section 8.
+// to the software values published in ST 0601.19 Section 8 within the
+// allowed tolerance for the spec-defined encoded resolution.
 func TestCoordinateTagsMatchSpecExamples(t *testing.T) {
 	sv := st0601.V19()
 	tests := []struct {
