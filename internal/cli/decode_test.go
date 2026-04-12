@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
@@ -12,9 +13,16 @@ import (
 	"github.com/jacorbello/klvtool/internal/packetize"
 )
 
+// testRegistry is the registry used by tests that need --schema validation.
+func testRegistry() *klv.Registry {
+	r := klv.NewRegistry()
+	r.Register(st0601.V19())
+	return r
+}
+
 // fakeDecodePayloads returns a single synthetic decoded record for tests that
 // need to exercise the writers without going through ffmpeg.
-func fakeDecodePayloads(_ string, _ int, _ string) ([]record.Record, error) {
+func fakeDecodePayloads(_ string, _ int, _ string) (DecodeResult, error) {
 	rec := record.Record{
 		Schema:      "urn:misb:KLV:bin:0601.19",
 		LSVersion:   19,
@@ -27,7 +35,7 @@ func fakeDecodePayloads(_ string, _ int, _ string) ([]record.Record, error) {
 			{Tag: 1, Name: "Checksum", Value: record.UintValue(0x1111)},
 		},
 	}
-	return []record.Record{rec}, nil
+	return DecodeResult{Records: []record.Record{rec}}, nil
 }
 
 func TestDecodeCommandNDJSONOutput(t *testing.T) {
@@ -94,10 +102,37 @@ func TestDecodeCommandMissingInput(t *testing.T) {
 }
 
 func TestDecodeCommandRejectsUnknownSchema(t *testing.T) {
-	cmd := &DecodeCommand{Out: &bytes.Buffer{}, Err: &bytes.Buffer{}}
+	cmd := &DecodeCommand{
+		Out:      &bytes.Buffer{},
+		Err:      &bytes.Buffer{},
+		Registry: testRegistry,
+	}
 	code := cmd.Execute([]string{"--input", "fake.ts", "--schema", "urn:misb:KLV:bin:0601.14"})
 	if code != 2 {
 		t.Errorf("exit code = %d, want 2 (usage)", code)
+	}
+}
+
+// TestDecodeCommandAcceptsRegisteredSchema verifies --schema passes the
+// Execute-layer validation when the URN is present in the command's
+// Registry. Uses a fake Decode so ffmpeg isn't invoked.
+func TestDecodeCommandAcceptsRegisteredSchema(t *testing.T) {
+	var gotSchema string
+	cmd := &DecodeCommand{
+		Out:      &bytes.Buffer{},
+		Err:      &bytes.Buffer{},
+		Registry: testRegistry,
+		Decode: func(_ string, _ int, schema string) (DecodeResult, error) {
+			gotSchema = schema
+			return DecodeResult{}, nil
+		},
+	}
+	code := cmd.Execute([]string{"--input", "fake.ts", "--schema", "urn:misb:KLV:bin:0601.19"})
+	if code != 0 {
+		t.Fatalf("exit code = %d", code)
+	}
+	if gotSchema != "urn:misb:KLV:bin:0601.19" {
+		t.Errorf("schema = %q", gotSchema)
 	}
 }
 
@@ -111,7 +146,7 @@ func TestDecodeCommandRejectsStrayPositionalArgs(t *testing.T) {
 
 // fakeDecodeWithRaw returns a record with Raw bytes populated so --raw
 // behavior can be verified.
-func fakeDecodeWithRaw(_ string, _ int, _ string) ([]record.Record, error) {
+func fakeDecodeWithRaw(_ string, _ int, _ string) (DecodeResult, error) {
 	rec := record.Record{
 		Schema:    "urn:misb:KLV:bin:0601.19",
 		LSVersion: 19,
@@ -124,7 +159,7 @@ func fakeDecodeWithRaw(_ string, _ int, _ string) ([]record.Record, error) {
 			},
 		},
 	}
-	return []record.Record{rec}, nil
+	return DecodeResult{Records: []record.Record{rec}}, nil
 }
 
 func TestDecodeCommandRawTextIncludesRawBytes(t *testing.T) {
@@ -149,11 +184,12 @@ func TestDecodeCommandRawTextIncludesRawBytes(t *testing.T) {
 func TestDecodeCommandSchemaPassedToDecode(t *testing.T) {
 	var gotSchema string
 	cmd := &DecodeCommand{
-		Out: &bytes.Buffer{},
-		Err: &bytes.Buffer{},
-		Decode: func(_ string, _ int, schema string) ([]record.Record, error) {
+		Out:      &bytes.Buffer{},
+		Err:      &bytes.Buffer{},
+		Registry: testRegistry,
+		Decode: func(_ string, _ int, schema string) (DecodeResult, error) {
 			gotSchema = schema
-			return nil, nil
+			return DecodeResult{}, nil
 		},
 	}
 	code := cmd.Execute([]string{"--input", "fake.ts", "--schema", "urn:misb:KLV:bin:0601.19"})
@@ -162,6 +198,87 @@ func TestDecodeCommandSchemaPassedToDecode(t *testing.T) {
 	}
 	if gotSchema != "urn:misb:KLV:bin:0601.19" {
 		t.Errorf("schema = %q, want urn:misb:KLV:bin:0601.19", gotSchema)
+	}
+}
+
+// TestDecodeCommandStreamDiagnosticsReported verifies that stream-level
+// diagnostics (no packets decoded, but packetize flagged something) are
+// reported to stderr and do NOT produce a phantom Packet 0 in stdout.
+func TestDecodeCommandStreamDiagnosticsReported(t *testing.T) {
+	out := &bytes.Buffer{}
+	errBuf := &bytes.Buffer{}
+	cmd := &DecodeCommand{
+		Out:      out,
+		Err:      errBuf,
+		Registry: testRegistry,
+		Decode: func(_ string, _ int, _ string) (DecodeResult, error) {
+			return DecodeResult{
+				Records: nil,
+				StreamDiagnostics: []record.Diagnostic{
+					{Severity: "error", Code: "packetize_invalid_ber_length", Message: "length overflow"},
+				},
+			}, nil
+		},
+	}
+	code := cmd.Execute([]string{"--input", "fake.ts"})
+	if code != 0 {
+		t.Fatalf("exit code = %d; stderr=%s", code, errBuf.String())
+	}
+	// stdout must be empty — no phantom packet.
+	if strings.TrimSpace(out.String()) != "" {
+		t.Errorf("expected empty stdout for zero-packet result; got: %q", out.String())
+	}
+	// stderr must mention the diagnostic.
+	if !strings.Contains(errBuf.String(), "packetize_invalid_ber_length") {
+		t.Errorf("expected stream diagnostic on stderr; got: %q", errBuf.String())
+	}
+	// Summary must say 0 packet(s).
+	if !strings.Contains(errBuf.String(), "decoded 0 packet(s)") {
+		t.Errorf("expected 'decoded 0 packet(s)' summary; got: %q", errBuf.String())
+	}
+}
+
+// TestDecodeCommandStreamErrorStrictFails verifies that --strict causes
+// exit 1 when a stream-level error diagnostic is present, even with zero
+// decoded packets.
+func TestDecodeCommandStreamErrorStrictFails(t *testing.T) {
+	cmd := &DecodeCommand{
+		Out:      &bytes.Buffer{},
+		Err:      &bytes.Buffer{},
+		Registry: testRegistry,
+		Decode: func(_ string, _ int, _ string) (DecodeResult, error) {
+			return DecodeResult{
+				StreamDiagnostics: []record.Diagnostic{
+					{Severity: "error", Code: "packetize_invalid_ber_length", Message: "length overflow"},
+				},
+			}, nil
+		},
+	}
+	code := cmd.Execute([]string{"--input", "fake.ts", "--strict"})
+	if code != 1 {
+		t.Errorf("exit code = %d, want 1 (strict)", code)
+	}
+}
+
+// errWriter fails every Write call. Used to verify writeText propagates
+// output errors instead of silently ignoring them.
+type errWriter struct{}
+
+func (errWriter) Write(_ []byte) (int, error) { return 0, errors.New("disk full") }
+
+func TestDecodeCommandTextWriteErrorSurfaced(t *testing.T) {
+	errBuf := &bytes.Buffer{}
+	cmd := &DecodeCommand{
+		Out:    errWriter{},
+		Err:    errBuf,
+		Decode: fakeDecodePayloads,
+	}
+	code := cmd.Execute([]string{"--input", "fake.ts", "--format", "text"})
+	if code == 0 {
+		t.Fatalf("expected non-zero exit on write error; got 0")
+	}
+	if !strings.Contains(errBuf.String(), "output_write_failure") && !strings.Contains(errBuf.String(), "disk full") {
+		t.Errorf("expected write error surfaced on stderr; got: %s", errBuf.String())
 	}
 }
 

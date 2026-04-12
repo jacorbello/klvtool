@@ -27,8 +27,18 @@ type DecodeCommand struct {
 	// Decode runs the decode pipeline. When schema is non-empty, the
 	// implementation must restrict decoding to the SpecVersion registered
 	// under that URN (bypassing UL-based auto-detection).
-	Decode   func(path string, pid int, schema string) ([]record.Record, error)
+	Decode   func(path string, pid int, schema string) (DecodeResult, error)
 	Registry func() *klv.Registry
+}
+
+// DecodeResult holds decoded records plus stream-level diagnostics that
+// aren't attached to any specific decoded packet (e.g. packetize recovery
+// events on a raw stream that produced zero KLV packets). Stream-level
+// diagnostics are reported to stderr and counted toward --strict without
+// polluting the decoded-record output.
+type DecodeResult struct {
+	Records           []record.Record
+	StreamDiagnostics []record.Diagnostic
 }
 
 // NewDecodeCommand returns a DecodeCommand with default runtime dependencies.
@@ -42,11 +52,11 @@ func NewDecodeCommand() *DecodeCommand {
 			return r
 		},
 	}
-	c.Decode = func(path string, pid int, schema string) ([]record.Record, error) {
+	c.Decode = func(path string, pid int, schema string) (DecodeResult, error) {
 		report := defaultDoctorDetect(context.Background(), "", currentEnvMap())
 		desc := ffmpegDescriptor(report)
 		if !desc.Healthy {
-			return nil, model.MissingDependency(fmt.Errorf("ffmpeg backend is unavailable"))
+			return DecodeResult{}, model.MissingDependency(fmt.Errorf("ffmpeg backend is unavailable"))
 		}
 
 		extractor := extract.NewExtractor(ffmpegbackend.NewBackend())
@@ -55,7 +65,7 @@ func NewDecodeCommand() *DecodeCommand {
 			Backend:   desc,
 		})
 		if err != nil {
-			return nil, err
+			return DecodeResult{}, err
 		}
 
 		reg := c.Registry()
@@ -65,13 +75,13 @@ func NewDecodeCommand() *DecodeCommand {
 		if schema != "" {
 			sv, ok := reg.Lookup(schema)
 			if !ok {
-				return nil, model.InvalidUsage(fmt.Errorf("schema %q not registered", schema))
+				return DecodeResult{}, model.InvalidUsage(fmt.Errorf("schema %q not registered", schema))
 			}
 			reg = klv.NewRegistry()
 			reg.Register(sv)
 		}
 		parser := packetize.NewParser()
-		var out []record.Record
+		var res DecodeResult
 		for _, raw := range result.Records {
 			if pid != 0 && int(raw.PID) != pid {
 				continue
@@ -81,37 +91,35 @@ func NewDecodeCommand() *DecodeCommand {
 				Record: raw,
 			})
 			if err != nil {
-				return nil, err
+				return DecodeResult{}, err
 			}
 			// Lift packetize-layer diagnostics (recovery events, malformed
 			// packet scans) into record.Diagnostic so --strict and the final
 			// summary see them. Without this, best-effort recovery is silent.
 			sourceDiags := liftPacketizeDiagnostics(stream.Diagnostics)
-			if len(stream.Packets) == 0 && len(sourceDiags) > 0 {
-				// No KLV packets decoded from this raw stream but packetize
-				// recovered from or flagged problems. Emit a placeholder
-				// Record so the diagnostics aren't dropped.
-				out = append(out, record.Record{
-					Schema:      "",
-					Diagnostics: sourceDiags,
-				})
+			if len(stream.Packets) == 0 {
+				// No KLV packets decoded from this raw stream. Any
+				// packetize diagnostics become stream-level diagnostics
+				// so they aren't dropped. Do NOT emit a synthetic record
+				// — the output should not claim a packet was decoded.
+				res.StreamDiagnostics = append(res.StreamDiagnostics, sourceDiags...)
 				continue
 			}
 			for i, pkt := range stream.Packets {
 				rec, err := klv.DecodeLocalSet(reg, pkt.Key, pkt.Value)
 				if err != nil {
-					return nil, err
+					return DecodeResult{}, err
 				}
 				// Attach packetize diagnostics to the first decoded record
 				// from this raw stream so they flow through the normal
-				// reporting path.
+				// per-packet reporting path.
 				if i == 0 && len(sourceDiags) > 0 {
 					rec.Diagnostics = append(sourceDiags, rec.Diagnostics...)
 				}
-				out = append(out, rec)
+				res.Records = append(res.Records, rec)
 			}
 		}
-		return out, nil
+		return res, nil
 	}
 	return c
 }
@@ -164,10 +172,20 @@ func (c *DecodeCommand) Execute(args []string) int {
 		c.writeError(c.Err, model.InvalidUsage(fmt.Errorf("invalid format %q (want ndjson|text)", format)))
 		return usageExitCode
 	}
-	if strings.TrimSpace(schema) != "" && schema != "urn:misb:KLV:bin:0601.19" {
-		c.writeUsage(c.Err)
-		c.writeError(c.Err, model.InvalidUsage(fmt.Errorf("unsupported schema %q (phase 1 only registers urn:misb:KLV:bin:0601.19)", schema)))
-		return usageExitCode
+	if strings.TrimSpace(schema) != "" {
+		// Fail fast at the CLI layer — no point spinning up ffmpeg only
+		// to discover the schema URN is unknown. Consult whichever
+		// registry the command is configured with so this check scales
+		// to future spec versions without touching decode.go.
+		regFn := c.Registry
+		if regFn == nil {
+			regFn = NewDecodeCommand().Registry
+		}
+		if _, ok := regFn().Lookup(schema); !ok {
+			c.writeUsage(c.Err)
+			c.writeError(c.Err, model.InvalidUsage(fmt.Errorf("unknown schema %q", schema)))
+			return usageExitCode
+		}
 	}
 
 	decode := c.Decode
@@ -175,7 +193,7 @@ func (c *DecodeCommand) Execute(args []string) int {
 		decode = NewDecodeCommand().Decode
 	}
 
-	records, err := decode(inputPath, pid, schema)
+	result, err := decode(inputPath, pid, schema)
 	if err != nil {
 		c.writeError(c.Err, err)
 		return exitCodeForError(err)
@@ -193,7 +211,7 @@ func (c *DecodeCommand) Execute(args []string) int {
 	}
 
 	var errorCount int
-	for i, rec := range records {
+	for i, rec := range result.Records {
 		if format == "ndjson" {
 			if err := writeNDJSON(sink, i, rec, raw); err != nil {
 				c.writeError(c.Err, model.OutputWrite(err))
@@ -212,10 +230,20 @@ func (c *DecodeCommand) Execute(args []string) int {
 		}
 	}
 
+	// Stream-level diagnostics (e.g. packetize recovery events on raw
+	// streams that produced zero decoded KLV packets) are reported to
+	// stderr and counted toward --strict, but not emitted as packets.
+	for _, d := range result.StreamDiagnostics {
+		fmt.Fprintf(c.Err, "[stream] %s %s: %s\n", d.Severity, d.Code, d.Message) //nolint:errcheck
+		if d.Severity == "error" {
+			errorCount++
+		}
+	}
+
 	// errorCount includes structural decode errors (e.g. unknown_spec,
-	// tag_decode_error), packetize-layer diagnostics lifted in, and
-	// validation failures. The label reflects that.
-	fmt.Fprintf(c.Err, "decoded %d packet(s), %d error diagnostic(s)\n", len(records), errorCount) //nolint:errcheck
+	// tag_decode_error), packetize-layer diagnostics, and validation
+	// failures. The label reflects that.
+	fmt.Fprintf(c.Err, "decoded %d packet(s), %d error diagnostic(s)\n", len(result.Records), errorCount) //nolint:errcheck
 	if strict && errorCount > 0 {
 		return 1
 	}
@@ -279,17 +307,27 @@ func writeText(w io.Writer, index int, rec record.Record, includeRaw bool) error
 	if !rec.Checksum.Valid {
 		check = "MISMATCH"
 	}
-	fmt.Fprintf(w, "Packet %d   schema=%s  checksum=%s\n", index, rec.Schema, check) //nolint:errcheck
+	if _, err := fmt.Fprintf(w, "Packet %d   schema=%s  checksum=%s\n", index, rec.Schema, check); err != nil {
+		return err
+	}
 	for _, it := range rec.Items {
-		fmt.Fprintf(w, "  [%d]\t%-40s\t%s\n", it.Tag, it.Name, formatValue(it.Value, it.Units)) //nolint:errcheck
+		if _, err := fmt.Fprintf(w, "  [%d]\t%-40s\t%s\n", it.Tag, it.Name, formatValue(it.Value, it.Units)); err != nil {
+			return err
+		}
 		if includeRaw && len(it.Raw) > 0 {
-			fmt.Fprintf(w, "       \traw=0x%x\n", it.Raw) //nolint:errcheck
+			if _, err := fmt.Fprintf(w, "       \traw=0x%x\n", it.Raw); err != nil {
+				return err
+			}
 		}
 	}
 	for _, d := range rec.Diagnostics {
-		fmt.Fprintf(w, "  ! [%s] %s: %s\n", d.Severity, d.Code, d.Message) //nolint:errcheck
+		if _, err := fmt.Fprintf(w, "  ! [%s] %s: %s\n", d.Severity, d.Code, d.Message); err != nil {
+			return err
+		}
 	}
-	fmt.Fprintln(w) //nolint:errcheck
+	if _, err := fmt.Fprintln(w); err != nil {
+		return err
+	}
 	return nil
 }
 
