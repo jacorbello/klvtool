@@ -1,6 +1,7 @@
 package klv
 
 import (
+	"math"
 	"testing"
 
 	"github.com/jacorbello/klvtool/internal/klv/record"
@@ -210,6 +211,27 @@ func TestValidateRangeViolation(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("expected tag_range_violation diagnostic; got %+v", diags)
+	}
+}
+
+// Regression guard: NaN comparisons are always false, so the range check
+// already short-circuits today. This test exists to catch a future edit that
+// drops the explicit math.IsNaN/IsInf guard and replaces it with something
+// NaN-sensitive.
+func TestValidateNaNFloatSkipsRangeViolation(t *testing.T) {
+	nan := math.NaN()
+	rec := &record.Record{
+		LSVersion: 1,
+		Checksum:  record.ChecksumInfo{Valid: true},
+		Items: []record.Item{
+			{Tag: 5, Name: "Bounded Float", Value: record.FloatValue(nan), Raw: []byte{0x00, 0x00}},
+		},
+	}
+	diags := Validate(rangeEnumSpec{}, rec)
+	for _, d := range diags {
+		if d.Code == "tag_range_violation" {
+			t.Errorf("NaN FloatValue must not produce tag_range_violation; got %+v", d)
+		}
 	}
 }
 

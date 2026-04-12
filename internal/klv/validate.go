@@ -2,6 +2,7 @@ package klv
 
 import (
 	"fmt"
+	"math"
 	"sort"
 
 	"github.com/jacorbello/klvtool/internal/klv/record"
@@ -85,9 +86,16 @@ func Validate(spec specs.SpecVersion, rec *record.Record) []record.Diagnostic {
 			})
 		}
 		// Range checks apply to FloatValue after a Scale was applied.
+		// NaN/Inf are skipped here: they come from ST 0601 error-indicator
+		// sentinels and are already surfaced upstream as tag_decode_error
+		// via applyScaleSigned. A range comparison against NaN is always
+		// false anyway, so this is a clarity guard rather than a behavior
+		// change — future readers (and future checks added here) need to
+		// know these sentinels are intentionally ignored.
 		if fv, ok := it.Value.(record.FloatValue); ok && td.Scale != nil {
 			f := float64(fv)
-			if f < td.Scale.Min || f > td.Scale.Max {
+			if !math.IsNaN(f) && !math.IsInf(f, 0) &&
+				(f < td.Scale.Min || f > td.Scale.Max) {
 				tag := it.Tag
 				diags = append(diags, record.Diagnostic{
 					Severity: "warning",
