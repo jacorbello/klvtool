@@ -1,6 +1,7 @@
 package klv
 
 import (
+	"encoding/json"
 	"math"
 	"testing"
 	"time"
@@ -9,6 +10,38 @@ import (
 	"github.com/jacorbello/klvtool/internal/klv/specs"
 	"github.com/jacorbello/klvtool/internal/klv/specs/st0601"
 )
+
+// TestDecodeErrorIndicatorRecordMarshals covers the end-to-end path the
+// reviewer flagged: a real 0601 packet with a signed error-indicator
+// sentinel (e.g. Platform Pitch Angle = 0x8000) must still marshal to
+// NDJSON cleanly, emitting JSON null for the NaN value instead of
+// crashing json.Marshal and exiting the whole decode run.
+func TestDecodeErrorIndicatorRecordMarshals(t *testing.T) {
+	reg := NewRegistry()
+	reg.Register(st0601.V19())
+
+	pts := uint64(time.Date(2023, 3, 2, 12, 34, 56, 789_000_000, time.UTC).UnixNano() / 1000)
+	ptsBytes := make([]byte, 8)
+	for i := 7; i >= 0; i-- {
+		ptsBytes[i] = byte(pts & 0xFF)
+		pts >>= 8
+	}
+
+	packet := buildPacket(t, map[int][]byte{
+		2:  ptsBytes,
+		5:  {0x80, 0x00}, // Platform Heading Angle — uint16, not error indicator (skip)
+		6:  {0x80, 0x00}, // Platform Pitch Angle — int16 error indicator
+		65: {19},
+	})
+
+	rec, err := Decode(reg, packet)
+	if err != nil {
+		t.Fatalf("Decode error: %v", err)
+	}
+	if _, err := json.Marshal(rec); err != nil {
+		t.Fatalf("json.Marshal of record with error indicator failed: %v", err)
+	}
+}
 
 // buildPacket constructs a complete ST 0601 LS packet with the given items.
 // Handles UL key prefix, BER length, BER-OID tags, and computes the checksum

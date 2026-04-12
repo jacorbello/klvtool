@@ -13,6 +13,30 @@ import (
 	"github.com/jacorbello/klvtool/internal/packetize"
 )
 
+// TestWriteNDJSONEmptyCollectionsSerializeAsArrays pins the Layer 1 convention:
+// empty items and diagnostics must marshal as [] not null so consumers can
+// rely on array iteration without null-checking.
+func TestWriteNDJSONEmptyCollectionsSerializeAsArrays(t *testing.T) {
+	var buf bytes.Buffer
+	rec := record.Record{
+		Schema:      "urn:misb:KLV:bin:0601.19",
+		LSVersion:   19,
+		TotalLength: 0,
+		Items:       nil,
+		Diagnostics: nil,
+	}
+	if err := writeNDJSON(&buf, 0, rec, false); err != nil {
+		t.Fatalf("writeNDJSON: %v", err)
+	}
+	line := buf.String()
+	if !strings.Contains(line, `"items":[]`) {
+		t.Errorf("expected empty items as []: %s", line)
+	}
+	if !strings.Contains(line, `"diagnostics":[]`) {
+		t.Errorf("expected empty diagnostics as []: %s", line)
+	}
+}
+
 // testRegistry is the registry used by tests that need --schema validation.
 func testRegistry() *klv.Registry {
 	r := klv.NewRegistry()

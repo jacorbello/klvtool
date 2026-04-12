@@ -5,6 +5,7 @@ package record
 import (
 	"encoding/base64"
 	"encoding/json"
+	"math"
 	"time"
 )
 
@@ -88,9 +89,19 @@ func (NestedValue) isKLVValue() {}
 // and Item.Raw marshal as base64 strings. TimeValue uses RFC 3339 with
 // microsecond precision.
 
-func (v IntValue) MarshalJSON() ([]byte, error)    { return json.Marshal(int64(v)) }
-func (v UintValue) MarshalJSON() ([]byte, error)   { return json.Marshal(uint64(v)) }
-func (v FloatValue) MarshalJSON() ([]byte, error)  { return json.Marshal(float64(v)) }
+func (v IntValue) MarshalJSON() ([]byte, error)  { return json.Marshal(int64(v)) }
+func (v UintValue) MarshalJSON() ([]byte, error) { return json.Marshal(uint64(v)) }
+
+// FloatValue marshals NaN/Inf as JSON null. ST 0601 "error indicator"
+// sentinels decode to NaN (see applyScaleSigned); json.Marshal would
+// otherwise reject the entire record and crash a decode run.
+func (v FloatValue) MarshalJSON() ([]byte, error) {
+	f := float64(v)
+	if math.IsNaN(f) || math.IsInf(f, 0) {
+		return []byte("null"), nil
+	}
+	return json.Marshal(f)
+}
 func (v StringValue) MarshalJSON() ([]byte, error) { return json.Marshal(string(v)) }
 func (v BoolValue) MarshalJSON() ([]byte, error)   { return json.Marshal(bool(v)) }
 

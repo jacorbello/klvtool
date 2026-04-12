@@ -43,10 +43,11 @@ func Decode(reg *Registry, full []byte) (record.Record, error) {
 // BER header would mis-validate any packet that used a valid non-canonical
 // long-form length encoding.
 func DecodeLocalSet(reg *Registry, ul []byte, lengthBytes []byte, value []byte) (record.Record, error) {
-	header := append([]byte{}, ul...)
-	header = append(header, lengthBytes...)
-	full := append(header, value...)
-	valueStart := len(header)
+	valueStart := len(ul) + len(lengthBytes)
+	full := make([]byte, 0, valueStart+len(value))
+	full = append(full, ul...)
+	full = append(full, lengthBytes...)
+	full = append(full, value...)
 	return decodeLocalSetInternal(reg, ul, value, full, valueStart)
 }
 

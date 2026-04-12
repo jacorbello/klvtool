@@ -96,6 +96,11 @@ func (r *Registry) Resolve(ul []byte, value []byte) (specs.SpecVersion, error) {
 // returning its single-byte value if found. Uses BER-OID for tags and
 // BER short/long form for lengths. Stops at the first match or on any
 // structural error. Returns 0/false when not found.
+//
+// Only exactly 1-byte tag values are supported — matching ST 0601's uint8
+// LS Version tag. A future spec with a multi-byte version tag must replace
+// this helper with a spec-aware decoder rather than silently dropping
+// high-order bytes.
 func peekTag(value []byte, target int) (int, bool) {
 	cursor := 0
 	for cursor < len(value) {
@@ -112,7 +117,10 @@ func peekTag(value []byte, target int) (int, bool) {
 		if cursor+length > len(value) {
 			return 0, false
 		}
-		if tag == target && length >= 1 {
+		if tag == target {
+			if length != 1 {
+				return 0, false
+			}
 			return int(value[cursor]), true
 		}
 		cursor += length

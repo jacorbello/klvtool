@@ -2,10 +2,37 @@ package record
 
 import (
 	"encoding/json"
+	"math"
 	"strings"
 	"testing"
 	"time"
 )
+
+func TestFloatValueNaNInfMarshalAsNull(t *testing.T) {
+	// ST 0601 "error indicator" sentinels decode to NaN FloatValue. Real streams
+	// (platform pitch/roll, sensor position/angles, frame corners, target)
+	// routinely contain these. json.Marshal rejects NaN/Inf by default, so the
+	// marshaler must emit null instead of crashing the entire decode run.
+	cases := []struct {
+		name string
+		v    FloatValue
+	}{
+		{"nan", FloatValue(math.NaN())},
+		{"pos_inf", FloatValue(math.Inf(1))},
+		{"neg_inf", FloatValue(math.Inf(-1))},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			b, err := json.Marshal(tc.v)
+			if err != nil {
+				t.Fatalf("Marshal error: %v", err)
+			}
+			if string(b) != "null" {
+				t.Errorf("Marshal = %s, want null", string(b))
+			}
+		})
+	}
+}
 
 func TestValueJSONMarshaling(t *testing.T) {
 	tests := []struct {

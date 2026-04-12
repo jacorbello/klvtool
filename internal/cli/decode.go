@@ -284,13 +284,20 @@ type ndjsonItem struct {
 }
 
 func writeNDJSON(w io.Writer, index int, rec record.Record, includeRaw bool) error {
+	// Initialize slices explicitly so empty collections serialize as [] not
+	// null — Layer 1 convention for stable consumer-side iteration.
+	diags := rec.Diagnostics
+	if diags == nil {
+		diags = []record.Diagnostic{}
+	}
 	nr := ndjsonRecord{
 		Schema:      rec.Schema,
 		PacketIndex: index,
 		LSVersion:   rec.LSVersion,
 		TotalLength: rec.TotalLength,
 		Checksum:    rec.Checksum,
-		Diagnostics: rec.Diagnostics,
+		Items:       []ndjsonItem{},
+		Diagnostics: diags,
 	}
 	for _, it := range rec.Items {
 		ni := ndjsonItem{Tag: it.Tag, Name: it.Name, Value: it.Value}
