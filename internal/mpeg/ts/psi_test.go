@@ -329,10 +329,10 @@ func TestPSIParserReassemblesMultiPacketPMT(t *testing.T) {
 	for i := 0; i < numStreams; i++ {
 		pid := uint16(0x0200 + i)
 		section = append(section,
-			0x06,                      // stream_type = private data
-			0xE0|byte(pid>>8)&0x1F,    // reserved + PID high
-			byte(pid),                 // PID low
-			0xF0, 0x00,                // ES_info_length = 0
+			0x06,                   // stream_type = private data
+			0xE0|byte(pid>>8)&0x1F, // reserved + PID high
+			byte(pid),              // PID low
+			0xF0, 0x00,             // ES_info_length = 0
 		)
 	}
 	// Placeholder CRC32 (parser does not verify CRC).
