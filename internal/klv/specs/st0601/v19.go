@@ -47,7 +47,7 @@ func v19Tags() map[int]specs.TagDefinition {
 		Format: specs.FormatUint16, Length: 2, Mandatory: true,
 	}
 	tags[2] = specs.TagDefinition{
-		Tag: 2, Name: "Precision Time Stamp", Units: "μs",
+		Tag: 2, Name: "Precision Time Stamp",
 		Format: specs.FormatUint64, Length: 8, Mandatory: true,
 		Decode: decodeMISPTimestamp,
 	}
@@ -225,12 +225,12 @@ func v19Tags() map[int]specs.TagDefinition {
 
 	// ---- Timestamps ----
 	tags[72] = specs.TagDefinition{
-		Tag: 72, Name: "Event Start Time", Units: "μs",
+		Tag: 72, Name: "Event Start Time",
 		Format: specs.FormatUint64, Length: 8,
 		Decode: decodeMISPTimestamp,
 	}
 	tags[131] = specs.TagDefinition{
-		Tag: 131, Name: "Take-off Time", Units: "μs",
+		Tag: 131, Name: "Take-off Time",
 		Decode: decodeVariableMISPTimestamp,
 	}
 	tags[136] = specs.TagDefinition{
