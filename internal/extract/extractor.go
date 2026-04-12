@@ -8,16 +8,9 @@ import (
 	"github.com/jacorbello/klvtool/internal/model"
 )
 
-// BackendName is the normalized identifier for an extraction backend.
-type BackendName string
-
-const (
-	BackendFFmpeg BackendName = "ffmpeg"
-)
-
 // BackendDescriptor is the normalized, extract-layer view of a backend health report.
 type BackendDescriptor struct {
-	Name    BackendName
+	Name    string
 	Healthy bool
 	Tools   []string
 }

@@ -26,7 +26,7 @@ func (s stubBackend) Extract(ctx context.Context, path string) ([]PayloadRecord,
 
 func TestRunExtractsPayloadsFromHealthyBackend(t *testing.T) {
 	backend := stubBackend{
-		descriptor: BackendDescriptor{Name: BackendFFmpeg, Healthy: true},
+		descriptor: BackendDescriptor{Name: "ffmpeg", Healthy: true},
 		version:    "7.1",
 		records: []PayloadRecord{
 			{RecordID: "klv-001", PID: 0x102, Payload: []byte{0x01}},
@@ -36,7 +36,7 @@ func TestRunExtractsPayloadsFromHealthyBackend(t *testing.T) {
 
 	result, err := ext.Run(context.Background(), RunRequest{
 		InputPath: "input.ts",
-		Backend:   BackendDescriptor{Name: BackendFFmpeg, Healthy: true},
+		Backend:   BackendDescriptor{Name: "ffmpeg", Healthy: true},
 	})
 	if err != nil {
 		t.Fatalf("expected successful extraction, got error: %v", err)
@@ -51,13 +51,13 @@ func TestRunExtractsPayloadsFromHealthyBackend(t *testing.T) {
 
 func TestRunFailsWhenBackendUnhealthy(t *testing.T) {
 	backend := stubBackend{
-		descriptor: BackendDescriptor{Name: BackendFFmpeg, Healthy: false},
+		descriptor: BackendDescriptor{Name: "ffmpeg", Healthy: false},
 	}
 	ext := NewExtractor(backend)
 
 	_, err := ext.Run(context.Background(), RunRequest{
 		InputPath: "input.ts",
-		Backend:   BackendDescriptor{Name: BackendFFmpeg, Healthy: false},
+		Backend:   BackendDescriptor{Name: "ffmpeg", Healthy: false},
 	})
 	if err == nil {
 		t.Fatal("expected error for unhealthy backend")
@@ -78,14 +78,14 @@ func TestRunFailsWhenExtractorNotInitialized(t *testing.T) {
 
 func TestRunWrapsBackendVersionError(t *testing.T) {
 	backend := stubBackend{
-		descriptor: BackendDescriptor{Name: BackendFFmpeg, Healthy: true},
+		descriptor: BackendDescriptor{Name: "ffmpeg", Healthy: true},
 		versionErr: errors.New("version failed"),
 	}
 	ext := NewExtractor(backend)
 
 	_, err := ext.Run(context.Background(), RunRequest{
 		InputPath: "input.ts",
-		Backend:   BackendDescriptor{Name: BackendFFmpeg, Healthy: true},
+		Backend:   BackendDescriptor{Name: "ffmpeg", Healthy: true},
 	})
 	if err == nil {
 		t.Fatal("expected error when version fails")
@@ -94,7 +94,7 @@ func TestRunWrapsBackendVersionError(t *testing.T) {
 
 func TestRunWrapsBackendExtractError(t *testing.T) {
 	backend := stubBackend{
-		descriptor: BackendDescriptor{Name: BackendFFmpeg, Healthy: true},
+		descriptor: BackendDescriptor{Name: "ffmpeg", Healthy: true},
 		version:    "7.1",
 		extractErr: errors.New("extract failed"),
 	}
@@ -102,7 +102,7 @@ func TestRunWrapsBackendExtractError(t *testing.T) {
 
 	_, err := ext.Run(context.Background(), RunRequest{
 		InputPath: "input.ts",
-		Backend:   BackendDescriptor{Name: BackendFFmpeg, Healthy: true},
+		Backend:   BackendDescriptor{Name: "ffmpeg", Healthy: true},
 	})
 	if err == nil {
 		t.Fatal("expected error when extraction fails")

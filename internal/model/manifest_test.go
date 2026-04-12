@@ -85,7 +85,6 @@ func TestErrorTyping(t *testing.T) {
 	}{
 		{name: "invalid usage", err: InvalidUsage(fmt.Errorf("bad flag")), code: CodeInvalidUsage},
 		{name: "missing dependency", err: MissingDependency(fmt.Errorf("ffprobe")), code: CodeMissingDependency},
-		{name: "unsupported backend", err: UnsupportedBackend(fmt.Errorf("backend-x")), code: CodeUnsupportedBackend},
 		{name: "backend execution failure", err: BackendExecution(fmt.Errorf("exit 2")), code: CodeBackendExecution},
 		{name: "backend parse failure", err: BackendParse(fmt.Errorf("invalid json")), code: CodeBackendParse},
 		{name: "output write failure", err: OutputWrite(fmt.Errorf("disk full")), code: CodeOutputWrite},
