@@ -85,6 +85,13 @@ func TestV19CoreTagDecoding(t *testing.T) {
 			if td.Format == specs.FormatNone && td.Decode == nil {
 				t.Errorf("tag %d has no decoder", tt.tag)
 			}
+			// Tag 13 Sensor Latitude is FormatIMAPB per ST 0601.19. Guard
+			// against an accidental revert to FormatInt32 (the spec-bound
+			// check on the decoded value lives in the klv engine tests,
+			// where the IMAPB decoder is reachable without an import cycle).
+			if tt.tag == 13 && td.Format != specs.FormatIMAPB {
+				t.Errorf("tag 13 format = %v, want FormatIMAPB", td.Format)
+			}
 		})
 	}
 }
