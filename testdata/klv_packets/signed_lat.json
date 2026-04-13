@@ -13,9 +13,9 @@
     {
       "tag": 13,
       "name": "Sensor Latitude",
-      "value": -45.00000002095476,
+      "value": 60.176822966978335,
       "units": "°",
-      "raw": "wAAAAA=="
+      "raw": "VZW2bQ=="
     },
     {
       "tag": 65,
@@ -26,13 +26,13 @@
     {
       "tag": 1,
       "name": "Checksum",
-      "value": 27765,
-      "raw": "bHU="
+      "value": 28352,
+      "raw": "bsA="
     }
   ],
   "checksum": {
-    "expected": 27765,
-    "computed": 27765,
+    "expected": 28352,
+    "computed": 28352,
     "valid": true
   },
   "diagnostics": []
