@@ -133,6 +133,53 @@ func TestV19NestedLocalSetPassthrough(t *testing.T) {
 	}
 }
 
+func TestV19ComplexPackPassthrough(t *testing.T) {
+	sv := V19()
+	complexTags := []struct {
+		tag  int
+		name string
+	}{
+		{81, "Image Horizon Pixel Pack"},
+		{102, "SDCC-FLP"},
+		{115, "Control Command"},
+		{116, "Control Command Verification List"},
+		{121, "Active Wavelength List"},
+		{122, "Country Codes"},
+		{127, "Sensor Frame Rate Pack"},
+		{128, "Wavelengths List"},
+		{130, "Airbase Locations"},
+		{138, "Payload List"},
+		{139, "Active Payloads"},
+		{140, "Weapons Stores"},
+		{141, "Waypoint List"},
+		{142, "View Domain"},
+		{143, "Metadata Substream ID Pack"},
+	}
+	for _, tt := range complexTags {
+		t.Run(tt.name, func(t *testing.T) {
+			td, ok := sv.Tag(tt.tag)
+			if !ok {
+				t.Fatalf("tag %d not registered", tt.tag)
+			}
+			if td.Name != tt.name {
+				t.Errorf("name = %q, want %q", td.Name, tt.name)
+			}
+			raw := []byte{0x01, 0x02, 0x03}
+			v, err := klv.DecodeTag(td, raw)
+			if err != nil {
+				t.Fatalf("decode error: %v", err)
+			}
+			bv, ok := v.(record.BytesValue)
+			if !ok {
+				t.Fatalf("type = %T, want BytesValue", v)
+			}
+			if !bytes.Equal([]byte(bv), raw) {
+				t.Errorf("value = %x, want %x", []byte(bv), raw)
+			}
+		})
+	}
+}
+
 func TestV19Decoding(t *testing.T) {
 	sv := V19()
 	tests := []struct {

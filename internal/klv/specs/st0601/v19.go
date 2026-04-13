@@ -606,6 +606,30 @@ func v19Tags() map[int]specs.TagDefinition {
 		},
 	}
 
+	// ---- Complex structured packs (opaque passthrough) ----
+	for _, ct := range []struct{ tag int; name string }{
+		{81, "Image Horizon Pixel Pack"},
+		{102, "SDCC-FLP"},
+		{115, "Control Command"},
+		{116, "Control Command Verification List"},
+		{121, "Active Wavelength List"},
+		{122, "Country Codes"},
+		{127, "Sensor Frame Rate Pack"},
+		{128, "Wavelengths List"},
+		{130, "Airbase Locations"},
+		{138, "Payload List"},
+		{139, "Active Payloads"},
+		{140, "Weapons Stores"},
+		{141, "Waypoint List"},
+		{142, "View Domain"},
+		{143, "Metadata Substream ID Pack"},
+	} {
+		tags[ct.tag] = specs.TagDefinition{
+			Tag: ct.tag, Name: ct.name,
+			Format: specs.FormatBytes,
+		}
+	}
+
 	// ---- Nested Local Sets (opaque passthrough) ----
 	nested := func(tag int, name, hint string) {
 		tags[tag] = specs.TagDefinition{
