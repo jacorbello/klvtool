@@ -178,6 +178,11 @@ func (c *DecodeCommand) Execute(args []string) int {
 		c.writeError(c.Err, model.InvalidUsage(fmt.Errorf("invalid format %q (want ndjson|text)", format)))
 		return usageExitCode
 	}
+	if pid < 0 || pid > 8191 {
+		c.writeUsage(c.Err)
+		c.writeError(c.Err, model.InvalidUsage(fmt.Errorf("--pid must be 0 (all) or 1-8191")))
+		return usageExitCode
+	}
 	if strings.TrimSpace(schema) != "" {
 		// Fail fast at the CLI layer — no point spinning up ffmpeg only
 		// to discover the schema URN is unknown. Consult whichever

@@ -447,3 +447,46 @@ func TestDecodeCommandRawTextAbsentWithoutFlag(t *testing.T) {
 		t.Errorf("unexpected raw= in text output without --raw flag")
 	}
 }
+
+func TestDecodePIDValidation(t *testing.T) {
+	tests := []struct {
+		name     string
+		pid      string
+		wantCode int
+		wantErr  bool
+	}{
+		{"pid 0 is valid (all PIDs)", "0", 0, false},
+		{"pid 1 is valid", "1", 0, false},
+		{"pid 8191 is valid", "8191", 0, false},
+		{"pid 8192 is rejected", "8192", usageExitCode, true},
+		{"pid -1 is rejected", "-1", usageExitCode, true},
+		{"pid 99999 is rejected", "99999", usageExitCode, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			out := &bytes.Buffer{}
+			errBuf := &bytes.Buffer{}
+			cmd := &DecodeCommand{
+				Out:    out,
+				Err:    errBuf,
+				Decode: fakeDecodePayloads,
+				Registry: func() *klv.Registry {
+					return testRegistry()
+				},
+			}
+			code := cmd.Execute([]string{"--input", "fake.ts", "--pid", tt.pid})
+			if code != tt.wantCode {
+				t.Errorf("exit code = %d, want %d; stderr=%s", code, tt.wantCode, errBuf.String())
+			}
+			if tt.wantErr {
+				stderr := errBuf.String()
+				if !strings.Contains(stderr, "--pid") {
+					t.Errorf("expected stderr to mention --pid, got: %s", stderr)
+				}
+				if out.Len() > 0 {
+					t.Errorf("expected no stdout output, got: %s", out.String())
+				}
+			}
+		})
+	}
+}
