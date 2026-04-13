@@ -56,8 +56,8 @@ func TestCorpus(t *testing.T) {
 			65: {19},
 		}))
 
-		// imapb: Sensor Latitude (tag 13, FormatIMAPB, 4 bytes, -90..90).
-		// Raw 0xC0000000 decodes to ~+45°, exercising fromIMAPB.
+		// signed-scale: Sensor Latitude (tag 13, FormatInt32, 4 bytes, -90..90).
+		// Raw 0xC0000000 decodes via applyScaleSigned.
 		writeHex("imapb.hex", buildPacket(t, map[int][]byte{
 			2:  make([]byte, 8),
 			13: {0xC0, 0x00, 0x00, 0x00},

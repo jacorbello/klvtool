@@ -100,15 +100,9 @@ func v19Tags() map[int]specs.TagDefinition {
 	// ---- Sensor position ----
 	tags[13] = specs.TagDefinition{
 		Tag: 13, Name: "Sensor Latitude", Units: "°",
-		Format: specs.FormatIMAPB, Length: 4,
+		Format: specs.FormatInt32, Length: 4,
 		Scale: &specs.LinearScale{Min: -90, Max: 90, ErrorIndicator: true},
 	}
-	// NOTE: Sibling coordinate tags (14 Sensor Longitude, 23/24 Frame Center
-	// Lat/Lon, 40/41 Target Location Lat/Lon, and 82-89 Corner Lat/Lon Points
-	// 1-4 Full) are specified as IMAPB in ST 0601.19 but remain FormatInt32
-	// here pending a follow-up migration. Changing them alters decoded values
-	// for any real 0601 stream, so the migration is scoped separately from
-	// the tag 13 Sensor Latitude fix.
 	tags[14] = specs.TagDefinition{
 		Tag: 14, Name: "Sensor Longitude", Units: "°",
 		Format: specs.FormatInt32, Length: 4,

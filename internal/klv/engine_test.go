@@ -198,31 +198,42 @@ func TestDecodeLocalSetPreservesNonCanonicalBERLength(t *testing.T) {
 	}
 }
 
-// TestV19SensorLatitudeIMAPBDecodeRange guards the ST 0601.19 tag 13
-// FormatIMAPB migration: the raw bytes {0x04, 0x5D, 0x6D, 0x00} must
-// decode via the IMAPB path into a value that lies inside the spec range
-// [-90, 90]. A silent revert to FormatInt32 would produce a value on a
-// completely different numeric scale and fail this bound check.
-func TestV19SensorLatitudeIMAPBDecodeRange(t *testing.T) {
+// TestCoordinateTagsMatchSpecExamples validates that coordinate tags decode
+// to the software values published in ST 0601.19 Section 8 within the
+// allowed tolerance for the spec-defined encoded resolution.
+func TestCoordinateTagsMatchSpecExamples(t *testing.T) {
 	sv := st0601.V19()
-	td, ok := sv.Tag(13)
-	if !ok {
-		t.Fatalf("tag 13 missing")
+	tests := []struct {
+		tag       int
+		name      string
+		raw       []byte
+		want      float64
+		tolerance float64
+	}{
+		{13, "Sensor Latitude", []byte{0x55, 0x95, 0xB6, 0x6D}, 60.176822966978335, 42e-9},
+		{14, "Sensor Longitude", []byte{0x5B, 0x53, 0x60, 0xC4}, 128.42675904204452, 84e-9},
+		{23, "Frame Center Latitude", []byte{0xF1, 0x01, 0xA2, 0x29}, -10.542388633146132, 42e-9},
+		{24, "Frame Center Longitude", []byte{0x14, 0xBC, 0x08, 0x2B}, 29.157890122923014, 84e-9},
 	}
-	if td.Format != specs.FormatIMAPB {
-		t.Fatalf("tag 13 format = %v, want FormatIMAPB", td.Format)
-	}
-	v, err := dispatchDecode(td, []byte{0x04, 0x5D, 0x6D, 0x00})
-	if err != nil {
-		t.Fatalf("dispatchDecode: %v", err)
-	}
-	fv, ok := v.(record.FloatValue)
-	if !ok {
-		t.Fatalf("value type = %T, want FloatValue", v)
-	}
-	f := float64(fv)
-	if f < -90 || f > 90 {
-		t.Errorf("decoded = %v, want within [-90, 90]", f)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			td, ok := sv.Tag(tt.tag)
+			if !ok {
+				t.Fatalf("tag %d missing", tt.tag)
+			}
+			v, err := dispatchDecode(td, tt.raw)
+			if err != nil {
+				t.Fatalf("dispatchDecode: %v", err)
+			}
+			fv, ok := v.(record.FloatValue)
+			if !ok {
+				t.Fatalf("value type = %T, want FloatValue", v)
+			}
+			if diff := math.Abs(float64(fv) - tt.want); diff > tt.tolerance {
+				t.Errorf("decoded = %.15f, want %.15f (diff %e, tolerance %e)",
+					float64(fv), tt.want, diff, tt.tolerance)
+			}
+		})
 	}
 }
 
