@@ -38,9 +38,11 @@ func (c *DoctorCommand) Execute(args []string) int {
 	if c == nil {
 		return 1
 	}
-	if len(args) == 1 && isHelpArg(args[0]) {
-		c.writeUsage(c.Out)
-		return 0
+	for _, a := range args {
+		if isHelpArg(a) {
+			c.writeUsage(c.Out)
+			return 0
+		}
 	}
 	if len(args) > 0 {
 		c.writeUsage(c.Err)

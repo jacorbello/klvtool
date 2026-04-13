@@ -13,6 +13,21 @@ import (
 	"github.com/jacorbello/klvtool/internal/packetize"
 )
 
+func TestDecodeHelpMixedWithFlags(t *testing.T) {
+	var out, errBuf bytes.Buffer
+	cmd := &DecodeCommand{Out: &out, Err: &errBuf}
+	code := cmd.Execute([]string{"--help", "--input", "foo.ts"})
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0", code)
+	}
+	if !strings.Contains(out.String(), "Usage:") {
+		t.Errorf("expected usage on stdout, got %q", out.String())
+	}
+	if errBuf.Len() != 0 {
+		t.Errorf("expected empty stderr, got %q", errBuf.String())
+	}
+}
+
 // TestWriteNDJSONEmptyCollectionsSerializeAsArrays pins the Layer 1 convention:
 // empty items and diagnostics must marshal as [] not null so consumers can
 // rely on array iteration without null-checking.

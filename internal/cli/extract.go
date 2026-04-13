@@ -73,6 +73,10 @@ func (c *ExtractCommand) Execute(args []string) int {
 	fs.StringVar(&outDir, "out", "", "directory for extracted payloads and manifest")
 
 	if err := fs.Parse(args); err != nil {
+		if err == flag.ErrHelp {
+			c.writeUsage(c.Out)
+			return 0
+		}
 		c.writeUsage(c.Err)
 		c.writeError(c.Err, model.InvalidUsage(err))
 		return usageExitCode

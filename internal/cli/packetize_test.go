@@ -13,6 +13,21 @@ import (
 	"github.com/jacorbello/klvtool/internal/output"
 )
 
+func TestPacketizeHelpMixedWithFlags(t *testing.T) {
+	var out, errBuf bytes.Buffer
+	cmd := &PacketizeCommand{Out: &out, Err: &errBuf}
+	code := cmd.Execute([]string{"--help", "--input", "/tmp/in"})
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0", code)
+	}
+	if !strings.Contains(out.String(), "Usage:") {
+		t.Errorf("expected usage on stdout, got %q", out.String())
+	}
+	if errBuf.Len() != 0 {
+		t.Errorf("expected empty stderr, got %q", errBuf.String())
+	}
+}
+
 func TestPacketizeRequiresInputAndOutput(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
