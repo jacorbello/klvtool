@@ -190,6 +190,16 @@ func TestV19Decoding(t *testing.T) {
 			assertTime(time.Date(2018, 6, 21, 13, 43, 57, 122999*1000, time.UTC))},
 		{136, "Leap Seconds", []byte{0x1E}, assertInt(30)},
 		{137, "Correction Offset", []byte{0x01, 0x2B, 0x8D, 0xC6, 0x35}, assertInt(5025678901)},
+		// ---- Plain integers (Task 3) ----
+		{8, "Platform True Airspeed", []byte{0x93}, assertUint(147)},
+		{9, "Platform Indicated Airspeed", []byte{0x9F}, assertUint(159)},
+		{47, "Generic Flag Data", []byte{0x31}, assertUint(49)},
+		{56, "Platform Ground Speed", []byte{0x8C}, assertUint(140)},
+		{60, "Weapon Load", []byte{0xAF, 0xD8}, assertUint(45016)},
+		{61, "Weapon Fired", []byte{0xBA}, assertUint(186)},
+		{62, "Laser PRF Code", []byte{0x06, 0xCF}, assertUint(1743)},
+		{123, "Number of NAVSATs in View", []byte{0x07}, assertUint(7)},
+		{124, "Positioning Method Source", []byte{0x03}, assertUint(3)},
 		// ---- Unsigned scaled (Task 1) ----
 		{21, "Slant Range", []byte{0x03, 0x83, 0x09, 0x26}, assertFloat(68590.983298744770, 1e-3)},
 		{22, "Target Width", []byte{0x12, 0x81}, assertFloat(722.819867, 1e-3)},
@@ -210,6 +220,36 @@ func TestV19Decoding(t *testing.T) {
 		{71, "Alternate Platform Heading", []byte{0x17, 0x2F}, assertFloat(32.6024262, 1e-3)},
 		{76, "Alternate Platform Ellipsoid Height", []byte{0x0B, 0xB3}, assertFloat(9.44533455, 1e-3)},
 		{78, "Frame Center Height Above Ellipsoid", []byte{0x0B, 0xB3}, assertFloat(9.44533455, 1e-3)},
+		// ---- Signed scaled (Task 2) ----
+		{26, "Offset Corner Latitude Point 1", []byte{0x17, 0x50}, assertFloat(0.0136602540, 1e-6)},
+		{27, "Offset Corner Longitude Point 1", []byte{0x06, 0x3F}, assertFloat(0.0036602540, 1e-6)},
+		{28, "Offset Corner Latitude Point 2", []byte{0xF9, 0xC1}, assertFloat(-0.0036602540, 1e-6)},
+		{29, "Offset Corner Longitude Point 2", []byte{0x17, 0x50}, assertFloat(0.0136602540, 1e-6)},
+		{30, "Offset Corner Latitude Point 3", []byte{0xED, 0x1F}, assertFloat(-0.011062196722312, 1e-6)},
+		{31, "Offset Corner Longitude Point 3", []byte{0xF7, 0x32}, assertFloat(-0.005159154026917, 1e-6)},
+		{32, "Offset Corner Latitude Point 4", []byte{0x01, 0xD0}, assertFloat(0.001062044129765, 1e-6)},
+		{33, "Offset Corner Longitude Point 4", []byte{0xEB, 0x3F}, assertFloat(-0.012160863063448, 1e-6)},
+		{50, "Platform Angle of Attack", []byte{0xC8, 0x83}, assertFloat(-8.67030854, 1e-4)},
+		{51, "Platform Vertical Speed", []byte{0xD3, 0xFE}, assertFloat(-61.8878750, 1e-3)},
+		{52, "Platform Sideslip Angle", []byte{0xDF, 0x79}, assertFloat(-5.08255257, 1e-4)},
+		{67, "Alternate Platform Latitude", []byte{0x85, 0xA1, 0x5A, 0x39}, assertFloat(-86.041207348947040, 1e-6)},
+		{68, "Alternate Platform Longitude", []byte{0x00, 0x1C, 0x50, 0x1C}, assertFloat(0.15552755452484243, 1e-6)},
+		{79, "Sensor North Velocity", []byte{0x09, 0xFB}, assertFloat(25.4977569, 1e-4)},
+		{80, "Sensor East Velocity", []byte{0x04, 0xBC}, assertFloat(12.1, 1e-1)},
+		{93, "Platform Sideslip Angle (Full)", []byte{0xDE, 0x17, 0x93, 0x23}, assertFloat(-47.683, 1e-1)},
+		// ---- Strings (Task 4) ----
+		{59, "Platform Call Sign", []byte{0x54, 0x4F, 0x50, 0x20, 0x47, 0x55, 0x4E}, assertString("TOP GUN")},
+		{70, "Alternate Platform Name", []byte{0x41, 0x50, 0x41, 0x43, 0x48, 0x45}, assertString("APACHE")},
+		{106, "Stream Designator", []byte{0x42, 0x4C, 0x55, 0x45}, assertString("BLUE")},
+		{107, "Operational Base", []byte{0x42, 0x41, 0x53, 0x45, 0x30, 0x31}, assertString("BASE01")},
+		{108, "Broadcast Source", []byte{0x48, 0x4F, 0x4D, 0x45}, assertString("HOME")},
+		{129, "Target ID", []byte{0x41, 0x31, 0x32, 0x33}, assertString("A123")},
+		{135, "Communications Method", []byte("Frequency Modulation"), assertString("Frequency Modulation")},
+		// ---- Bytes (Task 5) ----
+		{66, "Deprecated", []byte{0xDE, 0xAD}, assertBytes([]byte{0xDE, 0xAD})},
+		{94, "MIIS Core Identifier",
+			[]byte{0x01, 0x70, 0xF5, 0x92, 0xF0, 0x23, 0x73, 0x36, 0x4A, 0xF8, 0xAA, 0x91, 0x62, 0xC0, 0x0F, 0x2E, 0xB2, 0xDA, 0x16, 0xB7, 0x43, 0x41, 0x00, 0x08, 0x41, 0xA0, 0xBE, 0x36, 0x5B, 0x5A, 0xB9, 0x6A, 0x36, 0x45},
+			assertBytes([]byte{0x01, 0x70, 0xF5, 0x92, 0xF0, 0x23, 0x73, 0x36, 0x4A, 0xF8, 0xAA, 0x91, 0x62, 0xC0, 0x0F, 0x2E, 0xB2, 0xDA, 0x16, 0xB7, 0x43, 0x41, 0x00, 0x08, 0x41, 0xA0, 0xBE, 0x36, 0x5B, 0x5A, 0xB9, 0x6A, 0x36, 0x45})},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -292,6 +332,19 @@ func assertTime(want time.Time) func(t *testing.T, v record.Value) {
 		got := time.Time(tv)
 		if !got.Equal(want) {
 			t.Errorf("value = %v, want %v", got, want)
+		}
+	}
+}
+
+func assertBytes(want []byte) func(t *testing.T, v record.Value) {
+	return func(t *testing.T, v record.Value) {
+		t.Helper()
+		bv, ok := v.(record.BytesValue)
+		if !ok {
+			t.Fatalf("type = %T, want BytesValue", v)
+		}
+		if !bytes.Equal([]byte(bv), want) {
+			t.Errorf("value = %x, want %x", []byte(bv), want)
 		}
 	}
 }

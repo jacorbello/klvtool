@@ -349,6 +349,136 @@ func v19Tags() map[int]specs.TagDefinition {
 		Decode: decodeVariableInt,
 	}
 
+	// ---- Platform airspeed ----
+	tags[8] = specs.TagDefinition{
+		Tag: 8, Name: "Platform True Airspeed", Units: "m/s",
+		Format: specs.FormatUint8, Length: 1,
+	}
+	tags[9] = specs.TagDefinition{
+		Tag: 9, Name: "Platform Indicated Airspeed", Units: "m/s",
+		Format: specs.FormatUint8, Length: 1,
+	}
+
+	// ---- Offset corners (int16, ±0.075°) ----
+	offsetCorner := func(tag int, name string) {
+		tags[tag] = specs.TagDefinition{
+			Tag: tag, Name: name, Units: "°",
+			Format: specs.FormatInt16, Length: 2,
+			Scale: &specs.LinearScale{Min: -0.075, Max: 0.075, ErrorIndicator: true},
+		}
+	}
+	offsetCorner(26, "Offset Corner Latitude Point 1")
+	offsetCorner(27, "Offset Corner Longitude Point 1")
+	offsetCorner(28, "Offset Corner Latitude Point 2")
+	offsetCorner(29, "Offset Corner Longitude Point 2")
+	offsetCorner(30, "Offset Corner Latitude Point 3")
+	offsetCorner(31, "Offset Corner Longitude Point 3")
+	offsetCorner(32, "Offset Corner Latitude Point 4")
+	offsetCorner(33, "Offset Corner Longitude Point 4")
+
+	// ---- Flags and discrete values ----
+	tags[47] = specs.TagDefinition{
+		Tag: 47, Name: "Generic Flag Data",
+		Format: specs.FormatUint8, Length: 1,
+	}
+
+	// ---- Platform attitude (short form, additional) ----
+	tags[50] = specs.TagDefinition{
+		Tag: 50, Name: "Platform Angle of Attack", Units: "°",
+		Format: specs.FormatInt16, Length: 2,
+		Scale: &specs.LinearScale{Min: -20, Max: 20, ErrorIndicator: true},
+	}
+	tags[51] = specs.TagDefinition{
+		Tag: 51, Name: "Platform Vertical Speed", Units: "m/s",
+		Format: specs.FormatInt16, Length: 2,
+		Scale: &specs.LinearScale{Min: -180, Max: 180, ErrorIndicator: true},
+	}
+	tags[52] = specs.TagDefinition{
+		Tag: 52, Name: "Platform Sideslip Angle", Units: "°",
+		Format: specs.FormatInt16, Length: 2,
+		Scale: &specs.LinearScale{Min: -20, Max: 20, ErrorIndicator: true},
+	}
+
+	// ---- Platform ground speed ----
+	tags[56] = specs.TagDefinition{
+		Tag: 56, Name: "Platform Ground Speed", Units: "m/s",
+		Format: specs.FormatUint8, Length: 1,
+	}
+
+	// ---- Platform identity strings (additional) ----
+	tags[59] = specs.TagDefinition{Tag: 59, Name: "Platform Call Sign", Format: specs.FormatUTF8}
+
+	// ---- Weapons ----
+	tags[60] = specs.TagDefinition{
+		Tag: 60, Name: "Weapon Load",
+		Format: specs.FormatUint16, Length: 2,
+	}
+	tags[61] = specs.TagDefinition{
+		Tag: 61, Name: "Weapon Fired",
+		Format: specs.FormatUint8, Length: 1,
+	}
+	tags[62] = specs.TagDefinition{
+		Tag: 62, Name: "Laser PRF Code",
+		Format: specs.FormatUint16, Length: 2,
+	}
+
+	// ---- Deprecated ----
+	tags[66] = specs.TagDefinition{Tag: 66, Name: "Deprecated", Format: specs.FormatBytes}
+
+	// ---- Alternate platform (additional) ----
+	tags[67] = specs.TagDefinition{
+		Tag: 67, Name: "Alternate Platform Latitude", Units: "°",
+		Format: specs.FormatInt32, Length: 4,
+		Scale: &specs.LinearScale{Min: -90, Max: 90, ErrorIndicator: true},
+	}
+	tags[68] = specs.TagDefinition{
+		Tag: 68, Name: "Alternate Platform Longitude", Units: "°",
+		Format: specs.FormatInt32, Length: 4,
+		Scale: &specs.LinearScale{Min: -180, Max: 180, ErrorIndicator: true},
+	}
+	tags[70] = specs.TagDefinition{Tag: 70, Name: "Alternate Platform Name", Format: specs.FormatUTF8}
+
+	// ---- Sensor velocity ----
+	tags[79] = specs.TagDefinition{
+		Tag: 79, Name: "Sensor North Velocity", Units: "m/s",
+		Format: specs.FormatInt16, Length: 2,
+		Scale: &specs.LinearScale{Min: -327, Max: 327, ErrorIndicator: true},
+	}
+	tags[80] = specs.TagDefinition{
+		Tag: 80, Name: "Sensor East Velocity", Units: "m/s",
+		Format: specs.FormatInt16, Length: 2,
+		Scale: &specs.LinearScale{Min: -327, Max: 327, ErrorIndicator: true},
+	}
+
+	// ---- Platform sideslip (full) ----
+	tags[93] = specs.TagDefinition{
+		Tag: 93, Name: "Platform Sideslip Angle (Full)", Units: "°",
+		Format: specs.FormatInt32, Length: 4,
+		Scale: &specs.LinearScale{Min: -180, Max: 180, ErrorIndicator: true},
+	}
+
+	// ---- Raw bytes ----
+	tags[94] = specs.TagDefinition{Tag: 94, Name: "MIIS Core Identifier", Format: specs.FormatBytes}
+
+	// ---- Additional strings ----
+	tags[106] = specs.TagDefinition{Tag: 106, Name: "Stream Designator", Format: specs.FormatUTF8}
+	tags[107] = specs.TagDefinition{Tag: 107, Name: "Operational Base", Format: specs.FormatUTF8}
+	tags[108] = specs.TagDefinition{Tag: 108, Name: "Broadcast Source", Format: specs.FormatUTF8}
+
+	// ---- Navigation ----
+	tags[123] = specs.TagDefinition{
+		Tag: 123, Name: "Number of NAVSATs in View",
+		Format: specs.FormatUint8, Length: 1,
+	}
+	tags[124] = specs.TagDefinition{
+		Tag: 124, Name: "Positioning Method Source",
+		Format: specs.FormatUint8, Length: 1,
+	}
+
+	// ---- Additional strings (high tags) ----
+	tags[129] = specs.TagDefinition{Tag: 129, Name: "Target ID", Format: specs.FormatUTF8}
+	tags[135] = specs.TagDefinition{Tag: 135, Name: "Communications Method", Format: specs.FormatUTF8}
+
 	// ---- Enumerated tags ----
 	tags[34] = specs.TagDefinition{
 		Tag: 34, Name: "Icing Detected",
