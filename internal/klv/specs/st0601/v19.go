@@ -103,6 +103,8 @@ func v19Tags() map[int]specs.TagDefinition {
 		Format: specs.FormatInt32, Length: 4,
 		Scale: &specs.LinearScale{Min: -90, Max: 90, ErrorIndicator: true},
 	}
+	// NOTE: All coordinate tags (13/14, 23/24, 40/41, 82-89) use FormatInt32
+	// per ST 0601.19 §8.13–§8.14, §8.23–§8.24, §8.40–§8.41, §8.82–§8.89.
 	tags[14] = specs.TagDefinition{
 		Tag: 14, Name: "Sensor Longitude", Units: "°",
 		Format: specs.FormatInt32, Length: 4,
@@ -183,6 +185,117 @@ func v19Tags() map[int]specs.TagDefinition {
 	cornerTag(87, "Corner Longitude Point 3 (Full)", true)
 	cornerTag(88, "Corner Latitude Point 4 (Full)", false)
 	cornerTag(89, "Corner Longitude Point 4 (Full)", true)
+
+	// ---- Range / geometry ----
+	tags[21] = specs.TagDefinition{
+		Tag: 21, Name: "Slant Range", Units: "m",
+		Format: specs.FormatUint32, Length: 4,
+		Scale: &specs.LinearScale{Min: 0, Max: 5000000},
+	}
+	tags[22] = specs.TagDefinition{
+		Tag: 22, Name: "Target Width", Units: "m",
+		Format: specs.FormatUint16, Length: 2,
+		Scale: &specs.LinearScale{Min: 0, Max: 10000},
+	}
+	tags[57] = specs.TagDefinition{
+		Tag: 57, Name: "Ground Range", Units: "m",
+		Format: specs.FormatUint32, Length: 4,
+		Scale: &specs.LinearScale{Min: 0, Max: 5000000},
+	}
+
+	// ---- Wind ----
+	tags[35] = specs.TagDefinition{
+		Tag: 35, Name: "Wind Direction", Units: "°",
+		Format: specs.FormatUint16, Length: 2,
+		Scale: &specs.LinearScale{Min: 0, Max: 360},
+	}
+	tags[36] = specs.TagDefinition{
+		Tag: 36, Name: "Wind Speed", Units: "m/s",
+		Format: specs.FormatUint8, Length: 1,
+		Scale: &specs.LinearScale{Min: 0, Max: 100},
+	}
+
+	// ---- Pressure ----
+	tags[37] = specs.TagDefinition{
+		Tag: 37, Name: "Static Pressure", Units: "mbar",
+		Format: specs.FormatUint16, Length: 2,
+		Scale: &specs.LinearScale{Min: 0, Max: 5000},
+	}
+	tags[49] = specs.TagDefinition{
+		Tag: 49, Name: "Differential Pressure", Units: "mbar",
+		Format: specs.FormatUint16, Length: 2,
+		Scale: &specs.LinearScale{Min: 0, Max: 5000},
+	}
+	tags[53] = specs.TagDefinition{
+		Tag: 53, Name: "Airfield Barometric Pressure", Units: "mbar",
+		Format: specs.FormatUint16, Length: 2,
+		Scale: &specs.LinearScale{Min: 0, Max: 5000},
+	}
+
+	// ---- Target tracking ----
+	tags[43] = specs.TagDefinition{
+		Tag: 43, Name: "Target Track Gate Width", Units: "pixels",
+		Format: specs.FormatUint8, Length: 1,
+		Scale: &specs.LinearScale{Min: 0, Max: 510},
+	}
+	tags[44] = specs.TagDefinition{
+		Tag: 44, Name: "Target Track Gate Height", Units: "pixels",
+		Format: specs.FormatUint8, Length: 1,
+		Scale: &specs.LinearScale{Min: 0, Max: 510},
+	}
+	tags[45] = specs.TagDefinition{
+		Tag: 45, Name: "Target Error Estimate - CE90", Units: "m",
+		Format: specs.FormatUint16, Length: 2,
+		Scale: &specs.LinearScale{Min: 0, Max: 4095},
+	}
+	tags[46] = specs.TagDefinition{
+		Tag: 46, Name: "Target Error Estimate - LE90", Units: "m",
+		Format: specs.FormatUint16, Length: 2,
+		Scale: &specs.LinearScale{Min: 0, Max: 4095},
+	}
+
+	// ---- Airfield / altitude ----
+	tags[54] = specs.TagDefinition{
+		Tag: 54, Name: "Airfield Elevation", Units: "m",
+		Format: specs.FormatUint16, Length: 2,
+		Scale: &specs.LinearScale{Min: -900, Max: 19000},
+	}
+
+	// ---- Platform ----
+	tags[58] = specs.TagDefinition{
+		Tag: 58, Name: "Platform Fuel Remaining", Units: "kg",
+		Format: specs.FormatUint16, Length: 2,
+		Scale: &specs.LinearScale{Min: 0, Max: 10000},
+	}
+	tags[64] = specs.TagDefinition{
+		Tag: 64, Name: "Platform Magnetic Heading", Units: "°",
+		Format: specs.FormatUint16, Length: 2,
+		Scale: &specs.LinearScale{Min: 0, Max: 360},
+	}
+
+	// ---- Alternate platform ----
+	tags[69] = specs.TagDefinition{
+		Tag: 69, Name: "Alternate Platform Altitude", Units: "m",
+		Format: specs.FormatUint16, Length: 2,
+		Scale: &specs.LinearScale{Min: -900, Max: 19000},
+	}
+	tags[71] = specs.TagDefinition{
+		Tag: 71, Name: "Alternate Platform Heading", Units: "°",
+		Format: specs.FormatUint16, Length: 2,
+		Scale: &specs.LinearScale{Min: 0, Max: 360},
+	}
+	tags[76] = specs.TagDefinition{
+		Tag: 76, Name: "Alternate Platform Ellipsoid Height", Units: "m",
+		Format: specs.FormatUint16, Length: 2,
+		Scale: &specs.LinearScale{Min: -900, Max: 19000},
+	}
+
+	// ---- Frame center ----
+	tags[78] = specs.TagDefinition{
+		Tag: 78, Name: "Frame Center Height Above Ellipsoid", Units: "m",
+		Format: specs.FormatUint16, Length: 2,
+		Scale: &specs.LinearScale{Min: -900, Max: 19000},
+	}
 
 	// ---- Environmental ----
 	tags[38] = specs.TagDefinition{
