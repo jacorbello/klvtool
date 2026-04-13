@@ -247,6 +247,30 @@ func TestV19Decoding(t *testing.T) {
 		{135, "Communications Method", []byte("Frequency Modulation"), assertString("Frequency Modulation")},
 		// ---- Bytes (Task 5) ----
 		{66, "Deprecated", []byte{0xDE, 0xAD}, assertBytes([]byte{0xDE, 0xAD})},
+		// ---- Enums (Task 6) ----
+		{63, "Sensor Field of View Name", []byte{0x02}, assertEnum(2, "Medium")},
+		{125, "Platform Status", []byte{0x09}, assertEnum(9, "Egress")},
+		{126, "Sensor Control Mode", []byte{0x05}, assertEnum(5, "Auto - Holding Position")},
+		// ---- Variable-length uint (Task 7) ----
+		{110, "Time Airborne", []byte{0x4D, 0xAF}, assertUint(19887)},
+		{111, "Propulsion Unit Speed", []byte{0x0B, 0xB8}, assertUint(3000)},
+		{133, "On-board MI Storage Capacity", []byte{0x27, 0x10}, assertUint(10000)},
+		// ---- IMAPB (Task 8) ----
+		{96, "Target Width Extended", []byte{0x02, 0x5F, 0x3D}, assertFloat(13898.5463, 1e0)},
+		{103, "Density Altitude Extended", []byte{0x98, 0x73, 0x26}, assertFloat(23456.24, 1e0)},
+		{104, "Sensor Ellipsoid Height Extended", []byte{0x98, 0x73, 0x26}, assertFloat(23456.24, 1e0)},
+		{105, "Alternate Platform Ellipsoid Height Extended", []byte{0x98, 0x73, 0x26}, assertFloat(23456.24, 1e0)},
+		{109, "Range To Recovery Location", []byte{0x00, 0x05, 0x12}, assertFloat(1.625, 1e-1)},
+		{112, "Platform Course Angle", []byte{0x58, 0xE3}, assertFloat(125.0, 1e0)},
+		{113, "Altitude AGL", []byte{0x13, 0x17, 0x29}, assertFloat(2150.0, 1e0)},
+		{114, "Radar Altimeter", []byte{0x13, 0x1E, 0x5F}, assertFloat(2154.50, 1e0)},
+		{117, "Sensor Azimuth Rate", []byte{0x80, 0x20}, assertFloat(1.0, 1e0)},
+		{118, "Sensor Elevation Rate", []byte{0x80, 0x00, 0x23}, assertFloat(0.004176, 1e-1)},
+		{119, "Sensor Roll Rate", []byte{0x79, 0x99}, assertFloat(-50.0, 1e0)},
+		{120, "On-board MI Storage Percent Full", []byte{0xB8, 0x51}, assertFloat(72.0, 1e0)},
+		{132, "Transmission Frequency", []byte{0x06, 0x24, 0x3D}, assertFloat(2400.0, 1e0)},
+		{134, "Zoom Percentage", []byte{0x8C, 0xCC}, assertFloat(55.0, 1e0)},
+		// ---- Bytes (Task 5) ----
 		{94, "MIIS Core Identifier",
 			[]byte{0x01, 0x70, 0xF5, 0x92, 0xF0, 0x23, 0x73, 0x36, 0x4A, 0xF8, 0xAA, 0x91, 0x62, 0xC0, 0x0F, 0x2E, 0xB2, 0xDA, 0x16, 0xB7, 0x43, 0x41, 0x00, 0x08, 0x41, 0xA0, 0xBE, 0x36, 0x5B, 0x5A, 0xB9, 0x6A, 0x36, 0x45},
 			assertBytes([]byte{0x01, 0x70, 0xF5, 0x92, 0xF0, 0x23, 0x73, 0x36, 0x4A, 0xF8, 0xAA, 0x91, 0x62, 0xC0, 0x0F, 0x2E, 0xB2, 0xDA, 0x16, 0xB7, 0x43, 0x41, 0x00, 0x08, 0x41, 0xA0, 0xBE, 0x36, 0x5B, 0x5A, 0xB9, 0x6A, 0x36, 0x45})},

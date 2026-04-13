@@ -479,11 +479,105 @@ func v19Tags() map[int]specs.TagDefinition {
 	tags[129] = specs.TagDefinition{Tag: 129, Name: "Target ID", Format: specs.FormatUTF8}
 	tags[135] = specs.TagDefinition{Tag: 135, Name: "Communications Method", Format: specs.FormatUTF8}
 
+	// ---- IMAPB (variable-length floating-point) tags ----
+	tags[96] = specs.TagDefinition{
+		Tag: 96, Name: "Target Width Extended", Units: "m",
+		Format: specs.FormatIMAPB,
+		Scale:  &specs.LinearScale{Min: 0, Max: 1500000},
+	}
+	tags[103] = specs.TagDefinition{
+		Tag: 103, Name: "Density Altitude Extended", Units: "m",
+		Format: specs.FormatIMAPB,
+		Scale:  &specs.LinearScale{Min: -900, Max: 40000},
+	}
+	tags[104] = specs.TagDefinition{
+		Tag: 104, Name: "Sensor Ellipsoid Height Extended", Units: "m",
+		Format: specs.FormatIMAPB,
+		Scale:  &specs.LinearScale{Min: -900, Max: 40000},
+	}
+	tags[105] = specs.TagDefinition{
+		Tag: 105, Name: "Alternate Platform Ellipsoid Height Extended", Units: "m",
+		Format: specs.FormatIMAPB,
+		Scale:  &specs.LinearScale{Min: -900, Max: 40000},
+	}
+	tags[109] = specs.TagDefinition{
+		Tag: 109, Name: "Range To Recovery Location", Units: "km",
+		Format: specs.FormatIMAPB,
+		Scale:  &specs.LinearScale{Min: 0, Max: 21000},
+	}
+	tags[112] = specs.TagDefinition{
+		Tag: 112, Name: "Platform Course Angle", Units: "°",
+		Format: specs.FormatIMAPB,
+		Scale:  &specs.LinearScale{Min: 0, Max: 360},
+	}
+	tags[113] = specs.TagDefinition{
+		Tag: 113, Name: "Altitude AGL", Units: "m",
+		Format: specs.FormatIMAPB,
+		Scale:  &specs.LinearScale{Min: -900, Max: 40000},
+	}
+	tags[114] = specs.TagDefinition{
+		Tag: 114, Name: "Radar Altimeter", Units: "m",
+		Format: specs.FormatIMAPB,
+		Scale:  &specs.LinearScale{Min: -900, Max: 40000},
+	}
+	tags[117] = specs.TagDefinition{
+		Tag: 117, Name: "Sensor Azimuth Rate", Units: "°/s",
+		Format: specs.FormatIMAPB,
+		Scale:  &specs.LinearScale{Min: -1000, Max: 1000},
+	}
+	tags[118] = specs.TagDefinition{
+		Tag: 118, Name: "Sensor Elevation Rate", Units: "°/s",
+		Format: specs.FormatIMAPB,
+		Scale:  &specs.LinearScale{Min: -1000, Max: 1000},
+	}
+	tags[119] = specs.TagDefinition{
+		Tag: 119, Name: "Sensor Roll Rate", Units: "°/s",
+		Format: specs.FormatIMAPB,
+		Scale:  &specs.LinearScale{Min: -1000, Max: 1000},
+	}
+	tags[120] = specs.TagDefinition{
+		Tag: 120, Name: "On-board MI Storage Percent Full", Units: "%",
+		Format: specs.FormatIMAPB,
+		Scale:  &specs.LinearScale{Min: 0, Max: 100},
+	}
+	tags[132] = specs.TagDefinition{
+		Tag: 132, Name: "Transmission Frequency", Units: "MHz",
+		Format: specs.FormatIMAPB,
+		Scale:  &specs.LinearScale{Min: 1, Max: 99999},
+	}
+	tags[134] = specs.TagDefinition{
+		Tag: 134, Name: "Zoom Percentage", Units: "%",
+		Format: specs.FormatIMAPB,
+		Scale:  &specs.LinearScale{Min: 0, Max: 100},
+	}
+
+	// ---- Variable-length unsigned integer ----
+	tags[110] = specs.TagDefinition{
+		Tag: 110, Name: "Time Airborne", Units: "s",
+		Decode: decodeVariableUint,
+	}
+	tags[111] = specs.TagDefinition{
+		Tag: 111, Name: "Propulsion Unit Speed", Units: "RPM",
+		Decode: decodeVariableUint,
+	}
+	tags[133] = specs.TagDefinition{
+		Tag: 133, Name: "On-board MI Storage Capacity", Units: "GB",
+		Decode: decodeVariableUint,
+	}
+
 	// ---- Enumerated tags ----
 	tags[34] = specs.TagDefinition{
 		Tag: 34, Name: "Icing Detected",
 		Decode: decodeIcingDetected,
 		Enum:   map[int64]string{0: "Detector Off", 1: "No Icing Detected", 2: "Icing Detected"},
+	}
+	tags[63] = specs.TagDefinition{
+		Tag: 63, Name: "Sensor Field of View Name",
+		Decode: decodeSensorFOVName,
+		Enum: map[int64]string{
+			0: "Ultranarrow", 1: "Narrow", 2: "Medium", 3: "Wide", 4: "Ultrawide",
+			5: "Narrow Medium", 6: "2x Ultranarrow", 7: "4x Ultranarrow", 8: "Continuous Zoom",
+		},
 	}
 	tags[77] = specs.TagDefinition{
 		Tag: 77, Name: "Operational Mode",
@@ -491,6 +585,24 @@ func v19Tags() map[int]specs.TagDefinition {
 		Enum: map[int64]string{
 			0: "Other", 1: "Operational", 2: "Training",
 			3: "Exercise", 4: "Maintenance", 5: "Test",
+		},
+	}
+	tags[125] = specs.TagDefinition{
+		Tag: 125, Name: "Platform Status",
+		Decode: decodePlatformStatus,
+		Enum: map[int64]string{
+			0: "Active", 1: "Pre-flight", 2: "Pre-flight-taxiing", 3: "Run-up",
+			4: "Take-off", 5: "Ingress", 6: "Manual operation", 7: "Automated-orbit",
+			8: "Transitioning", 9: "Egress", 10: "Landing", 11: "Landed-taxiing",
+			12: "Landed-Parked",
+		},
+	}
+	tags[126] = specs.TagDefinition{
+		Tag: 126, Name: "Sensor Control Mode",
+		Decode: decodeSensorControlMode,
+		Enum: map[int64]string{
+			0: "Off", 1: "Home Position", 2: "Uncontrolled", 3: "Manual Control",
+			4: "Calibrating", 5: "Auto - Holding Position", 6: "Auto - Tracking",
 		},
 	}
 
@@ -591,6 +703,64 @@ func decodeOperationalMode(raw []byte) (record.Value, error) {
 	label, ok := labels[raw[0]]
 	if !ok {
 		return nil, fmt.Errorf("operational mode: invalid code %d", raw[0])
+	}
+	return record.EnumValue{Code: int64(raw[0]), Label: label}, nil
+}
+
+func decodeVariableUint(raw []byte) (record.Value, error) {
+	if len(raw) == 0 || len(raw) > 8 {
+		return nil, fmt.Errorf("variable uint: expected 1..8 bytes, got %d", len(raw))
+	}
+	var v uint64
+	for _, b := range raw {
+		v = (v << 8) | uint64(b)
+	}
+	return record.UintValue(v), nil
+}
+
+func decodeSensorFOVName(raw []byte) (record.Value, error) {
+	if len(raw) != 1 {
+		return nil, fmt.Errorf("sensor field of view name: expected 1 byte, got %d", len(raw))
+	}
+	labels := map[byte]string{
+		0: "Ultranarrow", 1: "Narrow", 2: "Medium", 3: "Wide", 4: "Ultrawide",
+		5: "Narrow Medium", 6: "2x Ultranarrow", 7: "4x Ultranarrow", 8: "Continuous Zoom",
+	}
+	label, ok := labels[raw[0]]
+	if !ok {
+		return nil, fmt.Errorf("sensor field of view name: invalid code %d", raw[0])
+	}
+	return record.EnumValue{Code: int64(raw[0]), Label: label}, nil
+}
+
+func decodePlatformStatus(raw []byte) (record.Value, error) {
+	if len(raw) != 1 {
+		return nil, fmt.Errorf("platform status: expected 1 byte, got %d", len(raw))
+	}
+	labels := map[byte]string{
+		0: "Active", 1: "Pre-flight", 2: "Pre-flight-taxiing", 3: "Run-up",
+		4: "Take-off", 5: "Ingress", 6: "Manual operation", 7: "Automated-orbit",
+		8: "Transitioning", 9: "Egress", 10: "Landing", 11: "Landed-taxiing",
+		12: "Landed-Parked",
+	}
+	label, ok := labels[raw[0]]
+	if !ok {
+		return nil, fmt.Errorf("platform status: invalid code %d", raw[0])
+	}
+	return record.EnumValue{Code: int64(raw[0]), Label: label}, nil
+}
+
+func decodeSensorControlMode(raw []byte) (record.Value, error) {
+	if len(raw) != 1 {
+		return nil, fmt.Errorf("sensor control mode: expected 1 byte, got %d", len(raw))
+	}
+	labels := map[byte]string{
+		0: "Off", 1: "Home Position", 2: "Uncontrolled", 3: "Manual Control",
+		4: "Calibrating", 5: "Auto - Holding Position", 6: "Auto - Tracking",
+	}
+	label, ok := labels[raw[0]]
+	if !ok {
+		return nil, fmt.Errorf("sensor control mode: invalid code %d", raw[0])
 	}
 	return record.EnumValue{Code: int64(raw[0]), Label: label}, nil
 }
