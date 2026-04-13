@@ -237,6 +237,7 @@ func TestV19Decoding(t *testing.T) {
 			assertTime(time.Date(2018, 6, 21, 13, 43, 57, 122999*1000, time.UTC))},
 		{136, "Leap Seconds", []byte{0x1E}, assertInt(30)},
 		{137, "Correction Offset", []byte{0x01, 0x2B, 0x8D, 0xC6, 0x35}, assertInt(5025678901)},
+		{137, "Correction Offset", []byte{0xFF}, assertInt(-1)},
 		// ---- Plain integers (Task 3) ----
 		{8, "Platform True Airspeed", []byte{0x93}, assertUint(147)},
 		{9, "Platform Indicated Airspeed", []byte{0x9F}, assertUint(159)},
