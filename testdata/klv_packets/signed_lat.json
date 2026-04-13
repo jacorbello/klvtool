@@ -1,0 +1,39 @@
+{
+  "schema": "urn:misb:KLV:bin:0601.19",
+  "ul": "Bg4rNAILAQEOAQMBAQAAAA==",
+  "lsVersion": 19,
+  "totalLength": 23,
+  "items": [
+    {
+      "tag": 2,
+      "name": "Precision Time Stamp",
+      "value": "1970-01-01T00:00:00.000000Z",
+      "raw": "AAAAAAAAAAA="
+    },
+    {
+      "tag": 13,
+      "name": "Sensor Latitude",
+      "value": 60.176822966978335,
+      "units": "°",
+      "raw": "VZW2bQ=="
+    },
+    {
+      "tag": 65,
+      "name": "UAS Datalink LS Version Number",
+      "value": 19,
+      "raw": "Ew=="
+    },
+    {
+      "tag": 1,
+      "name": "Checksum",
+      "value": 28352,
+      "raw": "bsA="
+    }
+  ],
+  "checksum": {
+    "expected": 28352,
+    "computed": 28352,
+    "valid": true
+  },
+  "diagnostics": []
+}

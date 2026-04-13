@@ -103,6 +103,8 @@ func v19Tags() map[int]specs.TagDefinition {
 		Format: specs.FormatInt32, Length: 4,
 		Scale: &specs.LinearScale{Min: -90, Max: 90, ErrorIndicator: true},
 	}
+	// NOTE: All coordinate tags (13/14, 23/24, 40/41, 82-89) use FormatInt32
+	// per ST 0601.19 §8.13–§8.14, §8.23–§8.24, §8.40–§8.41, §8.82–§8.89.
 	tags[14] = specs.TagDefinition{
 		Tag: 14, Name: "Sensor Longitude", Units: "°",
 		Format: specs.FormatInt32, Length: 4,
@@ -184,6 +186,117 @@ func v19Tags() map[int]specs.TagDefinition {
 	cornerTag(88, "Corner Latitude Point 4 (Full)", false)
 	cornerTag(89, "Corner Longitude Point 4 (Full)", true)
 
+	// ---- Range / geometry ----
+	tags[21] = specs.TagDefinition{
+		Tag: 21, Name: "Slant Range", Units: "m",
+		Format: specs.FormatUint32, Length: 4,
+		Scale: &specs.LinearScale{Min: 0, Max: 5000000},
+	}
+	tags[22] = specs.TagDefinition{
+		Tag: 22, Name: "Target Width", Units: "m",
+		Format: specs.FormatUint16, Length: 2,
+		Scale: &specs.LinearScale{Min: 0, Max: 10000},
+	}
+	tags[57] = specs.TagDefinition{
+		Tag: 57, Name: "Ground Range", Units: "m",
+		Format: specs.FormatUint32, Length: 4,
+		Scale: &specs.LinearScale{Min: 0, Max: 5000000},
+	}
+
+	// ---- Wind ----
+	tags[35] = specs.TagDefinition{
+		Tag: 35, Name: "Wind Direction", Units: "°",
+		Format: specs.FormatUint16, Length: 2,
+		Scale: &specs.LinearScale{Min: 0, Max: 360},
+	}
+	tags[36] = specs.TagDefinition{
+		Tag: 36, Name: "Wind Speed", Units: "m/s",
+		Format: specs.FormatUint8, Length: 1,
+		Scale: &specs.LinearScale{Min: 0, Max: 100},
+	}
+
+	// ---- Pressure ----
+	tags[37] = specs.TagDefinition{
+		Tag: 37, Name: "Static Pressure", Units: "mbar",
+		Format: specs.FormatUint16, Length: 2,
+		Scale: &specs.LinearScale{Min: 0, Max: 5000},
+	}
+	tags[49] = specs.TagDefinition{
+		Tag: 49, Name: "Differential Pressure", Units: "mbar",
+		Format: specs.FormatUint16, Length: 2,
+		Scale: &specs.LinearScale{Min: 0, Max: 5000},
+	}
+	tags[53] = specs.TagDefinition{
+		Tag: 53, Name: "Airfield Barometric Pressure", Units: "mbar",
+		Format: specs.FormatUint16, Length: 2,
+		Scale: &specs.LinearScale{Min: 0, Max: 5000},
+	}
+
+	// ---- Target tracking ----
+	tags[43] = specs.TagDefinition{
+		Tag: 43, Name: "Target Track Gate Width", Units: "pixels",
+		Format: specs.FormatUint8, Length: 1,
+		Scale: &specs.LinearScale{Min: 0, Max: 510},
+	}
+	tags[44] = specs.TagDefinition{
+		Tag: 44, Name: "Target Track Gate Height", Units: "pixels",
+		Format: specs.FormatUint8, Length: 1,
+		Scale: &specs.LinearScale{Min: 0, Max: 510},
+	}
+	tags[45] = specs.TagDefinition{
+		Tag: 45, Name: "Target Error Estimate - CE90", Units: "m",
+		Format: specs.FormatUint16, Length: 2,
+		Scale: &specs.LinearScale{Min: 0, Max: 4095},
+	}
+	tags[46] = specs.TagDefinition{
+		Tag: 46, Name: "Target Error Estimate - LE90", Units: "m",
+		Format: specs.FormatUint16, Length: 2,
+		Scale: &specs.LinearScale{Min: 0, Max: 4095},
+	}
+
+	// ---- Airfield / altitude ----
+	tags[54] = specs.TagDefinition{
+		Tag: 54, Name: "Airfield Elevation", Units: "m",
+		Format: specs.FormatUint16, Length: 2,
+		Scale: &specs.LinearScale{Min: -900, Max: 19000},
+	}
+
+	// ---- Platform ----
+	tags[58] = specs.TagDefinition{
+		Tag: 58, Name: "Platform Fuel Remaining", Units: "kg",
+		Format: specs.FormatUint16, Length: 2,
+		Scale: &specs.LinearScale{Min: 0, Max: 10000},
+	}
+	tags[64] = specs.TagDefinition{
+		Tag: 64, Name: "Platform Magnetic Heading", Units: "°",
+		Format: specs.FormatUint16, Length: 2,
+		Scale: &specs.LinearScale{Min: 0, Max: 360},
+	}
+
+	// ---- Alternate platform ----
+	tags[69] = specs.TagDefinition{
+		Tag: 69, Name: "Alternate Platform Altitude", Units: "m",
+		Format: specs.FormatUint16, Length: 2,
+		Scale: &specs.LinearScale{Min: -900, Max: 19000},
+	}
+	tags[71] = specs.TagDefinition{
+		Tag: 71, Name: "Alternate Platform Heading", Units: "°",
+		Format: specs.FormatUint16, Length: 2,
+		Scale: &specs.LinearScale{Min: 0, Max: 360},
+	}
+	tags[76] = specs.TagDefinition{
+		Tag: 76, Name: "Alternate Platform Ellipsoid Height", Units: "m",
+		Format: specs.FormatUint16, Length: 2,
+		Scale: &specs.LinearScale{Min: -900, Max: 19000},
+	}
+
+	// ---- Frame center ----
+	tags[78] = specs.TagDefinition{
+		Tag: 78, Name: "Frame Center Height Above Ellipsoid", Units: "m",
+		Format: specs.FormatUint16, Length: 2,
+		Scale: &specs.LinearScale{Min: -900, Max: 19000},
+	}
+
 	// ---- Environmental ----
 	tags[38] = specs.TagDefinition{
 		Tag: 38, Name: "Density Altitude", Units: "m",
@@ -236,11 +349,235 @@ func v19Tags() map[int]specs.TagDefinition {
 		Decode: decodeVariableInt,
 	}
 
+	// ---- Platform airspeed ----
+	tags[8] = specs.TagDefinition{
+		Tag: 8, Name: "Platform True Airspeed", Units: "m/s",
+		Format: specs.FormatUint8, Length: 1,
+	}
+	tags[9] = specs.TagDefinition{
+		Tag: 9, Name: "Platform Indicated Airspeed", Units: "m/s",
+		Format: specs.FormatUint8, Length: 1,
+	}
+
+	// ---- Offset corners (int16, ±0.075°) ----
+	offsetCorner := func(tag int, name string) {
+		tags[tag] = specs.TagDefinition{
+			Tag: tag, Name: name, Units: "°",
+			Format: specs.FormatInt16, Length: 2,
+			Scale: &specs.LinearScale{Min: -0.075, Max: 0.075, ErrorIndicator: true},
+		}
+	}
+	offsetCorner(26, "Offset Corner Latitude Point 1")
+	offsetCorner(27, "Offset Corner Longitude Point 1")
+	offsetCorner(28, "Offset Corner Latitude Point 2")
+	offsetCorner(29, "Offset Corner Longitude Point 2")
+	offsetCorner(30, "Offset Corner Latitude Point 3")
+	offsetCorner(31, "Offset Corner Longitude Point 3")
+	offsetCorner(32, "Offset Corner Latitude Point 4")
+	offsetCorner(33, "Offset Corner Longitude Point 4")
+
+	// ---- Flags and discrete values ----
+	tags[47] = specs.TagDefinition{
+		Tag: 47, Name: "Generic Flag Data",
+		Format: specs.FormatUint8, Length: 1,
+	}
+
+	// ---- Platform attitude (short form, additional) ----
+	tags[50] = specs.TagDefinition{
+		Tag: 50, Name: "Platform Angle of Attack", Units: "°",
+		Format: specs.FormatInt16, Length: 2,
+		Scale: &specs.LinearScale{Min: -20, Max: 20, ErrorIndicator: true},
+	}
+	tags[51] = specs.TagDefinition{
+		Tag: 51, Name: "Platform Vertical Speed", Units: "m/s",
+		Format: specs.FormatInt16, Length: 2,
+		Scale: &specs.LinearScale{Min: -180, Max: 180, ErrorIndicator: true},
+	}
+	tags[52] = specs.TagDefinition{
+		Tag: 52, Name: "Platform Sideslip Angle", Units: "°",
+		Format: specs.FormatInt16, Length: 2,
+		Scale: &specs.LinearScale{Min: -20, Max: 20, ErrorIndicator: true},
+	}
+
+	// ---- Platform ground speed ----
+	tags[56] = specs.TagDefinition{
+		Tag: 56, Name: "Platform Ground Speed", Units: "m/s",
+		Format: specs.FormatUint8, Length: 1,
+	}
+
+	// ---- Platform identity strings (additional) ----
+	tags[59] = specs.TagDefinition{Tag: 59, Name: "Platform Call Sign", Format: specs.FormatUTF8}
+
+	// ---- Weapons ----
+	tags[60] = specs.TagDefinition{
+		Tag: 60, Name: "Weapon Load",
+		Format: specs.FormatUint16, Length: 2,
+	}
+	tags[61] = specs.TagDefinition{
+		Tag: 61, Name: "Weapon Fired",
+		Format: specs.FormatUint8, Length: 1,
+	}
+	tags[62] = specs.TagDefinition{
+		Tag: 62, Name: "Laser PRF Code",
+		Format: specs.FormatUint16, Length: 2,
+	}
+
+	// ---- Deprecated ----
+	tags[66] = specs.TagDefinition{Tag: 66, Name: "Deprecated", Format: specs.FormatBytes}
+
+	// ---- Alternate platform (additional) ----
+	tags[67] = specs.TagDefinition{
+		Tag: 67, Name: "Alternate Platform Latitude", Units: "°",
+		Format: specs.FormatInt32, Length: 4,
+		Scale: &specs.LinearScale{Min: -90, Max: 90, ErrorIndicator: true},
+	}
+	tags[68] = specs.TagDefinition{
+		Tag: 68, Name: "Alternate Platform Longitude", Units: "°",
+		Format: specs.FormatInt32, Length: 4,
+		Scale: &specs.LinearScale{Min: -180, Max: 180, ErrorIndicator: true},
+	}
+	tags[70] = specs.TagDefinition{Tag: 70, Name: "Alternate Platform Name", Format: specs.FormatUTF8}
+
+	// ---- Sensor velocity ----
+	tags[79] = specs.TagDefinition{
+		Tag: 79, Name: "Sensor North Velocity", Units: "m/s",
+		Format: specs.FormatInt16, Length: 2,
+		Scale: &specs.LinearScale{Min: -327, Max: 327, ErrorIndicator: true},
+	}
+	tags[80] = specs.TagDefinition{
+		Tag: 80, Name: "Sensor East Velocity", Units: "m/s",
+		Format: specs.FormatInt16, Length: 2,
+		Scale: &specs.LinearScale{Min: -327, Max: 327, ErrorIndicator: true},
+	}
+
+	// ---- Platform sideslip (full) ----
+	tags[93] = specs.TagDefinition{
+		Tag: 93, Name: "Platform Sideslip Angle (Full)", Units: "°",
+		Format: specs.FormatInt32, Length: 4,
+		Scale: &specs.LinearScale{Min: -180, Max: 180, ErrorIndicator: true},
+	}
+
+	// ---- Raw bytes ----
+	tags[94] = specs.TagDefinition{Tag: 94, Name: "MIIS Core Identifier", Format: specs.FormatBytes}
+
+	// ---- Additional strings ----
+	tags[106] = specs.TagDefinition{Tag: 106, Name: "Stream Designator", Format: specs.FormatUTF8}
+	tags[107] = specs.TagDefinition{Tag: 107, Name: "Operational Base", Format: specs.FormatUTF8}
+	tags[108] = specs.TagDefinition{Tag: 108, Name: "Broadcast Source", Format: specs.FormatUTF8}
+
+	// ---- Navigation ----
+	tags[123] = specs.TagDefinition{
+		Tag: 123, Name: "Number of NAVSATs in View",
+		Format: specs.FormatUint8, Length: 1,
+	}
+	tags[124] = specs.TagDefinition{
+		Tag: 124, Name: "Positioning Method Source",
+		Format: specs.FormatUint8, Length: 1,
+	}
+
+	// ---- Additional strings (high tags) ----
+	tags[129] = specs.TagDefinition{Tag: 129, Name: "Target ID", Format: specs.FormatUTF8}
+	tags[135] = specs.TagDefinition{Tag: 135, Name: "Communications Method", Format: specs.FormatUTF8}
+
+	// ---- IMAPB (variable-length floating-point) tags ----
+	tags[96] = specs.TagDefinition{
+		Tag: 96, Name: "Target Width Extended", Units: "m",
+		Format: specs.FormatIMAPB,
+		Scale:  &specs.LinearScale{Min: 0, Max: 1500000},
+	}
+	tags[103] = specs.TagDefinition{
+		Tag: 103, Name: "Density Altitude Extended", Units: "m",
+		Format: specs.FormatIMAPB,
+		Scale:  &specs.LinearScale{Min: -900, Max: 40000},
+	}
+	tags[104] = specs.TagDefinition{
+		Tag: 104, Name: "Sensor Ellipsoid Height Extended", Units: "m",
+		Format: specs.FormatIMAPB,
+		Scale:  &specs.LinearScale{Min: -900, Max: 40000},
+	}
+	tags[105] = specs.TagDefinition{
+		Tag: 105, Name: "Alternate Platform Ellipsoid Height Extended", Units: "m",
+		Format: specs.FormatIMAPB,
+		Scale:  &specs.LinearScale{Min: -900, Max: 40000},
+	}
+	tags[109] = specs.TagDefinition{
+		Tag: 109, Name: "Range To Recovery Location", Units: "km",
+		Format: specs.FormatIMAPB,
+		Scale:  &specs.LinearScale{Min: 0, Max: 21000},
+	}
+	tags[112] = specs.TagDefinition{
+		Tag: 112, Name: "Platform Course Angle", Units: "°",
+		Format: specs.FormatIMAPB,
+		Scale:  &specs.LinearScale{Min: 0, Max: 360},
+	}
+	tags[113] = specs.TagDefinition{
+		Tag: 113, Name: "Altitude AGL", Units: "m",
+		Format: specs.FormatIMAPB,
+		Scale:  &specs.LinearScale{Min: -900, Max: 40000},
+	}
+	tags[114] = specs.TagDefinition{
+		Tag: 114, Name: "Radar Altimeter", Units: "m",
+		Format: specs.FormatIMAPB,
+		Scale:  &specs.LinearScale{Min: -900, Max: 40000},
+	}
+	tags[117] = specs.TagDefinition{
+		Tag: 117, Name: "Sensor Azimuth Rate", Units: "°/s",
+		Format: specs.FormatIMAPB,
+		Scale:  &specs.LinearScale{Min: -1000, Max: 1000},
+	}
+	tags[118] = specs.TagDefinition{
+		Tag: 118, Name: "Sensor Elevation Rate", Units: "°/s",
+		Format: specs.FormatIMAPB,
+		Scale:  &specs.LinearScale{Min: -1000, Max: 1000},
+	}
+	tags[119] = specs.TagDefinition{
+		Tag: 119, Name: "Sensor Roll Rate", Units: "°/s",
+		Format: specs.FormatIMAPB,
+		Scale:  &specs.LinearScale{Min: -1000, Max: 1000},
+	}
+	tags[120] = specs.TagDefinition{
+		Tag: 120, Name: "On-board MI Storage Percent Full", Units: "%",
+		Format: specs.FormatIMAPB,
+		Scale:  &specs.LinearScale{Min: 0, Max: 100},
+	}
+	tags[132] = specs.TagDefinition{
+		Tag: 132, Name: "Transmission Frequency", Units: "MHz",
+		Format: specs.FormatIMAPB,
+		Scale:  &specs.LinearScale{Min: 1, Max: 99999},
+	}
+	tags[134] = specs.TagDefinition{
+		Tag: 134, Name: "Zoom Percentage", Units: "%",
+		Format: specs.FormatIMAPB,
+		Scale:  &specs.LinearScale{Min: 0, Max: 100},
+	}
+
+	// ---- Variable-length unsigned integer ----
+	tags[110] = specs.TagDefinition{
+		Tag: 110, Name: "Time Airborne", Units: "s",
+		Decode: decodeVariableUint,
+	}
+	tags[111] = specs.TagDefinition{
+		Tag: 111, Name: "Propulsion Unit Speed", Units: "RPM",
+		Decode: decodeVariableUint,
+	}
+	tags[133] = specs.TagDefinition{
+		Tag: 133, Name: "On-board MI Storage Capacity", Units: "GB",
+		Decode: decodeVariableUint,
+	}
+
 	// ---- Enumerated tags ----
 	tags[34] = specs.TagDefinition{
 		Tag: 34, Name: "Icing Detected",
 		Decode: decodeIcingDetected,
 		Enum:   map[int64]string{0: "Detector Off", 1: "No Icing Detected", 2: "Icing Detected"},
+	}
+	tags[63] = specs.TagDefinition{
+		Tag: 63, Name: "Sensor Field of View Name",
+		Decode: decodeSensorFOVName,
+		Enum: map[int64]string{
+			0: "Ultranarrow", 1: "Narrow", 2: "Medium", 3: "Wide", 4: "Ultrawide",
+			5: "Narrow Medium", 6: "2x Ultranarrow", 7: "4x Ultranarrow", 8: "Continuous Zoom",
+		},
 	}
 	tags[77] = specs.TagDefinition{
 		Tag: 77, Name: "Operational Mode",
@@ -249,6 +586,48 @@ func v19Tags() map[int]specs.TagDefinition {
 			0: "Other", 1: "Operational", 2: "Training",
 			3: "Exercise", 4: "Maintenance", 5: "Test",
 		},
+	}
+	tags[125] = specs.TagDefinition{
+		Tag: 125, Name: "Platform Status",
+		Decode: decodePlatformStatus,
+		Enum: map[int64]string{
+			0: "Active", 1: "Pre-flight", 2: "Pre-flight-taxiing", 3: "Run-up",
+			4: "Take-off", 5: "Ingress", 6: "Manual operation", 7: "Automated-orbit",
+			8: "Transitioning", 9: "Egress", 10: "Landing", 11: "Landed-taxiing",
+			12: "Landed-Parked",
+		},
+	}
+	tags[126] = specs.TagDefinition{
+		Tag: 126, Name: "Sensor Control Mode",
+		Decode: decodeSensorControlMode,
+		Enum: map[int64]string{
+			0: "Off", 1: "Home Position", 2: "Uncontrolled", 3: "Manual Control",
+			4: "Calibrating", 5: "Auto - Holding Position", 6: "Auto - Tracking",
+		},
+	}
+
+	// ---- Complex structured packs (opaque passthrough) ----
+	for _, ct := range []struct{ tag int; name string }{
+		{81, "Image Horizon Pixel Pack"},
+		{102, "SDCC-FLP"},
+		{115, "Control Command"},
+		{116, "Control Command Verification List"},
+		{121, "Active Wavelength List"},
+		{122, "Country Codes"},
+		{127, "Sensor Frame Rate Pack"},
+		{128, "Wavelengths List"},
+		{130, "Airbase Locations"},
+		{138, "Payload List"},
+		{139, "Active Payloads"},
+		{140, "Weapons Stores"},
+		{141, "Waypoint List"},
+		{142, "View Domain"},
+		{143, "Metadata Substream ID Pack"},
+	} {
+		tags[ct.tag] = specs.TagDefinition{
+			Tag: ct.tag, Name: ct.name,
+			Format: specs.FormatBytes,
+		}
 	}
 
 	// ---- Nested Local Sets (opaque passthrough) ----
@@ -348,6 +727,64 @@ func decodeOperationalMode(raw []byte) (record.Value, error) {
 	label, ok := labels[raw[0]]
 	if !ok {
 		return nil, fmt.Errorf("operational mode: invalid code %d", raw[0])
+	}
+	return record.EnumValue{Code: int64(raw[0]), Label: label}, nil
+}
+
+func decodeVariableUint(raw []byte) (record.Value, error) {
+	if len(raw) == 0 || len(raw) > 8 {
+		return nil, fmt.Errorf("variable uint: expected 1..8 bytes, got %d", len(raw))
+	}
+	var v uint64
+	for _, b := range raw {
+		v = (v << 8) | uint64(b)
+	}
+	return record.UintValue(v), nil
+}
+
+func decodeSensorFOVName(raw []byte) (record.Value, error) {
+	if len(raw) != 1 {
+		return nil, fmt.Errorf("sensor field of view name: expected 1 byte, got %d", len(raw))
+	}
+	labels := map[byte]string{
+		0: "Ultranarrow", 1: "Narrow", 2: "Medium", 3: "Wide", 4: "Ultrawide",
+		5: "Narrow Medium", 6: "2x Ultranarrow", 7: "4x Ultranarrow", 8: "Continuous Zoom",
+	}
+	label, ok := labels[raw[0]]
+	if !ok {
+		return nil, fmt.Errorf("sensor field of view name: invalid code %d", raw[0])
+	}
+	return record.EnumValue{Code: int64(raw[0]), Label: label}, nil
+}
+
+func decodePlatformStatus(raw []byte) (record.Value, error) {
+	if len(raw) != 1 {
+		return nil, fmt.Errorf("platform status: expected 1 byte, got %d", len(raw))
+	}
+	labels := map[byte]string{
+		0: "Active", 1: "Pre-flight", 2: "Pre-flight-taxiing", 3: "Run-up",
+		4: "Take-off", 5: "Ingress", 6: "Manual operation", 7: "Automated-orbit",
+		8: "Transitioning", 9: "Egress", 10: "Landing", 11: "Landed-taxiing",
+		12: "Landed-Parked",
+	}
+	label, ok := labels[raw[0]]
+	if !ok {
+		return nil, fmt.Errorf("platform status: invalid code %d", raw[0])
+	}
+	return record.EnumValue{Code: int64(raw[0]), Label: label}, nil
+}
+
+func decodeSensorControlMode(raw []byte) (record.Value, error) {
+	if len(raw) != 1 {
+		return nil, fmt.Errorf("sensor control mode: expected 1 byte, got %d", len(raw))
+	}
+	labels := map[byte]string{
+		0: "Off", 1: "Home Position", 2: "Uncontrolled", 3: "Manual Control",
+		4: "Calibrating", 5: "Auto - Holding Position", 6: "Auto - Tracking",
+	}
+	label, ok := labels[raw[0]]
+	if !ok {
+		return nil, fmt.Errorf("sensor control mode: invalid code %d", raw[0])
 	}
 	return record.EnumValue{Code: int64(raw[0]), Label: label}, nil
 }

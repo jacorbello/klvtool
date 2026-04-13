@@ -159,6 +159,11 @@ func decodeLocalSetInternal(reg *Registry, ul []byte, value []byte, fullForCheck
 	return rec, nil
 }
 
+// DecodeTag runs the tag's Decode function if set, otherwise dispatches by Format/Scale.
+func DecodeTag(td specs.TagDefinition, raw []byte) (record.Value, error) {
+	return dispatchDecode(td, raw)
+}
+
 // dispatchDecode runs the Decode function pointer if set, otherwise dispatches
 // by Format.
 func dispatchDecode(td specs.TagDefinition, raw []byte) (record.Value, error) {

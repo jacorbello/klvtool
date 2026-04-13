@@ -56,11 +56,11 @@ func TestCorpus(t *testing.T) {
 			65: {19},
 		}))
 
-		// signed-scale: Sensor Latitude (tag 13, FormatInt32, 4 bytes, -90..90).
-		// Raw 0xC0000000 decodes via applyScaleSigned.
-		writeHex("imapb.hex", buildPacket(t, map[int][]byte{
+		// signed_lat: Sensor Latitude (tag 13, FormatInt32, 4 bytes, -90..90).
+		// PDF example: 0x5595B66D → 60.176822966978335°.
+		writeHex("signed_lat.hex", buildPacket(t, map[int][]byte{
 			2:  make([]byte, 8),
-			13: {0xC0, 0x00, 0x00, 0x00},
+			13: {0x55, 0x95, 0xB6, 0x6D},
 			65: {19},
 		}))
 
