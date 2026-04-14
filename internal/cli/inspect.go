@@ -133,9 +133,9 @@ func (c *InspectCommand) writeReport(table ts.StreamTable, stats InspectStats) {
 				_, _ = fmt.Fprintf(w, "  PES units=%d", pesCount)
 			}
 			if firstPTS, ok := stats.FirstPTS[stream.PID]; ok {
-				_, _ = fmt.Fprintf(w, "  PTS=[%d", firstPTS)
+				_, _ = fmt.Fprintf(w, "  PTS=[%d (%s)", firstPTS, formatPTS(firstPTS))
 				if lastPTS, ok2 := stats.LastPTS[stream.PID]; ok2 {
-					_, _ = fmt.Fprintf(w, "..%d", lastPTS)
+					_, _ = fmt.Fprintf(w, "..%d (%s)", lastPTS, formatPTS(lastPTS))
 				}
 				_, _ = fmt.Fprint(w, "]")
 			}
@@ -150,6 +150,16 @@ func (c *InspectCommand) writeReport(table ts.StreamTable, stats InspectStats) {
 			_, _ = fmt.Fprintf(w, "  [%s] %s: %s\n", d.Severity, d.Code, d.Message)
 		}
 	}
+}
+
+// formatPTS converts 90kHz PTS ticks to HH:MM:SS.mmm format.
+func formatPTS(ticks int64) string {
+	totalSeconds := ticks / 90000
+	millis := (ticks % 90000) / 90
+	hours := totalSeconds / 3600
+	minutes := (totalSeconds % 3600) / 60
+	seconds := totalSeconds % 60
+	return fmt.Sprintf("%02d:%02d:%02d.%03d", hours, minutes, seconds, millis)
 }
 
 func streamTypeName(st uint8) string {
