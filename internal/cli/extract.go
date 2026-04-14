@@ -144,7 +144,7 @@ func (c *ExtractCommand) Execute(args []string) int {
 
 	if c.Out != nil {
 		_, _ = fmt.Fprintf(c.Out, "backend: %s (%s)\n", manifest.BackendName, manifest.BackendVersion)
-		_, _ = fmt.Fprintf(c.Out, "records: %d\n", len(manifest.Records))
+		_, _ = fmt.Fprintf(c.Out, "streams: %d\n", len(manifest.Records))
 		_, _ = fmt.Fprintf(c.Out, "manifest: %s\n", filepath.Join(outDir, "manifest.ndjson"))
 	}
 	return 0
