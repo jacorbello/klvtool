@@ -53,6 +53,10 @@ func (c *InspectCommand) Execute(args []string) int {
 	fs.StringVar(&inputPath, "input", "", "path to the MPEG-TS input file")
 
 	if err := fs.Parse(args); err != nil {
+		if err == flag.ErrHelp {
+			c.writeUsage(c.Out)
+			return 0
+		}
 		c.writeUsage(c.Err)
 		c.writeError(c.Err, model.InvalidUsage(err))
 		return usageExitCode

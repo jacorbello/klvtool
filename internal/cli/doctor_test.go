@@ -197,6 +197,21 @@ func TestDoctorCommandResyncsCachedWritersAcrossInvocations(t *testing.T) {
 	}
 }
 
+func TestDoctorHelpMixedWithFlags(t *testing.T) {
+	var out, errBuf bytes.Buffer
+	cmd := &DoctorCommand{Out: &out, Err: &errBuf}
+	code := cmd.Execute([]string{"--help", "--extra"})
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0", code)
+	}
+	if !strings.Contains(out.String(), "Usage:") {
+		t.Errorf("expected usage on stdout, got %q", out.String())
+	}
+	if errBuf.Len() != 0 {
+		t.Errorf("expected empty stderr, got %q", errBuf.String())
+	}
+}
+
 func TestDoctorCommandHonorsNilRootStderrOnErrorPath(t *testing.T) {
 	var staleStdout bytes.Buffer
 	var staleStderr bytes.Buffer

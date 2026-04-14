@@ -163,6 +163,10 @@ func (c *DecodeCommand) Execute(args []string) int {
 	fs.StringVar(&schema, "schema", "", "override auto-detection with a specific spec URN")
 
 	if err := fs.Parse(args); err != nil {
+		if err == flag.ErrHelp {
+			c.writeUsage(c.Out)
+			return 0
+		}
 		c.writeUsage(c.Err)
 		c.writeError(c.Err, model.InvalidUsage(err))
 		return usageExitCode

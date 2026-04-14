@@ -67,6 +67,10 @@ func (c *PacketizeCommand) Execute(args []string) int {
 	fs.StringVar(&mode, "mode", string(packetize.ModeStrict), "parser mode: strict or best-effort")
 
 	if err := fs.Parse(args); err != nil {
+		if err == flag.ErrHelp {
+			c.writeUsage(c.Out)
+			return 0
+		}
 		c.writeUsage(c.Err)
 		c.writeError(c.Err, model.InvalidUsage(err))
 		return usageExitCode
