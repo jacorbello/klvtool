@@ -317,6 +317,10 @@ func (c *DecodeCommand) Execute(args []string) int {
 
 func (c *DecodeCommand) writeUsage(w io.Writer) {
 	fmt.Fprintln(w, "Usage: klvtool decode --input <file.ts> [--format ndjson|text] [--raw] [--strict] [--pid N] [--out path] [--schema urn]") //nolint:errcheck
+	fmt.Fprintln(w)                                                                                                                              //nolint:errcheck
+	fmt.Fprintln(w, "Decode MISB ST 0601 KLV metadata from an MPEG-TS file.")                                                                   //nolint:errcheck
+	fmt.Fprintln(w)                                                                                                                              //nolint:errcheck
+	fmt.Fprintln(w, "The --raw flag includes raw bytes per item: hex (0x...) in text format, base64 in NDJSON.") //nolint:errcheck
 }
 
 func (c *DecodeCommand) writeError(w io.Writer, err error) {

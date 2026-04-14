@@ -726,3 +726,15 @@ func TestDecodeWarnsPIDNoMatch(t *testing.T) {
 		t.Errorf("expected PID no-match warning; got stderr=%q", stderr.String())
 	}
 }
+
+func TestDecodeHelpDocumentsRawEncoding(t *testing.T) {
+	var buf bytes.Buffer
+	cmd := &DecodeCommand{Out: &buf, Err: &bytes.Buffer{}}
+	code := cmd.Execute([]string{"--help"})
+	if code != 0 {
+		t.Fatalf("exit code = %d", code)
+	}
+	if !strings.Contains(buf.String(), "hex") || !strings.Contains(buf.String(), "base64") {
+		t.Errorf("--help should document raw encoding formats; got: %s", buf.String())
+	}
+}
