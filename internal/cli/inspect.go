@@ -152,10 +152,15 @@ func (c *InspectCommand) writeReport(table ts.StreamTable, stats InspectStats) {
 	}
 }
 
+const (
+	ptsClockHz         = 90000            // MPEG-TS PTS clock frequency
+	ticksPerMillisecond = ptsClockHz / 1000 // ticks in one millisecond
+)
+
 // formatPTS converts 90kHz PTS ticks to HH:MM:SS.mmm format.
 func formatPTS(ticks int64) string {
-	totalSeconds := ticks / 90000
-	millis := (ticks % 90000) / 90
+	totalSeconds := ticks / ptsClockHz
+	millis := (ticks % ptsClockHz) / ticksPerMillisecond
 	hours := totalSeconds / 3600
 	minutes := (totalSeconds % 3600) / 60
 	seconds := totalSeconds % 60

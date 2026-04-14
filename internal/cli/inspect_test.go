@@ -260,6 +260,12 @@ func TestInspectOutputContainsPTSTime(t *testing.T) {
 	}
 
 	output := out.String()
+	if !strings.Contains(output, "10819895") {
+		t.Errorf("output should contain raw first PTS ticks, got:\n%s", output)
+	}
+	if !strings.Contains(output, "24123185") {
+		t.Errorf("output should contain raw last PTS ticks, got:\n%s", output)
+	}
 	if !strings.Contains(output, "(00:02:00.221)") {
 		t.Errorf("output should contain formatted first PTS, got:\n%s", output)
 	}
