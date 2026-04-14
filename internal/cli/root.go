@@ -46,9 +46,13 @@ func (c *RootCommand) Execute(args []string) int {
 		c.writeUsage(c.Err)
 		return usageExitCode
 	}
-	if len(args) == 1 && isHelpArg(args[0]) {
+	if len(args) == 1 && (isHelpArg(args[0]) || args[0] == "help") {
 		c.writeUsage(c.Out)
 		return 0
+	}
+	if len(args) > 1 && args[0] == "help" {
+		c.writeUnsupportedArgs(args[1:])
+		return usageExitCode
 	}
 	if len(args) > 0 && args[0] == "version" {
 		return c.versionCommand().Execute(args[1:])
