@@ -80,7 +80,7 @@ func TestRecordJSONShape(t *testing.T) {
 	rec := Record{
 		Schema:      "urn:misb:KLV:bin:0601.19",
 		LSVersion:   19,
-		TotalLength: 12,
+		ValueLength: 12,
 		Checksum:    ChecksumInfo{Expected: 0x1111, Computed: 0x1111, Valid: true},
 		Items: []Item{
 			{Tag: 5, Name: "Platform Heading Angle", Value: FloatValue(159.97)},
@@ -96,6 +96,12 @@ func TestRecordJSONShape(t *testing.T) {
 	}
 	if !strings.Contains(got, `"lsVersion":19`) {
 		t.Errorf("missing lsVersion: %s", got)
+	}
+	if !strings.Contains(got, `"valueLength":12`) {
+		t.Errorf("expected valueLength in JSON output: %s", got)
+	}
+	if strings.Contains(got, `"totalLength"`) {
+		t.Errorf("totalLength should be renamed to valueLength: %s", got)
 	}
 	if !strings.Contains(got, `"checksum":{"expected":4369,"computed":4369,"valid":true}`) {
 		t.Errorf("missing checksum: %s", got)
