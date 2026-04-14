@@ -60,11 +60,13 @@ func TestDoctorCommandRuns(t *testing.T) {
 	for _, want := range []string{
 		"klvtool: ",
 		"platform: linux",
-		"install guidance: Install the backend tools with apt.",
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("missing header line %q in output:\n%s", want, text)
 		}
+	}
+	if strings.Contains(text, "install guidance") {
+		t.Errorf("expected no install guidance when all backends healthy, got:\n%s", text)
 	}
 
 	// Healthy backend assertions
@@ -337,6 +339,34 @@ func TestDoctorCommandExitsNonZeroWhenBackendMissing(t *testing.T) {
 	text := stdout.String()
 	if !strings.Contains(text, "not installed") {
 		t.Errorf("expected 'not installed' label, got:\n%s", text)
+	}
+}
+
+func TestDoctorCommandShowsGuidanceWhenUnhealthy(t *testing.T) {
+	var stdout bytes.Buffer
+
+	cmd := NewRootCommand()
+	cmd.Out = &stdout
+	cmd.Err = &bytes.Buffer{}
+	cmd.Doctor.IsTerminal = func() bool { return false }
+	cmd.Doctor.Detect = func(ctx context.Context, goos string, env map[string]string) envcheck.Report {
+		return envcheck.Report{
+			Platform:        "linux",
+			GuidanceSummary: "Install the backend tools with apt.",
+			Guidance:        []string{"sudo apt update && sudo apt install ffmpeg"},
+			Backends: []envcheck.BackendHealth{
+				{Name: "ffmpeg", Healthy: false, MissingTools: []string{"ffmpeg", "ffprobe"}},
+			},
+		}
+	}
+
+	if got := cmd.Execute([]string{"doctor"}); got != 1 {
+		t.Fatalf("expected exit code 1 for unhealthy backend, got %d", got)
+	}
+
+	text := stdout.String()
+	if !strings.Contains(text, "install guidance: Install the backend tools with apt.") {
+		t.Errorf("expected install guidance when backend unhealthy, got:\n%s", text)
 	}
 }
 
