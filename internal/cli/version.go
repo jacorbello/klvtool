@@ -47,6 +47,12 @@ func (c *VersionCommand) Execute(args []string) int {
 		return usageExitCode
 	}
 
+	if len(fs.Args()) > 0 {
+		c.writeUsage(c.Err)
+		_, _ = fmt.Fprintf(c.Err, "error: unsupported arguments: %v\n", fs.Args())
+		return usageExitCode
+	}
+
 	if *check {
 		return c.executeCheck()
 	}
