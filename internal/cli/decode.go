@@ -335,7 +335,7 @@ type ndjsonItem struct {
 	Tag   int          `json:"tag"`
 	Name  string       `json:"name"`
 	Value record.Value `json:"value"`
-	Units string       `json:"units,omitempty"`
+	Units string       `json:"units"`
 	Raw   string       `json:"raw,omitempty"`
 }
 
@@ -356,9 +356,8 @@ func writeNDJSON(w io.Writer, index int, rec record.Record, includeRaw bool) err
 		Diagnostics: diags,
 	}
 	for _, it := range rec.Items {
-		ni := ndjsonItem{Tag: it.Tag, Name: it.Name, Value: it.Value}
+		ni := ndjsonItem{Tag: it.Tag, Name: it.Name, Value: it.Value, Units: it.Units}
 		if includeRaw {
-			ni.Units = it.Units
 			ni.Raw = encodeBase64(it.Raw)
 		}
 		nr.Items = append(nr.Items, ni)

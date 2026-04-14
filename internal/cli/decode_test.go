@@ -662,6 +662,31 @@ func TestDecodePIDValidation(t *testing.T) {
 	}
 }
 
+func TestNDJSONAlwaysIncludesUnits(t *testing.T) {
+	rec := record.Record{
+		Schema:    "urn:misb:KLV:bin:0601.19",
+		LSVersion: 19,
+		Checksum:  record.ChecksumInfo{Valid: true},
+		Items: []record.Item{
+			{Tag: 5, Name: "Platform Heading Angle", Value: record.FloatValue(159.97), Units: "°"},
+		},
+	}
+	var buf bytes.Buffer
+	if err := writeNDJSON(&buf, 0, rec, false); err != nil {
+		t.Fatalf("writeNDJSON: %v", err)
+	}
+	var parsed map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &parsed); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	items := parsed["items"].([]any)
+	item := items[0].(map[string]any)
+	units, ok := item["units"]
+	if !ok || units != "°" {
+		t.Errorf("expected units=° in NDJSON without --raw; got %v (present=%v)", units, ok)
+	}
+}
+
 func TestDecodeOutOpenFailure(t *testing.T) {
 	errBuf := &bytes.Buffer{}
 	cmd := &DecodeCommand{
