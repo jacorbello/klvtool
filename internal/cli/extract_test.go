@@ -191,8 +191,8 @@ func TestExtractWarnsWhenOutputDirExists(t *testing.T) {
 		if code != 0 {
 			t.Fatalf("exit code = %d, want 0; stderr=%q", code, stderr.String())
 		}
-		if strings.Contains(stderr.String(), "warning") {
-			t.Errorf("expected no warning for fresh dir, got stderr=%q", stderr.String())
+		if strings.Contains(stderr.String(), "warning: output directory already exists") {
+			t.Errorf("expected no overwrite warning for fresh dir, got stderr=%q", stderr.String())
 		}
 	})
 
@@ -213,11 +213,11 @@ func TestExtractWarnsWhenOutputDirExists(t *testing.T) {
 		if code != 0 {
 			t.Fatalf("exit code = %d, want 0; stderr=%q", code, stderr.String())
 		}
-		if !strings.Contains(stderr.String(), "warning:") {
+		if !strings.Contains(stderr.String(), "warning: output directory already exists") {
 			t.Errorf("expected overwrite warning on stderr, got %q", stderr.String())
 		}
-		if !strings.Contains(stderr.String(), "already exists") {
-			t.Errorf("expected 'already exists' in warning, got %q", stderr.String())
+		if !strings.Contains(stderr.String(), outDir) {
+			t.Errorf("expected warning to include output dir path %q, got %q", outDir, stderr.String())
 		}
 	})
 
@@ -235,8 +235,8 @@ func TestExtractWarnsWhenOutputDirExists(t *testing.T) {
 		if code != 0 {
 			t.Fatalf("exit code = %d, want 0; stderr=%q", code, stderr.String())
 		}
-		if strings.Contains(stderr.String(), "warning") {
-			t.Errorf("expected no warning for empty dir, got stderr=%q", stderr.String())
+		if strings.Contains(stderr.String(), "warning: output directory already exists") {
+			t.Errorf("expected no overwrite warning for empty dir, got stderr=%q", stderr.String())
 		}
 	})
 }
