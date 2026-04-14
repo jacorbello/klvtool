@@ -428,7 +428,7 @@ func writeCSVRecords(w *csv.Writer, index int, rec record.Record, includeRaw boo
 			strconv.Itoa(index),
 			strconv.Itoa(it.Tag),
 			it.Name,
-			formatValue(it.Value, ""),
+			formatCSVValue(it.Value),
 			it.Units,
 		}
 		if includeRaw {
@@ -439,6 +439,23 @@ func writeCSVRecords(w *csv.Writer, index int, rec record.Record, includeRaw boo
 		}
 	}
 	return nil
+}
+
+func formatCSVValue(v record.Value) string {
+	if v == nil {
+		return "<nil>"
+	}
+	if s, ok := v.(record.StringValue); ok {
+		return string(s)
+	}
+	b, err := json.Marshal(v)
+	if err != nil {
+		return "<error>"
+	}
+	if s, err := strconv.Unquote(string(b)); err == nil {
+		return s
+	}
+	return string(b)
 }
 
 func formatRawHex(b []byte) string {

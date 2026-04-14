@@ -422,6 +422,30 @@ func TestWriteCSVEmptyItems(t *testing.T) {
 	}
 }
 
+func TestFormatCSVValuePreservesQuotedStrings(t *testing.T) {
+	tests := []struct {
+		name string
+		val  record.Value
+		want string
+	}{
+		{name: "plain string", val: record.StringValue("hello"), want: "hello"},
+		{name: "string with leading quote", val: record.StringValue(`"foo`), want: `"foo`},
+		{name: "string with trailing quote", val: record.StringValue(`bar"`), want: `bar"`},
+		{name: "string wrapped in quotes", val: record.StringValue(`"baz"`), want: `"baz"`},
+		{name: "float value", val: record.FloatValue(3.14), want: "3.14"},
+		{name: "int value", val: record.IntValue(42), want: "42"},
+		{name: "nil value", val: nil, want: "<nil>"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := formatCSVValue(tt.val)
+			if got != tt.want {
+				t.Errorf("formatCSVValue(%v) = %q, want %q", tt.val, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestDecodeCommandCSVOutput(t *testing.T) {
 	out := &bytes.Buffer{}
 	cmd := &DecodeCommand{
