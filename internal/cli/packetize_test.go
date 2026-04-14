@@ -214,10 +214,14 @@ func TestPacketizeOverwriteWarningBehavior(t *testing.T) {
 			t.Fatalf("create manifest: %v", err)
 		}
 		if err := output.NewManifestWriter(manifestFile).WriteManifest(manifest); err != nil {
-			_ = manifestFile.Close()
+			if closeErr := manifestFile.Close(); closeErr != nil {
+				t.Fatalf("write manifest: %v; close manifest: %v", err, closeErr)
+			}
 			t.Fatalf("write manifest: %v", err)
 		}
-		_ = manifestFile.Close()
+		if err := manifestFile.Close(); err != nil {
+			t.Fatalf("close manifest: %v", err)
+		}
 		return inputDir
 	}
 
@@ -234,8 +238,8 @@ func TestPacketizeOverwriteWarningBehavior(t *testing.T) {
 		if code != 0 {
 			t.Fatalf("exit code = %d, want 0; stderr=%q", code, stderr.String())
 		}
-		if strings.Contains(stderr.String(), "warning") {
-			t.Fatalf("expected no warning on fresh dir, got stderr=%q", stderr.String())
+		if stderr.Len() != 0 {
+			t.Fatalf("expected empty stderr on fresh dir, got %q", stderr.String())
 		}
 	})
 
@@ -263,22 +267,4 @@ func TestPacketizeOverwriteWarningBehavior(t *testing.T) {
 		}
 	})
 
-	t.Run("exit code is 0 with overwrite warning", func(t *testing.T) {
-		inputDir := setupInput(t)
-		outDir := t.TempDir()
-
-		if err := os.WriteFile(filepath.Join(outDir, "manifest.ndjson"), []byte("{}"), 0o644); err != nil {
-			t.Fatalf("seed manifest: %v", err)
-		}
-
-		var stdout, stderr bytes.Buffer
-		cmd := NewRootCommand()
-		cmd.Out = &stdout
-		cmd.Err = &stderr
-
-		code := cmd.Execute([]string{"packetize", "--input", inputDir, "--out", outDir})
-		if code != 0 {
-			t.Fatalf("exit code = %d, want 0 even with warning; stderr=%q", code, stderr.String())
-		}
-	})
 }
