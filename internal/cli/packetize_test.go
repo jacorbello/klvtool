@@ -47,6 +47,25 @@ func TestPacketizeRequiresInputAndOutput(t *testing.T) {
 	}
 }
 
+func TestPacketizeRequiresOutput(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	cmd := NewRootCommand()
+	cmd.Out = &stdout
+	cmd.Err = &stderr
+
+	if got := cmd.Execute([]string{"packetize", "--input", t.TempDir()}); got != usageExitCode {
+		t.Fatalf("expected usage exit code %d, got %d", usageExitCode, got)
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("expected validation failure to keep stdout empty, got %q", stdout.String())
+	}
+	if text := stderr.String(); !strings.Contains(text, "output directory is required") {
+		t.Fatalf("expected missing output error, got %q", text)
+	}
+}
+
 func TestPacketizeRejectsSameInputAndOutputDirectory(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
