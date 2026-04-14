@@ -454,4 +454,3 @@ func assertEnum(code int64, label string) func(t *testing.T, v record.Value) {
 		}
 	}
 }
-

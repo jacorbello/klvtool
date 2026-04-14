@@ -40,7 +40,11 @@
       "severity": "error",
       "code": "tag_decode_error",
       "message": "value out of range (error indicator)",
-      "tag": 6
+      "tag": 6,
+      "tagName": "Platform Pitch Angle",
+      "actual": "-32768",
+      "expected": "physical range [-20, 20]; encoded minimum -32768 is reserved as error indicator",
+      "raw": "0x8000"
     }
   ]
 }

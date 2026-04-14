@@ -21,6 +21,7 @@ type RootCommand struct {
 	Decode     *DecodeCommand
 	Packetize  *PacketizeCommand
 	VersionCmd *VersionCommand
+	Update     *UpdateCommand
 }
 
 func NewRootCommand() *RootCommand {
@@ -35,6 +36,7 @@ func NewRootCommand() *RootCommand {
 		Decode:     NewDecodeCommand(),
 		Packetize:  NewPacketizeCommand(),
 		VersionCmd: NewVersionCommand(),
+		Update:     NewUpdateCommand(),
 	}
 }
 
@@ -56,6 +58,9 @@ func (c *RootCommand) Execute(args []string) int {
 	}
 	if len(args) > 0 && args[0] == "version" {
 		return c.versionCommand().Execute(args[1:])
+	}
+	if len(args) > 0 && args[0] == "update" {
+		return c.updateCommand().Execute(args[1:])
 	}
 	if len(args) > 0 && args[0] == "doctor" {
 		return c.doctorCommand().Execute(args[1:])
@@ -96,6 +101,7 @@ func (c *RootCommand) writeUsage(w io.Writer) {
 	_, _ = fmt.Fprintln(w)
 	_, _ = fmt.Fprintln(w, "Commands:")
 	_, _ = fmt.Fprintln(w, "  version  Print version information.")
+	_, _ = fmt.Fprintln(w, "  update   Update to the latest GitHub release.")
 	_, _ = fmt.Fprintln(w, "  doctor   Check backend availability and environment health.")
 	_, _ = fmt.Fprintln(w, "  extract  Extract payloads and write manifest output.")
 	_, _ = fmt.Fprintln(w, "  inspect  Inspect MPEG-TS stream inventory and diagnostics.")
@@ -201,4 +207,19 @@ func (c *RootCommand) versionCommand() *VersionCommand {
 	v.Err = c.Err
 	v.Version = c.Version
 	return v
+}
+
+func (c *RootCommand) updateCommand() *UpdateCommand {
+	if c == nil {
+		return NewUpdateCommand()
+	}
+	u := c.Update
+	if u == nil {
+		u = NewUpdateCommand()
+		c.Update = u
+	}
+	u.Out = c.Out
+	u.Err = c.Err
+	u.Version = c.Version
+	return u
 }

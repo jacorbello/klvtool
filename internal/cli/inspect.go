@@ -153,7 +153,7 @@ func (c *InspectCommand) writeReport(table ts.StreamTable, stats InspectStats) {
 }
 
 const (
-	ptsClockHz         = 90000            // MPEG-TS PTS clock frequency
+	ptsClockHz          = 90000             // MPEG-TS PTS clock frequency
 	ticksPerMillisecond = ptsClockHz / 1000 // ticks in one millisecond
 )
 

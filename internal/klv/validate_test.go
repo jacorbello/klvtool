@@ -42,6 +42,9 @@ func TestValidateMissingMandatory(t *testing.T) {
 	for _, d := range diags {
 		if d.Code == "missing_mandatory_item" {
 			found = true
+			if d.TagName != "UAS Datalink LS Version Number" {
+				t.Errorf("TagName = %q, want %q", d.TagName, "UAS Datalink LS Version Number")
+			}
 		}
 	}
 	if !found {
@@ -64,6 +67,15 @@ func TestValidateOrderTag2NotFirst(t *testing.T) {
 	for _, d := range diags {
 		if d.Code == "tag_out_of_order" {
 			found = true
+			if d.TagName != "Precision Time Stamp" {
+				t.Errorf("TagName = %q, want %q", d.TagName, "Precision Time Stamp")
+			}
+			if d.Actual != "position 2" {
+				t.Errorf("Actual = %q, want %q", d.Actual, "position 2")
+			}
+			if d.Expected != "position 1 (first item)" {
+				t.Errorf("Expected = %q, want %q", d.Expected, "position 1 (first item)")
+			}
 		}
 	}
 	if !found {
@@ -108,6 +120,18 @@ func TestValidateLengthMismatch(t *testing.T) {
 	for _, d := range diags {
 		if d.Code == "tag_length_mismatch" {
 			found = true
+			if d.TagName != "Precision Time Stamp" {
+				t.Errorf("TagName = %q, want %q", d.TagName, "Precision Time Stamp")
+			}
+			if d.Actual != "4 bytes" {
+				t.Errorf("Actual = %q, want %q", d.Actual, "4 bytes")
+			}
+			if d.Expected != "8 bytes" {
+				t.Errorf("Expected = %q, want %q", d.Expected, "8 bytes")
+			}
+			if d.Raw != "0x00000000" {
+				t.Errorf("Raw = %q, want %q", d.Raw, "0x00000000")
+			}
 		}
 	}
 	if !found {
@@ -133,6 +157,15 @@ func TestValidateVersionMismatch(t *testing.T) {
 			if d.Severity != "note" {
 				t.Errorf("ls_version_mismatch severity = %q, want %q", d.Severity, "note")
 			}
+			if d.TagName != "UAS Datalink LS Version Number" {
+				t.Errorf("TagName = %q, want %q", d.TagName, "UAS Datalink LS Version Number")
+			}
+			if d.Actual != "14" {
+				t.Errorf("Actual = %q, want %q", d.Actual, "14")
+			}
+			if d.Expected != "19" {
+				t.Errorf("Expected = %q, want %q", d.Expected, "19")
+			}
 		}
 	}
 	if !found {
@@ -155,6 +188,18 @@ func TestValidateChecksumMismatch(t *testing.T) {
 	for _, d := range diags {
 		if d.Code == "checksum_mismatch" {
 			found = true
+			if d.TagName != "Checksum" {
+				t.Errorf("TagName = %q, want %q", d.TagName, "Checksum")
+			}
+			if d.Actual != "0x0002" {
+				t.Errorf("Actual = %q, want %q", d.Actual, "0x0002")
+			}
+			if d.Expected != "0x0001" {
+				t.Errorf("Expected = %q, want %q", d.Expected, "0x0001")
+			}
+			if d.Raw != "0x0000" {
+				t.Errorf("Raw = %q, want %q", d.Raw, "0x0000")
+			}
 		}
 	}
 	if !found {
@@ -210,6 +255,18 @@ func TestValidateRangeViolation(t *testing.T) {
 	for _, d := range diags {
 		if d.Code == "tag_range_violation" {
 			found = true
+			if d.TagName != "Bounded Float" {
+				t.Errorf("TagName = %q, want %q", d.TagName, "Bounded Float")
+			}
+			if d.Actual != "250" {
+				t.Errorf("Actual = %q, want %q", d.Actual, "250")
+			}
+			if d.Expected != "[0, 100]" {
+				t.Errorf("Expected = %q, want %q", d.Expected, "[0, 100]")
+			}
+			if d.Raw != "0x0000" {
+				t.Errorf("Raw = %q, want %q", d.Raw, "0x0000")
+			}
 		}
 	}
 	if !found {
@@ -252,6 +309,18 @@ func TestValidateEnumInvalid(t *testing.T) {
 	for _, d := range diags {
 		if d.Code == "tag_enum_invalid" {
 			found = true
+			if d.TagName != "Enum Code" {
+				t.Errorf("TagName = %q, want %q", d.TagName, "Enum Code")
+			}
+			if d.Actual != "99" {
+				t.Errorf("Actual = %q, want %q", d.Actual, "99")
+			}
+			if d.Expected != "{0:zero, 1:one}" {
+				t.Errorf("Expected = %q, want %q", d.Expected, "{0:zero, 1:one}")
+			}
+			if d.Raw != "0x63" {
+				t.Errorf("Raw = %q, want %q", d.Raw, "0x63")
+			}
 		}
 	}
 	if !found {
@@ -350,6 +419,15 @@ func TestValidateDuplicateTag(t *testing.T) {
 			}
 			if d.Message == "" {
 				t.Errorf("expected non-empty message identifying duplicated tag")
+			}
+			if d.TagName != "Enum Code" {
+				t.Errorf("TagName = %q, want %q", d.TagName, "Enum Code")
+			}
+			if d.Actual != "3 occurrences" {
+				t.Errorf("Actual = %q, want %q", d.Actual, "3 occurrences")
+			}
+			if d.Expected != "at most once" {
+				t.Errorf("Expected = %q, want %q", d.Expected, "at most once")
 			}
 		}
 	}

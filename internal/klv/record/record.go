@@ -43,6 +43,10 @@ type Diagnostic struct {
 	Code     string `json:"code"`
 	Message  string `json:"message"`
 	Tag      *int   `json:"tag,omitempty"`
+	TagName  string `json:"tagName,omitempty"`
+	Actual   string `json:"actual,omitempty"`
+	Expected string `json:"expected,omitempty"`
+	Raw      string `json:"raw,omitempty"`
 }
 
 // Value is a closed sum of typed KLV values. Concrete implementations

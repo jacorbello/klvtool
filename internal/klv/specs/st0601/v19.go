@@ -607,7 +607,10 @@ func v19Tags() map[int]specs.TagDefinition {
 	}
 
 	// ---- Complex structured packs (opaque passthrough) ----
-	for _, ct := range []struct{ tag int; name string }{
+	for _, ct := range []struct {
+		tag  int
+		name string
+	}{
 		{81, "Image Horizon Pixel Pack"},
 		{102, "SDCC-FLP"},
 		{115, "Control Command"},
