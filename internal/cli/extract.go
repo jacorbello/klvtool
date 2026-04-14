@@ -39,6 +39,7 @@ type ExtractCommand struct {
 	Extractor      extractRunner
 	WritePayload   payloadWriterFunc
 	NewManifestOut func(io.Writer) manifestWriter
+	OpenManifest   func(string) (io.WriteCloser, error)
 }
 
 func NewExtractCommand() *ExtractCommand {
@@ -192,17 +193,19 @@ func (c *ExtractCommand) writeOutputs(outDir, inputPath string, result extract.R
 	}
 
 	manifestPath := filepath.Join(outDir, "manifest.ndjson")
-	file, err := os.Create(manifestPath)
+	open := c.openManifest()
+	file, err := open(manifestPath)
 	if err != nil {
 		return model.Manifest{}, model.OutputWrite(fmt.Errorf("create manifest file %q: %w", manifestPath, err))
 	}
-	defer func() {
-		_ = file.Close()
-	}()
 
 	writer := c.manifestWriter(file)
 	if err := writer.WriteManifest(manifest); err != nil {
+		_ = file.Close()
 		return model.Manifest{}, err
+	}
+	if err := file.Close(); err != nil {
+		return model.Manifest{}, model.OutputWrite(err)
 	}
 	return manifest, nil
 }
@@ -240,6 +243,15 @@ func (c *ExtractCommand) payloadWriter() payloadWriterFunc {
 		return c.WritePayload
 	}
 	return output.WritePayload
+}
+
+func (c *ExtractCommand) openManifest() func(string) (io.WriteCloser, error) {
+	if c != nil && c.OpenManifest != nil {
+		return c.OpenManifest
+	}
+	return func(path string) (io.WriteCloser, error) {
+		return os.Create(path)
+	}
 }
 
 func (c *ExtractCommand) manifestWriter(w io.Writer) manifestWriter {
