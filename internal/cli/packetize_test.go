@@ -408,8 +408,8 @@ func TestPacketCheckpointUsesPacketEndInclusive(t *testing.T) {
 	if !strings.Contains(string(data), `"packetEndInclusive"`) {
 		t.Errorf("expected JSON field 'packetEndInclusive'; got: %s", string(data))
 	}
-	if strings.Contains(string(data), `"packetEnd"`) && !strings.Contains(string(data), `"packetEndInclusive"`) {
-		t.Errorf("expected 'packetEndInclusive' not 'packetEnd'; got: %s", string(data))
+	if strings.Contains(string(data), `"packetEnd":`) {
+		t.Errorf("expected 'packetEndInclusive' not legacy 'packetEnd'; got: %s", string(data))
 	}
 }
 

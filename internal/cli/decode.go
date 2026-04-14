@@ -316,6 +316,9 @@ func (c *DecodeCommand) Execute(args []string) int {
 }
 
 func (c *DecodeCommand) writeUsage(w io.Writer) {
+	if w == nil {
+		return
+	}
 	fmt.Fprintln(w, "Usage: klvtool decode --input <file.ts> [--format ndjson|text] [--raw] [--strict] [--pid N] [--out path] [--schema urn]") //nolint:errcheck
 	fmt.Fprintln(w)                                                                                                                              //nolint:errcheck
 	fmt.Fprintln(w, "Decode MISB ST 0601 KLV metadata from an MPEG-TS file.")                                                                   //nolint:errcheck
@@ -324,6 +327,9 @@ func (c *DecodeCommand) writeUsage(w io.Writer) {
 }
 
 func (c *DecodeCommand) writeError(w io.Writer, err error) {
+	if w == nil || err == nil {
+		return
+	}
 	fmt.Fprintln(w, "error:", err) //nolint:errcheck
 }
 
