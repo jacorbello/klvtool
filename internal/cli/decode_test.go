@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"encoding/csv"
 	"encoding/json"
 	"errors"
 	"io"
@@ -315,6 +316,223 @@ func TestDecodeCommandTextOutput(t *testing.T) {
 	}
 	if !strings.Contains(got, "Platform Heading Angle") {
 		t.Errorf("missing item: %s", got)
+	}
+}
+
+func TestWriteCSVBasicOutput(t *testing.T) {
+	var buf bytes.Buffer
+	w := csv.NewWriter(&buf)
+	if err := writeCSVHeader(w, false); err != nil {
+		t.Fatalf("writeCSVHeader: %v", err)
+	}
+	rec := record.Record{
+		Items: []record.Item{
+			{Tag: 2, Name: "Precision Time Stamp", Value: record.StringValue("2023-03-02T12:34:56.789Z")},
+			{Tag: 5, Name: "Platform Heading Angle", Value: record.FloatValue(159.97), Units: "°"},
+		},
+	}
+	if err := writeCSVRecords(w, 0, rec, false); err != nil {
+		t.Fatalf("writeCSVRecords: %v", err)
+	}
+	w.Flush()
+	if err := w.Error(); err != nil {
+		t.Fatalf("csv.Writer: %v", err)
+	}
+	rows, err := csv.NewReader(strings.NewReader(buf.String())).ReadAll()
+	if err != nil {
+		t.Fatalf("ReadAll: %v", err)
+	}
+	if len(rows) != 3 {
+		t.Fatalf("got %d rows, want 3 (header + 2 items)", len(rows))
+	}
+	wantHeader := []string{"packetIndex", "tag", "name", "value", "units"}
+	if len(rows[0]) != len(wantHeader) {
+		t.Fatalf("header fields: %v", rows[0])
+	}
+	for i := range wantHeader {
+		if rows[0][i] != wantHeader[i] {
+			t.Fatalf("header[%d] = %q, want %q", i, rows[0][i], wantHeader[i])
+		}
+	}
+	if rows[1][0] != "0" || rows[1][1] != "2" || rows[1][2] != "Precision Time Stamp" {
+		t.Errorf("row1: %v", rows[1])
+	}
+	if rows[2][1] != "5" || rows[2][4] != "°" {
+		t.Errorf("row2: %v", rows[2])
+	}
+}
+
+func TestWriteCSVRawColumns(t *testing.T) {
+	var buf bytes.Buffer
+	w := csv.NewWriter(&buf)
+	if err := writeCSVHeader(w, true); err != nil {
+		t.Fatalf("writeCSVHeader: %v", err)
+	}
+	rec := record.Record{
+		Items: []record.Item{
+			{
+				Tag: 5, Name: "Platform Heading Angle",
+				Value: record.FloatValue(159.97), Units: "°",
+				Raw: []byte{0x71, 0xC2},
+			},
+		},
+	}
+	if err := writeCSVRecords(w, 1, rec, true); err != nil {
+		t.Fatalf("writeCSVRecords: %v", err)
+	}
+	w.Flush()
+	if err := w.Error(); err != nil {
+		t.Fatalf("csv.Writer: %v", err)
+	}
+	rows, err := csv.NewReader(strings.NewReader(buf.String())).ReadAll()
+	if err != nil {
+		t.Fatalf("ReadAll: %v", err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("got %d rows, want 2", len(rows))
+	}
+	if len(rows[0]) != 6 || rows[0][5] != "raw" {
+		t.Fatalf("header: %v", rows[0])
+	}
+	if rows[1][0] != "1" || rows[1][5] != "0x71c2" {
+		t.Errorf("data row: %v", rows[1])
+	}
+}
+
+func TestWriteCSVEmptyItems(t *testing.T) {
+	var buf bytes.Buffer
+	w := csv.NewWriter(&buf)
+	if err := writeCSVHeader(w, false); err != nil {
+		t.Fatalf("writeCSVHeader: %v", err)
+	}
+	rec := record.Record{Items: nil}
+	if err := writeCSVRecords(w, 0, rec, false); err != nil {
+		t.Fatalf("writeCSVRecords: %v", err)
+	}
+	w.Flush()
+	if err := w.Error(); err != nil {
+		t.Fatalf("csv.Writer: %v", err)
+	}
+	rows, err := csv.NewReader(strings.NewReader(buf.String())).ReadAll()
+	if err != nil {
+		t.Fatalf("ReadAll: %v", err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("got %d rows, want header only", len(rows))
+	}
+}
+
+func TestDecodeCommandCSVOutput(t *testing.T) {
+	out := &bytes.Buffer{}
+	cmd := &DecodeCommand{
+		Out:    out,
+		Err:    &bytes.Buffer{},
+		Decode: fakeDecodePayloads,
+		Registry: func() *klv.Registry {
+			r := klv.NewRegistry()
+			r.Register(st0601.V19())
+			return r
+		},
+	}
+	code := cmd.Execute([]string{"--input", tempInputFile(t), "--format", "csv"})
+	if code != 0 {
+		t.Fatalf("exit code = %d", code)
+	}
+	rows, err := csv.NewReader(strings.NewReader(out.String())).ReadAll()
+	if err != nil {
+		t.Fatalf("ReadAll: %v", err)
+	}
+	if len(rows) < 2 {
+		t.Fatalf("expected header + data rows, got %d rows", len(rows))
+	}
+	if rows[0][0] != "packetIndex" {
+		t.Fatalf("bad header: %v", rows[0])
+	}
+	// fakeDecodePayloads has 4 items; order follows slice order.
+	if len(rows) != 5 {
+		t.Fatalf("got %d rows, want 5 (header + 4 items)", len(rows))
+	}
+}
+
+func TestDecodeCommandCSVWithRaw(t *testing.T) {
+	out := &bytes.Buffer{}
+	cmd := &DecodeCommand{
+		Out:    out,
+		Err:    &bytes.Buffer{},
+		Decode: fakeDecodeWithRaw,
+	}
+	code := cmd.Execute([]string{"--input", tempInputFile(t), "--format", "csv", "--raw"})
+	if code != 0 {
+		t.Fatalf("exit code = %d", code)
+	}
+	rows, err := csv.NewReader(strings.NewReader(out.String())).ReadAll()
+	if err != nil {
+		t.Fatalf("ReadAll: %v", err)
+	}
+	if len(rows) != 2 || len(rows[0]) != 6 {
+		t.Fatalf("want header + 1 data row with raw column; got %d rows, header len %d", len(rows), len(rows[0]))
+	}
+	if rows[1][5] != "0x71c2" {
+		t.Errorf("raw column = %q", rows[1][5])
+	}
+}
+
+func TestDecodeCommandRejectsInvalidFormat(t *testing.T) {
+	errBuf := &bytes.Buffer{}
+	cmd := &DecodeCommand{
+		Out: &bytes.Buffer{},
+		Err: errBuf,
+		Decode: func(_ string, _ int, _ string) (DecodeResult, error) {
+			t.Fatal("decode should not run with invalid format")
+			return DecodeResult{}, nil
+		},
+	}
+	code := cmd.Execute([]string{"--input", tempInputFile(t), "--format", "xml"})
+	if code != usageExitCode {
+		t.Fatalf("exit code = %d, want %d", code, usageExitCode)
+	}
+	if !strings.Contains(errBuf.String(), "invalid format") {
+		t.Errorf("stderr: %s", errBuf.String())
+	}
+}
+
+func TestDecodeCommandCSVZeroPacketsEmitsHeader(t *testing.T) {
+	out := &bytes.Buffer{}
+	errBuf := &bytes.Buffer{}
+	cmd := &DecodeCommand{
+		Out:      out,
+		Err:      errBuf,
+		Registry: testRegistry,
+		Decode: func(_ string, _ int, _ string) (DecodeResult, error) {
+			return DecodeResult{Records: nil}, nil
+		},
+	}
+	code := cmd.Execute([]string{"--input", tempInputFile(t), "--format", "csv"})
+	if code != 0 {
+		t.Fatalf("exit code = %d; stderr=%s", code, errBuf.String())
+	}
+	rows, err := csv.NewReader(strings.NewReader(out.String())).ReadAll()
+	if err != nil {
+		t.Fatalf("ReadAll: %v", err)
+	}
+	if len(rows) != 1 || rows[0][0] != "packetIndex" {
+		t.Fatalf("want header-only CSV; got %d rows, first=%v", len(rows), rows)
+	}
+}
+
+func TestDecodeCommandCSVWriteErrorSurfaced(t *testing.T) {
+	errBuf := &bytes.Buffer{}
+	cmd := &DecodeCommand{
+		Out:    errWriter{},
+		Err:    errBuf,
+		Decode: fakeDecodePayloads,
+	}
+	code := cmd.Execute([]string{"--input", tempInputFile(t), "--format", "csv"})
+	if code == 0 {
+		t.Fatal("expected non-zero exit on write error")
+	}
+	if !strings.Contains(errBuf.String(), "output_write_failure") && !strings.Contains(errBuf.String(), "disk full") {
+		t.Errorf("stderr: %s", errBuf.String())
 	}
 }
 

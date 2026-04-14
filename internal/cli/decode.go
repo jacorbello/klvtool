@@ -3,12 +3,14 @@ package cli
 import (
 	"context"
 	"encoding/base64"
+	"encoding/csv"
 	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"strings"
 
 	ffmpegbackend "github.com/jacorbello/klvtool/internal/backends/ffmpeg"
@@ -158,7 +160,7 @@ func (c *DecodeCommand) Execute(args []string) int {
 		schema    string
 	)
 	fs.StringVar(&inputPath, "input", "", "path to the MPEG-TS input file")
-	fs.StringVar(&format, "format", "ndjson", "output format: ndjson or text")
+	fs.StringVar(&format, "format", "ndjson", "output format: ndjson, text, or csv")
 	fs.BoolVar(&raw, "raw", false, "include raw bytes and units per item")
 	fs.BoolVar(&strict, "strict", false, "exit 1 if any error-severity diagnostic is emitted")
 	fs.IntVar(&pid, "pid", 0, "limit to a specific KLV data stream PID (0 = all)")
@@ -184,9 +186,9 @@ func (c *DecodeCommand) Execute(args []string) int {
 		c.writeError(c.Err, model.InvalidUsage(fmt.Errorf("input path is required")))
 		return usageExitCode
 	}
-	if format != "ndjson" && format != "text" {
+	if format != "ndjson" && format != "text" && format != "csv" {
 		c.writeUsage(c.Err)
-		c.writeError(c.Err, model.InvalidUsage(fmt.Errorf("invalid format %q (want ndjson|text)", format)))
+		c.writeError(c.Err, model.InvalidUsage(fmt.Errorf("invalid format %q (want ndjson|text|csv)", format)))
 		return usageExitCode
 	}
 	if pid < 0 || pid > mpegTSPIDMax {
@@ -258,25 +260,55 @@ func (c *DecodeCommand) Execute(args []string) int {
 
 	exitCode := 0
 
+	var csvW *csv.Writer
+	if format == "csv" {
+		csvW = csv.NewWriter(sink)
+		if err := writeCSVHeader(csvW, raw); err != nil {
+			c.writeError(c.Err, model.OutputWrite(err))
+			exitCode = 1
+			csvW = nil
+		}
+	}
+
 	var errorCount int
+records:
 	for i, rec := range result.Records {
-		if format == "ndjson" {
+		switch format {
+		case "ndjson":
 			if err := writeNDJSON(sink, i, rec, raw); err != nil {
 				c.writeError(c.Err, model.OutputWrite(err))
 				exitCode = 1
-				break
+				break records
 			}
-		} else {
+		case "text":
 			if err := writeText(sink, i, rec, raw); err != nil {
 				c.writeError(c.Err, model.OutputWrite(err))
 				exitCode = 1
-				break
+				break records
+			}
+		case "csv":
+			if csvW != nil {
+				if err := writeCSVRecords(csvW, i, rec, raw); err != nil {
+					c.writeError(c.Err, model.OutputWrite(err))
+					exitCode = 1
+					break records
+				}
 			}
 		}
 		for _, d := range rec.Diagnostics {
 			if d.Severity == "error" {
 				errorCount++
 			}
+		}
+	}
+
+	if format == "csv" && csvW != nil {
+		csvW.Flush()
+		if err := csvW.Error(); err != nil {
+			if exitCode == 0 {
+				c.writeError(c.Err, model.OutputWrite(err))
+			}
+			exitCode = 1
 		}
 	}
 
@@ -318,11 +350,11 @@ func (c *DecodeCommand) writeUsage(w io.Writer) {
 	if w == nil {
 		return
 	}
-	fmt.Fprintln(w, "Usage: klvtool decode --input <file.ts> [--format ndjson|text] [--raw] [--strict] [--pid N] [--out path] [--schema urn]") //nolint:errcheck
-	fmt.Fprintln(w)                                                                                                                            //nolint:errcheck
-	fmt.Fprintln(w, "Decode MISB ST 0601 KLV metadata from an MPEG-TS file.")                                                                  //nolint:errcheck
-	fmt.Fprintln(w)                                                                                                                            //nolint:errcheck
-	fmt.Fprintln(w, "The --raw flag includes raw bytes per item: hex (0x...) in text format, base64 in NDJSON.")                               //nolint:errcheck
+	fmt.Fprintln(w, "Usage: klvtool decode --input <file.ts> [--format ndjson|text|csv] [--raw] [--strict] [--pid N] [--out path] [--schema urn]") //nolint:errcheck
+	fmt.Fprintln(w)                                                                                                                                //nolint:errcheck
+	fmt.Fprintln(w, "Decode MISB ST 0601 KLV metadata from an MPEG-TS file.")                                                                      //nolint:errcheck
+	fmt.Fprintln(w)                                                                                                                                //nolint:errcheck
+	fmt.Fprintln(w, "The --raw flag includes raw bytes per item: hex (0x...) in text and csv formats, base64 in NDJSON.")                          //nolint:errcheck
 }
 
 func (c *DecodeCommand) writeError(w io.Writer, err error) {
@@ -380,6 +412,40 @@ func writeNDJSON(w io.Writer, index int, rec record.Record, includeRaw bool) err
 	}
 	_, err = fmt.Fprintln(w, string(b))
 	return err
+}
+
+func writeCSVHeader(w *csv.Writer, includeRaw bool) error {
+	header := []string{"packetIndex", "tag", "name", "value", "units"}
+	if includeRaw {
+		header = append(header, "raw")
+	}
+	return w.Write(header)
+}
+
+func writeCSVRecords(w *csv.Writer, index int, rec record.Record, includeRaw bool) error {
+	for _, it := range rec.Items {
+		row := []string{
+			strconv.Itoa(index),
+			strconv.Itoa(it.Tag),
+			it.Name,
+			formatValue(it.Value, ""),
+			it.Units,
+		}
+		if includeRaw {
+			row = append(row, formatRawHex(it.Raw))
+		}
+		if err := w.Write(row); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func formatRawHex(b []byte) string {
+	if len(b) == 0 {
+		return ""
+	}
+	return fmt.Sprintf("0x%x", b)
 }
 
 func writeText(w io.Writer, index int, rec record.Record, includeRaw bool) error {
