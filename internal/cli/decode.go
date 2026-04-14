@@ -306,6 +306,9 @@ func (c *DecodeCommand) Execute(args []string) int {
 	// tag_decode_error), packetize-layer diagnostics, and validation
 	// failures. The label reflects that.
 	fmt.Fprintf(c.Err, "decoded %d packet(s), %d error diagnostic(s)\n", len(result.Records), errorCount) //nolint:errcheck
+	if pid != 0 && len(result.Records) == 0 {
+		fmt.Fprintf(c.Err, "warning: no KLV packets found on PID %d\n", pid) //nolint:errcheck
+	}
 	if strict && errorCount > 0 {
 		return 1
 	}

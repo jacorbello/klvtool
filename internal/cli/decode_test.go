@@ -708,3 +708,21 @@ func TestDecodeOutOpenFailure(t *testing.T) {
 		t.Errorf("expected error on stderr; got: %s", errBuf.String())
 	}
 }
+
+func TestDecodeWarnsPIDNoMatch(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	cmd := &DecodeCommand{
+		Out: &stdout,
+		Err: &stderr,
+		Decode: func(path string, pid int, schema string) (DecodeResult, error) {
+			return DecodeResult{Records: nil}, nil
+		},
+	}
+	code := cmd.Execute([]string{"--input", tempInputFile(t), "--pid", "999"})
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0", code)
+	}
+	if !strings.Contains(stderr.String(), "no KLV packets found on PID 999") {
+		t.Errorf("expected PID no-match warning; got stderr=%q", stderr.String())
+	}
+}
