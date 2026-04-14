@@ -109,6 +109,10 @@ func (c *PacketizeCommand) Execute(args []string) int {
 		return usageExitCode
 	}
 
+	if _, err := os.Stat(filepath.Join(outDir, "manifest.ndjson")); err == nil && c.Err != nil {
+		_, _ = fmt.Fprintf(c.Err, "warning: output directory already exists, files will be overwritten: %s\n", outDir)
+	}
+
 	records, err := c.rawPayloadReader()(inputDir)
 	if err != nil {
 		c.writeError(c.Err, err)
