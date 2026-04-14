@@ -91,7 +91,7 @@ func (c *DoctorCommand) writeUsage(w io.Writer) {
 	_, _ = fmt.Fprintln(w)
 	_, _ = fmt.Fprintln(w, "Check backend availability, detected versions, and install guidance.")
 	_, _ = fmt.Fprintln(w)
-	_, _ = fmt.Fprintln(w, "Exits 0 when all backends are healthy, 1 when any backend is unhealthy or missing.")
+	_, _ = fmt.Fprintln(w, "Exits 0 when all backends are healthy, 1 when any backend is unhealthy or missing, and 2 for invalid usage.")
 	_, _ = fmt.Fprintln(w)
 	_, _ = fmt.Fprintln(w, "Required tools:")
 	_, _ = fmt.Fprintln(w, "  ffmpeg:  ffmpeg, ffprobe")
