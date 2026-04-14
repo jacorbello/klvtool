@@ -211,6 +211,12 @@ func (c *DecodeCommand) Execute(args []string) int {
 		}
 	}
 
+	if _, err := os.Stat(inputPath); err != nil {
+		e := model.TSRead(fmt.Errorf("input file does not exist: %s", inputPath))
+		c.writeError(c.Err, e)
+		return exitCodeForError(e)
+	}
+
 	decode := c.Decode
 	if decode == nil {
 		decode = NewDecodeCommand().Decode

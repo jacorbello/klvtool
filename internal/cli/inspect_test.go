@@ -10,6 +10,30 @@ import (
 	ts "github.com/jacorbello/klvtool/internal/mpeg/ts"
 )
 
+func TestInspectRejectsNonExistentInput(t *testing.T) {
+	var stderr bytes.Buffer
+	cmd := &InspectCommand{
+		Out: nil,
+		Err: &stderr,
+		Inspect: func(path string) (ts.StreamTable, InspectStats, error) {
+			t.Fatal("inspect should not be called for non-existent input")
+			return ts.StreamTable{}, InspectStats{}, nil
+		},
+	}
+
+	got := cmd.Execute([]string{"--input", "/nonexistent/file.ts"})
+	if got != 1 {
+		t.Fatalf("exit code = %d, want 1", got)
+	}
+	text := stderr.String()
+	if !strings.Contains(text, "ts_read_failure") {
+		t.Fatalf("expected ts_read_failure error code, got %q", text)
+	}
+	if !strings.Contains(text, "/nonexistent/file.ts") {
+		t.Fatalf("expected file path in error, got %q", text)
+	}
+}
+
 func TestInspectPrintsStreamInventory(t *testing.T) {
 	var out, errBuf bytes.Buffer
 
@@ -35,7 +59,11 @@ func TestInspectPrintsStreamInventory(t *testing.T) {
 		},
 	}
 
-	code := cmd.Execute([]string{"--input", "test.ts"})
+	input := filepath.Join(t.TempDir(), "test.ts")
+	if err := os.WriteFile(input, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	code := cmd.Execute([]string{"--input", input})
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0; stderr: %s", code, errBuf.String())
 	}

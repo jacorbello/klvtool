@@ -72,6 +72,12 @@ func (c *InspectCommand) Execute(args []string) int {
 		return usageExitCode
 	}
 
+	if _, err := os.Stat(inputPath); err != nil {
+		e := model.TSRead(fmt.Errorf("input file does not exist: %s", inputPath))
+		c.writeError(c.Err, e)
+		return exitCodeForError(e)
+	}
+
 	inspect := c.Inspect
 	if inspect == nil {
 		inspect = defaultInspect

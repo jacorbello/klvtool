@@ -98,6 +98,12 @@ func (c *ExtractCommand) Execute(args []string) int {
 		return usageExitCode
 	}
 
+	if _, err := os.Stat(inputPath); err != nil {
+		e := model.TSRead(fmt.Errorf("input file does not exist: %s", inputPath))
+		c.writeError(c.Err, e)
+		return exitCodeForError(e)
+	}
+
 	if _, err := os.Stat(filepath.Join(outDir, "manifest.ndjson")); err == nil && c.Err != nil {
 		_, _ = fmt.Fprintf(c.Err, "warning: output directory already exists, files will be overwritten: %s\n", outDir)
 	}

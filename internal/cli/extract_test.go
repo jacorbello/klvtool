@@ -77,7 +77,11 @@ func TestExtractStopsOnExplicitBackendFailure(t *testing.T) {
 		},
 	}
 
-	if got := cmd.Execute([]string{"extract", "--input", "a.ts", "--out", "out"}); got != 1 {
+	input := filepath.Join(t.TempDir(), "a.ts")
+	if err := os.WriteFile(input, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := cmd.Execute([]string{"extract", "--input", input, "--out", "out"}); got != 1 {
 		t.Fatalf("expected runtime failure exit code 1, got %d", got)
 	}
 	if text := stderr.String(); !strings.Contains(text, "missing_dependency") {
@@ -120,7 +124,11 @@ func TestExtractWritesManifestAndPayloads(t *testing.T) {
 		},
 	}
 
-	if got := cmd.Execute([]string{"extract", "--input", "sample.ts", "--out", root}); got != 0 {
+	input := filepath.Join(t.TempDir(), "sample.ts")
+	if err := os.WriteFile(input, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := cmd.Execute([]string{"extract", "--input", input, "--out", root}); got != 0 {
 		t.Fatalf("expected successful extract exit code 0, got %d; stderr=%q", got, stderr.String())
 	}
 	if stderr.Len() != 0 {
@@ -158,6 +166,35 @@ func TestExtractWritesManifestAndPayloads(t *testing.T) {
 	}
 }
 
+func TestExtractRejectsNonExistentInput(t *testing.T) {
+	var stderr bytes.Buffer
+	cmd := NewRootCommand()
+	cmd.Out = nil
+	cmd.Err = &stderr
+	cmd.Extract.Detect = func(ctx context.Context, goos string, env map[string]string) envcheck.Report {
+		t.Fatal("detect should not be called for non-existent input")
+		return envcheck.Report{}
+	}
+	cmd.Extract.Extractor = stubExtractor{
+		run: func(ctx context.Context, req extract.RunRequest) (extract.RunResult, error) {
+			t.Fatal("extractor should not run for non-existent input")
+			return extract.RunResult{}, nil
+		},
+	}
+
+	got := cmd.Execute([]string{"extract", "--input", "/nonexistent/file.ts", "--out", t.TempDir()})
+	if got != 1 {
+		t.Fatalf("exit code = %d, want 1", got)
+	}
+	text := stderr.String()
+	if !strings.Contains(text, "ts_read_failure") {
+		t.Fatalf("expected ts_read_failure error code, got %q", text)
+	}
+	if !strings.Contains(text, "/nonexistent/file.ts") {
+		t.Fatalf("expected file path in error, got %q", text)
+	}
+}
+
 func TestExtractWarnsWhenOutputDirExists(t *testing.T) {
 	healthyDetect := func(ctx context.Context, goos string, env map[string]string) envcheck.Report {
 		return envcheck.Report{
@@ -176,6 +213,16 @@ func TestExtractWarnsWhenOutputDirExists(t *testing.T) {
 		},
 	}
 
+	// Helper to create a real input file for os.Stat validation
+	makeInput := func(t *testing.T) string {
+		t.Helper()
+		p := filepath.Join(t.TempDir(), "input.ts")
+		if err := os.WriteFile(p, nil, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+
 	t.Run("fresh output dir emits no warning", func(t *testing.T) {
 		root := t.TempDir()
 		outDir := filepath.Join(root, "fresh")
@@ -187,7 +234,7 @@ func TestExtractWarnsWhenOutputDirExists(t *testing.T) {
 		cmd.Extract.Detect = healthyDetect
 		cmd.Extract.Extractor = successExtractor
 
-		code := cmd.Execute([]string{"extract", "--input", "sample.ts", "--out", outDir})
+		code := cmd.Execute([]string{"extract", "--input", makeInput(t), "--out", outDir})
 		if code != 0 {
 			t.Fatalf("exit code = %d, want 0; stderr=%q", code, stderr.String())
 		}
@@ -209,7 +256,7 @@ func TestExtractWarnsWhenOutputDirExists(t *testing.T) {
 		cmd.Extract.Detect = healthyDetect
 		cmd.Extract.Extractor = successExtractor
 
-		code := cmd.Execute([]string{"extract", "--input", "sample.ts", "--out", outDir})
+		code := cmd.Execute([]string{"extract", "--input", makeInput(t), "--out", outDir})
 		if code != 0 {
 			t.Fatalf("exit code = %d, want 0; stderr=%q", code, stderr.String())
 		}
@@ -231,7 +278,7 @@ func TestExtractWarnsWhenOutputDirExists(t *testing.T) {
 		cmd.Extract.Detect = healthyDetect
 		cmd.Extract.Extractor = successExtractor
 
-		code := cmd.Execute([]string{"extract", "--input", "sample.ts", "--out", outDir})
+		code := cmd.Execute([]string{"extract", "--input", makeInput(t), "--out", outDir})
 		if code != 0 {
 			t.Fatalf("exit code = %d, want 0; stderr=%q", code, stderr.String())
 		}
