@@ -353,6 +353,29 @@ func TestPacketizeOverwriteWarningBehavior(t *testing.T) {
 		}
 	})
 
+	t.Run("existing output dir with non-manifest files emits warning", func(t *testing.T) {
+		inputDir := setupInput(t)
+		outDir := t.TempDir()
+
+		if err := os.WriteFile(filepath.Join(outDir, "somefile.bin"), []byte("data"), 0o644); err != nil {
+			t.Fatalf("seed file: %v", err)
+		}
+
+		var stdout, stderr bytes.Buffer
+		cmd := NewRootCommand()
+		cmd.Out = &stdout
+		cmd.Err = &stderr
+
+		code := cmd.Execute([]string{"packetize", "--input", inputDir, "--out", outDir})
+		if code != 0 {
+			t.Fatalf("exit code = %d, want 0; stderr=%q", code, stderr.String())
+		}
+		want := "warning: output directory already exists, files will be overwritten: " + outDir
+		if !strings.Contains(stderr.String(), want) {
+			t.Fatalf("expected overwrite warning for non-empty dir, got %q", stderr.String())
+		}
+	})
+
 }
 
 func TestPacketCheckpointUsesPacketEndInclusive(t *testing.T) {

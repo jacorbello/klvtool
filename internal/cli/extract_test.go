@@ -316,6 +316,28 @@ func TestExtractWarnsWhenOutputDirExists(t *testing.T) {
 		}
 	})
 
+	t.Run("existing dir with non-manifest files emits warning", func(t *testing.T) {
+		outDir := t.TempDir()
+		if err := os.WriteFile(filepath.Join(outDir, "somefile.bin"), []byte("data"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+
+		var stdout, stderr bytes.Buffer
+		cmd := NewRootCommand()
+		cmd.Out = &stdout
+		cmd.Err = &stderr
+		cmd.Extract.Detect = healthyDetect
+		cmd.Extract.Extractor = successExtractor
+
+		code := cmd.Execute([]string{"extract", "--input", makeInput(t), "--out", outDir})
+		if code != 0 {
+			t.Fatalf("exit code = %d, want 0; stderr=%q", code, stderr.String())
+		}
+		if !strings.Contains(stderr.String(), "warning: output directory already exists") {
+			t.Errorf("expected overwrite warning for non-empty dir, got stderr=%q", stderr.String())
+		}
+	})
+
 	t.Run("existing empty dir emits no warning", func(t *testing.T) {
 		outDir := t.TempDir()
 

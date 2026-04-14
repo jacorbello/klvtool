@@ -116,7 +116,7 @@ func (c *ExtractCommand) Execute(args []string) int {
 		return exitCodeForError(e)
 	}
 
-	if _, err := os.Stat(filepath.Join(outDir, "manifest.ndjson")); err == nil && c.Err != nil {
+	if dirNonEmpty(outDir) && c.Err != nil {
 		_, _ = fmt.Fprintf(c.Err, "warning: output directory already exists, files will be overwritten: %s\n", outDir)
 	}
 
@@ -308,6 +308,15 @@ func exitCodeForError(err error) int {
 		}
 	}
 	return 1
+}
+
+// dirNonEmpty returns true if dir exists and contains at least one entry.
+func dirNonEmpty(dir string) bool {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return false
+	}
+	return len(entries) > 0
 }
 
 func errorsAs(err error, target **model.Error) bool {
