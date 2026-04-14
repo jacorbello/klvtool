@@ -23,6 +23,12 @@ import (
 // mpegTSPIDMax is the highest valid MPEG-TS packet identifier (13-bit field).
 const mpegTSPIDMax = 0x1FFF
 
+// writeCloser combines io.Writer and io.Closer for output file injection.
+type writeCloser interface {
+	io.Writer
+	io.Closer
+}
+
 // DecodeCommand decodes MISB ST 0601 KLV from an MPEG-TS file into
 // typed records.
 type DecodeCommand struct {
@@ -33,6 +39,9 @@ type DecodeCommand struct {
 	// under that URN (bypassing UL-based auto-detection).
 	Decode   func(path string, pid int, schema string) (DecodeResult, error)
 	Registry func() *klv.Registry
+	// openOut creates the output file for --out. Defaults to os.Create.
+	// Exposed for testing close-error propagation.
+	openOut func(path string) (writeCloser, error)
 }
 
 // DecodeResult holds decoded records plus stream-level diagnostics that
@@ -219,14 +228,21 @@ func (c *DecodeCommand) Execute(args []string) int {
 	}
 
 	sink := c.Out
+	var closer io.Closer
 	if outPath != "" {
-		f, err := os.Create(outPath)
+		open := c.openOut
+		if open == nil {
+			open = func(path string) (writeCloser, error) {
+				return os.Create(path)
+			}
+		}
+		f, err := open(outPath)
 		if err != nil {
 			c.writeError(c.Err, model.OutputWrite(err))
 			return exitCodeForError(err)
 		}
-		defer f.Close() //nolint:errcheck
 		sink = f
+		closer = f
 	}
 
 	var errorCount int
@@ -256,6 +272,13 @@ func (c *DecodeCommand) Execute(args []string) int {
 		fmt.Fprintf(c.Err, "[stream] %s %s: %s\n", d.Severity, d.Code, d.Message) //nolint:errcheck
 		if d.Severity == "error" {
 			errorCount++
+		}
+	}
+
+	if closer != nil {
+		if err := closer.Close(); err != nil {
+			c.writeError(c.Err, model.OutputWrite(err))
+			return 1
 		}
 	}
 
