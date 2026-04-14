@@ -55,7 +55,7 @@ func decodeLocalSetInternal(reg *Registry, ul []byte, value []byte, fullForCheck
 	rec := record.Record{
 		UL:          append([]byte{}, ul...),
 		LSVersion:   -1,
-		TotalLength: len(value),
+		ValueLength: len(value),
 		Items:       []record.Item{},
 		Diagnostics: []record.Diagnostic{},
 	}

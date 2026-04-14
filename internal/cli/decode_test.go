@@ -99,7 +99,7 @@ func TestWriteNDJSONEmptyCollectionsSerializeAsArrays(t *testing.T) {
 	rec := record.Record{
 		Schema:      "urn:misb:KLV:bin:0601.19",
 		LSVersion:   19,
-		TotalLength: 0,
+		ValueLength: 0,
 		Items:       nil,
 		Diagnostics: nil,
 	}
@@ -128,7 +128,7 @@ func fakeDecodePayloads(_ string, _ int, _ string) (DecodeResult, error) {
 	rec := record.Record{
 		Schema:      "urn:misb:KLV:bin:0601.19",
 		LSVersion:   19,
-		TotalLength: 12,
+		ValueLength: 12,
 		Checksum:    record.ChecksumInfo{Expected: 0x1111, Computed: 0x1111, Valid: true},
 		Items: []record.Item{
 			{Tag: 2, Name: "Precision Time Stamp", Value: record.StringValue("2023-03-02T12:34:56.789Z")},

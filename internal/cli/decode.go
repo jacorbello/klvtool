@@ -325,7 +325,7 @@ type ndjsonRecord struct {
 	Schema      string              `json:"schema"`
 	PacketIndex int                 `json:"packetIndex"`
 	LSVersion   int                 `json:"lsVersion"`
-	TotalLength int                 `json:"totalLength"`
+	ValueLength int                 `json:"valueLength"`
 	Checksum    record.ChecksumInfo `json:"checksum"`
 	Items       []ndjsonItem        `json:"items"`
 	Diagnostics []record.Diagnostic `json:"diagnostics"`
@@ -350,7 +350,7 @@ func writeNDJSON(w io.Writer, index int, rec record.Record, includeRaw bool) err
 		Schema:      rec.Schema,
 		PacketIndex: index,
 		LSVersion:   rec.LSVersion,
-		TotalLength: rec.TotalLength,
+		ValueLength: rec.ValueLength,
 		Checksum:    rec.Checksum,
 		Items:       []ndjsonItem{},
 		Diagnostics: diags,

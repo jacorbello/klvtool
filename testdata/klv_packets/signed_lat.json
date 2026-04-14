@@ -2,7 +2,7 @@
   "schema": "urn:misb:KLV:bin:0601.19",
   "ul": "Bg4rNAILAQEOAQMBAQAAAA==",
   "lsVersion": 19,
-  "totalLength": 23,
+  "valueLength": 23,
   "items": [
     {
       "tag": 2,

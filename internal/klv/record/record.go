@@ -14,7 +14,7 @@ type Record struct {
 	Schema      string       `json:"schema"`
 	UL          []byte       `json:"ul,omitempty"`
 	LSVersion   int          `json:"lsVersion"`
-	TotalLength int          `json:"totalLength"`
+	ValueLength int          `json:"valueLength"`
 	Items       []Item       `json:"items"`
 	Checksum    ChecksumInfo `json:"checksum"`
 	Diagnostics []Diagnostic `json:"diagnostics"`
