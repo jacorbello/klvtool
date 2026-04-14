@@ -105,7 +105,7 @@ func (c *RootCommand) writeUsage(w io.Writer) {
 	_, _ = fmt.Fprintln(w, "  doctor   Check backend availability and environment health.")
 	_, _ = fmt.Fprintln(w, "  extract  Extract payloads and write manifest output.")
 	_, _ = fmt.Fprintln(w, "  inspect  Inspect MPEG-TS stream inventory and diagnostics.")
-	_, _ = fmt.Fprintln(w, "  decode   Decode MISB ST 0601 KLV records to NDJSON or text.")
+	_, _ = fmt.Fprintln(w, "  decode   Decode MISB ST 0601 KLV records to NDJSON, text, or CSV.")
 	_, _ = fmt.Fprintln(w, "  packetize Replay raw checkpoints and write packet output.")
 	_, _ = fmt.Fprintln(w)
 	_, _ = fmt.Fprintln(w, "Required tools:")

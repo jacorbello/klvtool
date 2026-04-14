@@ -70,6 +70,7 @@ make build
 ./bin/klvtool packetize --input /tmp/klvtool-raw --out /tmp/klvtool-packets --mode best-effort
 ./bin/klvtool decode --input testdata/fixtures/sample.ts --format ndjson
 ./bin/klvtool decode --input testdata/fixtures/sample.ts --format text --raw
+./bin/klvtool decode --input testdata/fixtures/sample.ts --format csv --out /tmp/decode.csv
 ```
 
 ### Decode flags
@@ -77,8 +78,8 @@ make build
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--input` | (required) | Path to MPEG-TS input file |
-| `--format` | `ndjson` | Output format: `ndjson` or `text` |
-| `--raw` | `false` | Include raw bytes (base64) and units per item |
+| `--format` | `ndjson` | Output format: `ndjson`, `text`, or `csv` |
+| `--raw` | `false` | Include raw bytes (base64 in NDJSON; hex `0x...` in text and CSV) and units per item in text mode; in CSV, units are always included and `--raw` adds a `raw` column |
 | `--strict` | `false` | Exit 1 if any error-severity diagnostic is emitted |
 | `--pid` | `0` (all) | Limit to a specific KLV data stream PID |
 | `--out` | stdout | Write output to a file instead of stdout |
@@ -146,6 +147,12 @@ klvtool decode --input <input.ts> --format ndjson --out /tmp/decode.ndjson
 ```
 
 This keeps the decoded record stream in a form that is easy to grep, archive, or post-process. It is useful when the source is intermittently bad and you need a durable artifact instead of terminal output.
+
+For spreadsheet or Python workflows, use CSV (long/tidy layout: one row per packet and tag, with `packetIndex` grouping rows that belong to the same decoded packet):
+
+```bash
+klvtool decode --input <input.ts> --format csv --out /tmp/decode.csv
+```
 
 ### Scenario: Separate extraction issues from KLV packet parsing issues
 
