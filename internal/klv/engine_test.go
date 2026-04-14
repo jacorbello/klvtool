@@ -3,6 +3,7 @@ package klv
 import (
 	"encoding/json"
 	"math"
+	"strings"
 	"testing"
 	"time"
 
@@ -289,8 +290,8 @@ func TestDecodeUnknownTagPassthrough(t *testing.T) {
 
 	// Include tag 144 (not defined in phase-1) with arbitrary bytes.
 	packet := buildPacket(t, map[int][]byte{
-		2:  make([]byte, 8),
-		65: {19},
+		2:   make([]byte, 8),
+		65:  {19},
 		144: {0xde, 0xad, 0xbe, 0xef},
 	})
 
@@ -425,5 +426,47 @@ func TestDispatchDecodeAppliesScale(t *testing.T) {
 	}
 	if !math.IsNaN(float64(fv)) {
 		t.Errorf("error indicator: got %v, want NaN", float64(fv))
+	}
+}
+
+func TestDecodeErrorIndicatorDiagnosticIncludesStructuredContext(t *testing.T) {
+	reg := NewRegistry()
+	reg.Register(st0601.V19())
+
+	packet := buildPacket(t, map[int][]byte{
+		2:  make([]byte, 8),
+		6:  {0x80, 0x00},
+		65: {19},
+	})
+
+	rec, err := Decode(reg, packet)
+	if err != nil {
+		t.Fatalf("Decode error: %v", err)
+	}
+
+	var found bool
+	for _, d := range rec.Diagnostics {
+		if d.Code != "tag_decode_error" {
+			continue
+		}
+		found = true
+		if d.Tag == nil || *d.Tag != 6 {
+			t.Fatalf("Tag = %+v, want 6", d.Tag)
+		}
+		if d.TagName != "Platform Pitch Angle" {
+			t.Errorf("TagName = %q, want %q", d.TagName, "Platform Pitch Angle")
+		}
+		if d.Raw != "0x8000" {
+			t.Errorf("Raw = %q, want %q", d.Raw, "0x8000")
+		}
+		if d.Actual != "-32768" {
+			t.Errorf("Actual = %q, want %q", d.Actual, "-32768")
+		}
+		if !strings.Contains(d.Expected, "[-20, 20]") {
+			t.Errorf("Expected = %q, want physical range context", d.Expected)
+		}
+	}
+	if !found {
+		t.Fatalf("expected tag_decode_error diagnostic, got %+v", rec.Diagnostics)
 	}
 }

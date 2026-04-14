@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"strings"
 
 	"github.com/jacorbello/klvtool/internal/klv/record"
 	"github.com/jacorbello/klvtool/internal/klv/specs"
@@ -30,6 +31,7 @@ func Validate(spec specs.SpecVersion, rec *record.Record) []record.Diagnostic {
 				Code:     "missing_mandatory_item",
 				Message:  fmt.Sprintf("mandatory tag %d (%s) missing", td.Tag, td.Name),
 				Tag:      &tag,
+				TagName:  td.Name,
 			})
 		}
 	}
@@ -41,20 +43,28 @@ func Validate(spec specs.SpecVersion, rec *record.Record) []record.Diagnostic {
 	if len(rec.Items) > 0 {
 		if counts[2] > 0 && rec.Items[0].Tag != 2 {
 			two := 2
+			actualPos := findTagPosition(rec.Items, 2)
 			diags = append(diags, record.Diagnostic{
 				Severity: "error",
 				Code:     "tag_out_of_order",
 				Message:  "Precision Time Stamp (tag 2) must be the first item",
 				Tag:      &two,
+				TagName:  "Precision Time Stamp",
+				Actual:   fmt.Sprintf("position %d", actualPos),
+				Expected: "position 1 (first item)",
 			})
 		}
 		if counts[1] > 0 && rec.Items[len(rec.Items)-1].Tag != 1 {
 			one := 1
+			actualPos := findTagPosition(rec.Items, 1)
 			diags = append(diags, record.Diagnostic{
 				Severity: "error",
 				Code:     "tag_out_of_order",
 				Message:  "Checksum (tag 1) must be the last item",
 				Tag:      &one,
+				TagName:  "Checksum",
+				Actual:   fmt.Sprintf("position %d", actualPos),
+				Expected: fmt.Sprintf("position %d (last item)", len(rec.Items)),
 			})
 		}
 	}
@@ -67,6 +77,9 @@ func Validate(spec specs.SpecVersion, rec *record.Record) []record.Diagnostic {
 			Code:     "ls_version_mismatch",
 			Message:  fmt.Sprintf("LS version %d does not match spec %d", rec.LSVersion, spec.ExpectedVersion()),
 			Tag:      &vt,
+			TagName:  tagName(spec, vt),
+			Actual:   fmt.Sprintf("%d", rec.LSVersion),
+			Expected: fmt.Sprintf("%d", spec.ExpectedVersion()),
 		})
 	}
 
@@ -83,6 +96,10 @@ func Validate(spec specs.SpecVersion, rec *record.Record) []record.Diagnostic {
 				Code:     "tag_length_mismatch",
 				Message:  fmt.Sprintf("tag %d: expected %d bytes, got %d", it.Tag, td.Length, len(rec.Items[i].Raw)),
 				Tag:      &tag,
+				TagName:  td.Name,
+				Actual:   fmt.Sprintf("%d bytes", len(rec.Items[i].Raw)),
+				Expected: fmt.Sprintf("%d bytes", td.Length),
+				Raw:      formatDiagnosticRaw(rec.Items[i].Raw),
 			})
 		}
 		// Range checks apply to FloatValue after a Scale was applied.
@@ -102,6 +119,10 @@ func Validate(spec specs.SpecVersion, rec *record.Record) []record.Diagnostic {
 					Code:     "tag_range_violation",
 					Message:  fmt.Sprintf("tag %d: value %v outside [%v, %v]", it.Tag, f, td.Scale.Min, td.Scale.Max),
 					Tag:      &tag,
+					TagName:  td.Name,
+					Actual:   formatFloatDiagnostic(f),
+					Expected: fmt.Sprintf("[%g, %g]", td.Scale.Min, td.Scale.Max),
+					Raw:      formatDiagnosticRaw(rec.Items[i].Raw),
 				})
 			}
 		}
@@ -117,6 +138,10 @@ func Validate(spec specs.SpecVersion, rec *record.Record) []record.Diagnostic {
 						Code:     "tag_enum_invalid",
 						Message:  fmt.Sprintf("tag %d: value %d not in enum", it.Tag, int64(iv)),
 						Tag:      &tag,
+						TagName:  td.Name,
+						Actual:   fmt.Sprintf("%d", int64(iv)),
+						Expected: formatEnumDiagnostic(td.Enum),
+						Raw:      formatDiagnosticRaw(rec.Items[i].Raw),
 					})
 				}
 			}
@@ -140,6 +165,9 @@ func Validate(spec specs.SpecVersion, rec *record.Record) []record.Diagnostic {
 			Code:     "duplicate_tag",
 			Message:  fmt.Sprintf("tag %d appears %d times; each tag must appear at most once", tag, counts[tag]),
 			Tag:      &tag,
+			TagName:  tagName(spec, tag),
+			Actual:   fmt.Sprintf("%d occurrences", counts[tag]),
+			Expected: "at most once",
 		})
 	}
 
@@ -164,9 +192,50 @@ func Validate(spec specs.SpecVersion, rec *record.Record) []record.Diagnostic {
 				Code:     "checksum_mismatch",
 				Message:  fmt.Sprintf("checksum expected=0x%04X computed=0x%04X", rec.Checksum.Expected, rec.Checksum.Computed),
 				Tag:      &one,
+				TagName:  "Checksum",
+				Actual:   fmt.Sprintf("0x%04X", rec.Checksum.Computed),
+				Expected: fmt.Sprintf("0x%04X", rec.Checksum.Expected),
+				Raw:      formatDiagnosticRaw(tag1Raw),
 			})
 		}
 	}
 
 	return diags
+}
+
+func findTagPosition(items []record.Item, tag int) int {
+	for i, it := range items {
+		if it.Tag == tag {
+			return i + 1
+		}
+	}
+	return 0
+}
+
+func tagName(spec specs.SpecVersion, tag int) string {
+	td, ok := spec.Tag(tag)
+	if !ok {
+		return ""
+	}
+	return td.Name
+}
+
+func formatFloatDiagnostic(v float64) string {
+	return fmt.Sprintf("%g", v)
+}
+
+func formatEnumDiagnostic(enum map[int64]string) string {
+	if len(enum) == 0 {
+		return ""
+	}
+	keys := make([]int, 0, len(enum))
+	for k := range enum {
+		keys = append(keys, int(k))
+	}
+	sort.Ints(keys)
+	parts := make([]string, 0, len(keys))
+	for _, key := range keys {
+		parts = append(parts, fmt.Sprintf("%d:%s", key, enum[int64(key)]))
+	}
+	return "{" + strings.Join(parts, ", ") + "}"
 }

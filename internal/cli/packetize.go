@@ -331,17 +331,17 @@ func toPacketCheckpoint(stream packetize.PacketizedStream) model.PacketCheckpoin
 	}
 	for _, packet := range stream.Packets {
 		checkpoint.Packets = append(checkpoint.Packets, model.PacketRecord{
-			PacketIndex:    packet.PacketIndex,
-			PacketStart:    packet.PacketStart,
-			KeyStart:       packet.KeyStart,
-			LengthStart:    packet.LengthStart,
-			ValueStart:     packet.ValueStart,
+			PacketIndex:        packet.PacketIndex,
+			PacketStart:        packet.PacketStart,
+			KeyStart:           packet.KeyStart,
+			LengthStart:        packet.LengthStart,
+			ValueStart:         packet.ValueStart,
 			PacketEndInclusive: packet.PacketEndExclusive - 1,
-			RawKeyHex:      hex.EncodeToString(packet.Key),
-			Length:         packet.Length,
-			RawValueHex:    hex.EncodeToString(packet.Value),
-			Classification: string(packet.Classification),
-			Diagnostics:    toPacketDiagnostics(packet.Diagnostics),
+			RawKeyHex:          hex.EncodeToString(packet.Key),
+			Length:             packet.Length,
+			RawValueHex:        hex.EncodeToString(packet.Value),
+			Classification:     string(packet.Classification),
+			Diagnostics:        toPacketDiagnostics(packet.Diagnostics),
 		})
 	}
 	return checkpoint

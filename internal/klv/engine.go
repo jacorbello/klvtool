@@ -136,12 +136,19 @@ func decodeLocalSetInternal(reg *Registry, ul []byte, value []byte, fullForCheck
 		}
 		if derr != nil {
 			tagCopy := tag
-			rec.Diagnostics = append(rec.Diagnostics, record.Diagnostic{
+			diag := record.Diagnostic{
 				Severity: "error",
 				Code:     "tag_decode_error",
 				Message:  derr.Error(),
 				Tag:      &tagCopy,
-			})
+				TagName:  td.Name,
+				Raw:      formatDiagnosticRaw(raw),
+			}
+			if details, ok := derr.(diagnosticContextError); ok {
+				diag.Actual = details.actual
+				diag.Expected = details.expected
+			}
+			rec.Diagnostics = append(rec.Diagnostics, diag)
 		}
 		rec.Items = append(rec.Items, item)
 	}
@@ -280,10 +287,29 @@ func applyScaleSigned(v int64, format specs.Format, scale specs.LinearScale) (re
 	halfRange := math.Pow(2, float64(8*bytes-1)) - 1
 	minEncoded := -halfRange - 1
 	if scale.ErrorIndicator && float64(v) == minEncoded {
-		return record.FloatValue(math.NaN()), fmt.Errorf("value out of range (error indicator)")
+		return record.FloatValue(math.NaN()), diagnosticContextError{
+			message:  "value out of range (error indicator)",
+			actual:   fmt.Sprintf("%d", v),
+			expected: fmt.Sprintf("physical range [%g, %g]; encoded minimum %d is reserved as error indicator", scale.Min, scale.Max, int64(minEncoded)),
+		}
 	}
 	f := float64(v) / halfRange * ((scale.Max - scale.Min) / 2)
 	// Center on (Min+Max)/2.
 	f += (scale.Min + scale.Max) / 2
 	return record.FloatValue(f), nil
+}
+
+type diagnosticContextError struct {
+	message  string
+	actual   string
+	expected string
+}
+
+func (e diagnosticContextError) Error() string { return e.message }
+
+func formatDiagnosticRaw(raw []byte) string {
+	if len(raw) == 0 {
+		return ""
+	}
+	return fmt.Sprintf("0x%x", raw)
 }

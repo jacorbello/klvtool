@@ -115,6 +115,39 @@ func TestWriteNDJSONEmptyCollectionsSerializeAsArrays(t *testing.T) {
 	}
 }
 
+func TestWriteNDJSONIncludesStructuredDiagnosticContext(t *testing.T) {
+	var buf bytes.Buffer
+	rec := record.Record{
+		Schema:      "urn:misb:KLV:bin:0601.19",
+		LSVersion:   19,
+		ValueLength: 0,
+		Diagnostics: []record.Diagnostic{{
+			Severity: "error",
+			Code:     "tag_decode_error",
+			Message:  "value out of range (error indicator)",
+			Tag:      intPtr(47),
+			TagName:  "Error Indicator",
+			Actual:   "255",
+			Expected: "0..3",
+			Raw:      "0xff",
+		}},
+	}
+	if err := writeNDJSON(&buf, 0, rec, false); err != nil {
+		t.Fatalf("writeNDJSON: %v", err)
+	}
+	line := buf.String()
+	for _, want := range []string{
+		`"tagName":"Error Indicator"`,
+		`"actual":"255"`,
+		`"expected":"0..3"`,
+		`"raw":"0xff"`,
+	} {
+		if !strings.Contains(line, want) {
+			t.Errorf("expected %s in %s", want, line)
+		}
+	}
+}
+
 // testRegistry is the registry used by tests that need --schema validation.
 func testRegistry() *klv.Registry {
 	r := klv.NewRegistry()
@@ -193,6 +226,70 @@ func TestTextOutputOmitsUnitsWithoutRawFlag(t *testing.T) {
 	}
 	if !strings.Contains(buf.String(), "°") {
 		t.Errorf("text output with --raw should include units; got: %s", buf.String())
+	}
+}
+
+func TestWriteTextIncludesStructuredDiagnosticContext(t *testing.T) {
+	var buf bytes.Buffer
+	rec := record.Record{
+		Schema:   "urn:misb:KLV:bin:0601.19",
+		Checksum: record.ChecksumInfo{Valid: true},
+		Diagnostics: []record.Diagnostic{{
+			Severity: "error",
+			Code:     "tag_decode_error",
+			Message:  "value out of range (error indicator)",
+			Tag:      intPtr(47),
+			TagName:  "Error Indicator",
+			Actual:   "255",
+			Expected: "0..3",
+			Raw:      "0xff",
+		}},
+	}
+	if err := writeText(&buf, 0, rec, false); err != nil {
+		t.Fatalf("writeText: %v", err)
+	}
+	got := buf.String()
+	for _, want := range []string{
+		"tag=47 Error Indicator",
+		"actual=255",
+		"expected=0..3",
+		"raw=0xff",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("expected %q in output: %s", want, got)
+		}
+	}
+}
+
+func TestWriteTextIncludesGenericStructuredDiagnosticContext(t *testing.T) {
+	var buf bytes.Buffer
+	rec := record.Record{
+		Schema:   "urn:misb:KLV:bin:0601.19",
+		Checksum: record.ChecksumInfo{Valid: true},
+		Diagnostics: []record.Diagnostic{{
+			Severity: "warning",
+			Code:     "tag_range_violation",
+			Message:  "tag 5: value 250 outside [0, 100]",
+			Tag:      intPtr(5),
+			TagName:  "Bounded Float",
+			Actual:   "250",
+			Expected: "[0, 100]",
+			Raw:      "0x0000",
+		}},
+	}
+	if err := writeText(&buf, 0, rec, false); err != nil {
+		t.Fatalf("writeText: %v", err)
+	}
+	got := buf.String()
+	for _, want := range []string{
+		"tag=5 Bounded Float",
+		"actual=250",
+		"expected=[0, 100]",
+		"raw=0x0000",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("expected %q in output: %s", want, got)
+		}
 	}
 }
 
@@ -532,6 +629,8 @@ type errCloser struct {
 	bytes.Buffer
 	closeErr error
 }
+
+func intPtr(v int) *int { return &v }
 
 func (e *errCloser) Close() error { return e.closeErr }
 

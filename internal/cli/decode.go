@@ -23,7 +23,6 @@ import (
 // mpegTSPIDMax is the highest valid MPEG-TS packet identifier (13-bit field).
 const mpegTSPIDMax = 0x1FFF
 
-
 // DecodeCommand decodes MISB ST 0601 KLV from an MPEG-TS file into
 // typed records.
 type DecodeCommand struct {
@@ -320,10 +319,10 @@ func (c *DecodeCommand) writeUsage(w io.Writer) {
 		return
 	}
 	fmt.Fprintln(w, "Usage: klvtool decode --input <file.ts> [--format ndjson|text] [--raw] [--strict] [--pid N] [--out path] [--schema urn]") //nolint:errcheck
-	fmt.Fprintln(w)                                                                                                                              //nolint:errcheck
-	fmt.Fprintln(w, "Decode MISB ST 0601 KLV metadata from an MPEG-TS file.")                                                                   //nolint:errcheck
-	fmt.Fprintln(w)                                                                                                                              //nolint:errcheck
-	fmt.Fprintln(w, "The --raw flag includes raw bytes per item: hex (0x...) in text format, base64 in NDJSON.") //nolint:errcheck
+	fmt.Fprintln(w)                                                                                                                            //nolint:errcheck
+	fmt.Fprintln(w, "Decode MISB ST 0601 KLV metadata from an MPEG-TS file.")                                                                  //nolint:errcheck
+	fmt.Fprintln(w)                                                                                                                            //nolint:errcheck
+	fmt.Fprintln(w, "The --raw flag includes raw bytes per item: hex (0x...) in text format, base64 in NDJSON.")                               //nolint:errcheck
 }
 
 func (c *DecodeCommand) writeError(w io.Writer, err error) {
@@ -402,7 +401,7 @@ func writeText(w io.Writer, index int, rec record.Record, includeRaw bool) error
 		}
 	}
 	for _, d := range rec.Diagnostics {
-		if _, err := fmt.Fprintf(w, "  ! [%s] %s: %s\n", d.Severity, d.Code, d.Message); err != nil {
+		if _, err := fmt.Fprintf(w, "  ! [%s] %s: %s%s\n", d.Severity, d.Code, d.Message, formatDiagnosticContext(d)); err != nil {
 			return err
 		}
 	}
@@ -452,6 +451,32 @@ func encodeBase64(b []byte) string {
 		return ""
 	}
 	return base64.StdEncoding.EncodeToString(b)
+}
+
+func formatDiagnosticContext(d record.Diagnostic) string {
+	parts := make([]string, 0, 4)
+	if d.Tag != nil {
+		tag := fmt.Sprintf("tag=%d", *d.Tag)
+		if d.TagName != "" {
+			tag += " " + d.TagName
+		}
+		parts = append(parts, tag)
+	} else if d.TagName != "" {
+		parts = append(parts, "tag="+d.TagName)
+	}
+	if d.Actual != "" {
+		parts = append(parts, "actual="+d.Actual)
+	}
+	if d.Expected != "" {
+		parts = append(parts, "expected="+d.Expected)
+	}
+	if d.Raw != "" {
+		parts = append(parts, "raw="+d.Raw)
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return " [" + strings.Join(parts, ", ") + "]"
 }
 
 // liftPacketizeDiagnostics converts packetize.Diagnostic entries into
