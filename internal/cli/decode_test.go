@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -13,6 +15,66 @@ import (
 	"github.com/jacorbello/klvtool/internal/klv/specs/st0601"
 	"github.com/jacorbello/klvtool/internal/packetize"
 )
+
+// tempInputFile creates an empty file in t.TempDir and returns its path.
+// Tests that pass through os.Stat validation need a real file on disk.
+func tempInputFile(t *testing.T) string {
+	t.Helper()
+	p := filepath.Join(t.TempDir(), "input.ts")
+	if err := os.WriteFile(p, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+func TestDecodeRejectsNonExistentInput(t *testing.T) {
+	var stderr bytes.Buffer
+	cmd := &DecodeCommand{
+		Out: nil,
+		Err: &stderr,
+		Decode: func(path string, pid int, schema string) (DecodeResult, error) {
+			t.Fatal("decode should not be called for non-existent input")
+			return DecodeResult{}, nil
+		},
+	}
+
+	missing := filepath.Join(t.TempDir(), "missing.ts")
+	got := cmd.Execute([]string{"--input", missing})
+	if got != 1 {
+		t.Fatalf("exit code = %d, want 1", got)
+	}
+	text := stderr.String()
+	if !strings.Contains(text, "ts_read_failure") {
+		t.Fatalf("expected ts_read_failure error code, got %q", text)
+	}
+	if !strings.Contains(text, missing) {
+		t.Fatalf("expected file path in error, got %q", text)
+	}
+}
+
+func TestDecodeRejectsDirectory(t *testing.T) {
+	var stderr bytes.Buffer
+	cmd := &DecodeCommand{
+		Out: nil,
+		Err: &stderr,
+		Decode: func(path string, pid int, schema string) (DecodeResult, error) {
+			t.Fatal("decode should not be called for directory input")
+			return DecodeResult{}, nil
+		},
+	}
+
+	got := cmd.Execute([]string{"--input", t.TempDir()})
+	if got != 1 {
+		t.Fatalf("exit code = %d, want 1", got)
+	}
+	text := stderr.String()
+	if !strings.Contains(text, "ts_read_failure") {
+		t.Fatalf("expected ts_read_failure error code, got %q", text)
+	}
+	if !strings.Contains(text, "regular file") {
+		t.Fatalf("expected 'regular file' message, got %q", text)
+	}
+}
 
 func TestDecodeHelpMixedWithFlags(t *testing.T) {
 	var out, errBuf bytes.Buffer
@@ -91,7 +153,7 @@ func TestDecodeCommandNDJSONOutput(t *testing.T) {
 			return r
 		},
 	}
-	code := cmd.Execute([]string{"--input", "fake.ts"})
+	code := cmd.Execute([]string{"--input", tempInputFile(t)})
 	if code != 0 {
 		t.Fatalf("exit code = %d, stderr=%s", code, errBuf.String())
 	}
@@ -146,7 +208,7 @@ func TestDecodeCommandTextOutput(t *testing.T) {
 			return r
 		},
 	}
-	code := cmd.Execute([]string{"--input", "fake.ts", "--format", "text"})
+	code := cmd.Execute([]string{"--input", tempInputFile(t), "--format", "text"})
 	if code != 0 {
 		t.Fatalf("exit code = %d", code)
 	}
@@ -237,7 +299,7 @@ func TestDecodeCommandRejectsUnknownSchema(t *testing.T) {
 		Err:      &bytes.Buffer{},
 		Registry: testRegistry,
 	}
-	code := cmd.Execute([]string{"--input", "fake.ts", "--schema", "urn:misb:KLV:bin:0601.14"})
+	code := cmd.Execute([]string{"--input", tempInputFile(t), "--schema", "urn:misb:KLV:bin:0601.14"})
 	if code != 2 {
 		t.Errorf("exit code = %d, want 2 (usage)", code)
 	}
@@ -257,7 +319,7 @@ func TestDecodeCommandAcceptsRegisteredSchema(t *testing.T) {
 			return DecodeResult{}, nil
 		},
 	}
-	code := cmd.Execute([]string{"--input", "fake.ts", "--schema", "urn:misb:KLV:bin:0601.19"})
+	code := cmd.Execute([]string{"--input", tempInputFile(t), "--schema", "urn:misb:KLV:bin:0601.19"})
 	if code != 0 {
 		t.Fatalf("exit code = %d", code)
 	}
@@ -268,7 +330,7 @@ func TestDecodeCommandAcceptsRegisteredSchema(t *testing.T) {
 
 func TestDecodeCommandRejectsStrayPositionalArgs(t *testing.T) {
 	cmd := &DecodeCommand{Out: &bytes.Buffer{}, Err: &bytes.Buffer{}}
-	code := cmd.Execute([]string{"--input", "fake.ts", "junk"})
+	code := cmd.Execute([]string{"--input", tempInputFile(t), "junk"})
 	if code != 2 {
 		t.Errorf("exit code = %d, want 2 (usage)", code)
 	}
@@ -299,7 +361,7 @@ func TestDecodeCommandRawTextIncludesRawBytes(t *testing.T) {
 		Err:    &bytes.Buffer{},
 		Decode: fakeDecodeWithRaw,
 	}
-	code := cmd.Execute([]string{"--input", "fake.ts", "--format", "text", "--raw"})
+	code := cmd.Execute([]string{"--input", tempInputFile(t), "--format", "text", "--raw"})
 	if code != 0 {
 		t.Fatalf("exit code = %d", code)
 	}
@@ -322,7 +384,7 @@ func TestDecodeCommandSchemaPassedToDecode(t *testing.T) {
 			return DecodeResult{}, nil
 		},
 	}
-	code := cmd.Execute([]string{"--input", "fake.ts", "--schema", "urn:misb:KLV:bin:0601.19"})
+	code := cmd.Execute([]string{"--input", tempInputFile(t), "--schema", "urn:misb:KLV:bin:0601.19"})
 	if code != 0 {
 		t.Fatalf("exit code = %d", code)
 	}
@@ -350,7 +412,7 @@ func TestDecodeCommandStreamDiagnosticsReported(t *testing.T) {
 			}, nil
 		},
 	}
-	code := cmd.Execute([]string{"--input", "fake.ts"})
+	code := cmd.Execute([]string{"--input", tempInputFile(t)})
 	if code != 0 {
 		t.Fatalf("exit code = %d; stderr=%s", code, errBuf.String())
 	}
@@ -384,7 +446,7 @@ func TestDecodeCommandStreamErrorStrictFails(t *testing.T) {
 			}, nil
 		},
 	}
-	code := cmd.Execute([]string{"--input", "fake.ts", "--strict"})
+	code := cmd.Execute([]string{"--input", tempInputFile(t), "--strict"})
 	if code != 1 {
 		t.Errorf("exit code = %d, want 1 (strict)", code)
 	}
@@ -403,7 +465,7 @@ func TestDecodeCommandTextWriteErrorSurfaced(t *testing.T) {
 		Err:    errBuf,
 		Decode: fakeDecodePayloads,
 	}
-	code := cmd.Execute([]string{"--input", "fake.ts", "--format", "text"})
+	code := cmd.Execute([]string{"--input", tempInputFile(t), "--format", "text"})
 	if code == 0 {
 		t.Fatalf("expected non-zero exit on write error; got 0")
 	}
@@ -422,7 +484,7 @@ func TestDecodeCommandErrorDiagnosticSummary(t *testing.T) {
 		Err:    errBuf,
 		Decode: fakeDecodePayloads,
 	}
-	code := cmd.Execute([]string{"--input", "fake.ts"})
+	code := cmd.Execute([]string{"--input", tempInputFile(t)})
 	if code != 0 {
 		t.Fatalf("exit code = %d", code)
 	}
@@ -455,7 +517,7 @@ func TestDecodeCommandRawTextAbsentWithoutFlag(t *testing.T) {
 		Err:    &bytes.Buffer{},
 		Decode: fakeDecodeWithRaw,
 	}
-	code := cmd.Execute([]string{"--input", "fake.ts", "--format", "text"})
+	code := cmd.Execute([]string{"--input", tempInputFile(t), "--format", "text"})
 	if code != 0 {
 		t.Fatalf("exit code = %d", code)
 	}
@@ -501,7 +563,7 @@ func TestDecodeCommandFileCloseErrorSurfaced(t *testing.T) {
 			return &errCloser{closeErr: errors.New("disk full on close")}, nil
 		},
 	}
-	code := cmd.Execute([]string{"--input", "fake.ts", "--out", outPath})
+	code := cmd.Execute([]string{"--input", tempInputFile(t), "--out", outPath})
 	if code != 1 {
 		t.Fatalf("exit code = %d, want 1; stderr=%s", code, errBuf.String())
 	}
@@ -525,7 +587,7 @@ func TestDecodeCommandFileCloseSuccessUnaffected(t *testing.T) {
 			return testRegistry()
 		},
 	}
-	code := cmd.Execute([]string{"--input", "fake.ts", "--out", outPath})
+	code := cmd.Execute([]string{"--input", tempInputFile(t), "--out", outPath})
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0; stderr=%s", code, errBuf.String())
 	}
@@ -548,7 +610,7 @@ func TestDecodeCommandWriteErrorClosesFile(t *testing.T) {
 			return fw, nil
 		},
 	}
-	code := cmd.Execute([]string{"--input", "fake.ts", "--out", "/tmp/out.ndjson"})
+	code := cmd.Execute([]string{"--input", tempInputFile(t), "--out", "/tmp/out.ndjson"})
 	if code != 1 {
 		t.Fatalf("exit code = %d, want 1", code)
 	}
@@ -583,7 +645,7 @@ func TestDecodePIDValidation(t *testing.T) {
 					return testRegistry()
 				},
 			}
-			code := cmd.Execute([]string{"--input", "fake.ts", "--pid", tt.pid})
+			code := cmd.Execute([]string{"--input", tempInputFile(t), "--pid", tt.pid})
 			if code != tt.wantCode {
 				t.Errorf("exit code = %d, want %d; stderr=%s", code, tt.wantCode, errBuf.String())
 			}

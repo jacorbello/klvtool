@@ -72,6 +72,23 @@ func (c *InspectCommand) Execute(args []string) int {
 		return usageExitCode
 	}
 
+	info, err := os.Stat(inputPath)
+	if err != nil {
+		var e error
+		if os.IsNotExist(err) {
+			e = model.TSRead(fmt.Errorf("input file does not exist: %s", inputPath))
+		} else {
+			e = model.TSRead(fmt.Errorf("failed to stat input file %q: %w", inputPath, err))
+		}
+		c.writeError(c.Err, e)
+		return exitCodeForError(e)
+	}
+	if !info.Mode().IsRegular() {
+		e := model.TSRead(fmt.Errorf("input path is not a regular file: %s", inputPath))
+		c.writeError(c.Err, e)
+		return exitCodeForError(e)
+	}
+
 	inspect := c.Inspect
 	if inspect == nil {
 		inspect = defaultInspect

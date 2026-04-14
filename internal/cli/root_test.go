@@ -2,6 +2,8 @@ package cli
 
 import (
 	"bytes"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -100,7 +102,11 @@ func TestRootRoutesToInspect(t *testing.T) {
 		},
 	}
 
-	code := root.Execute([]string{"inspect", "--input", "test.ts"})
+	input := filepath.Join(t.TempDir(), "test.ts")
+	if err := os.WriteFile(input, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	code := root.Execute([]string{"inspect", "--input", input})
 	if code != 0 {
 		t.Errorf("exit code = %d, want 0; stderr: %s", code, errBuf.String())
 	}
