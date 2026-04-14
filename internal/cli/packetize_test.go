@@ -74,11 +74,12 @@ func TestPacketizeValidatesInputDirectoryExistence(t *testing.T) {
 		cmd.Out = &stdout
 		cmd.Err = &stderr
 
-		code := cmd.Execute([]string{"packetize", "--input", "/nonexistent/path", "--out", t.TempDir()})
+		missingDir := filepath.Join(t.TempDir(), "missing")
+		code := cmd.Execute([]string{"packetize", "--input", missingDir, "--out", t.TempDir()})
 		if code != 1 {
 			t.Fatalf("exit code = %d, want 1", code)
 		}
-		if text := stderr.String(); !strings.Contains(text, "input directory does not exist: /nonexistent/path") {
+		if text := stderr.String(); !strings.Contains(text, "input directory does not exist: "+missingDir) {
 			t.Fatalf("expected clear error about missing directory, got %q", text)
 		}
 	})

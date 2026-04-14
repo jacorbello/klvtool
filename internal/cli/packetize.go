@@ -108,7 +108,7 @@ func (c *PacketizeCommand) Execute(args []string) int {
 		if os.IsNotExist(err) {
 			e = model.CheckpointRead(fmt.Errorf("input directory does not exist: %s", inputDir))
 		} else {
-			e = model.CheckpointRead(fmt.Errorf("cannot access input directory: %w", err))
+			e = model.CheckpointRead(fmt.Errorf("cannot access input directory %q: %w", inputDir, err))
 		}
 		c.writeError(c.Err, e)
 		return exitCodeForError(e)
