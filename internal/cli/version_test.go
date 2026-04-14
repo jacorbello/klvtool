@@ -145,7 +145,10 @@ func TestVersionErrorsUseModelErrorCodes(t *testing.T) {
 			var stderr bytes.Buffer
 			cmd := NewRootCommand()
 			cmd.Err = &stderr
-			cmd.Execute(tt.args)
+			got := cmd.Execute(tt.args)
+			if got != usageExitCode {
+				t.Fatalf("exit code = %d, want %d", got, usageExitCode)
+			}
 			if !strings.Contains(stderr.String(), tt.wantCode) {
 				t.Fatalf("expected error to contain %q, got %q", tt.wantCode, stderr.String())
 			}
