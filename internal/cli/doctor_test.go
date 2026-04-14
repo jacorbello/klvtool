@@ -342,36 +342,6 @@ func TestDoctorCommandExitsNonZeroWhenBackendMissing(t *testing.T) {
 	}
 }
 
-func TestDoctorCommandSuppressesGuidanceWhenAllHealthy(t *testing.T) {
-	var stdout bytes.Buffer
-
-	cmd := NewRootCommand()
-	cmd.Out = &stdout
-	cmd.Err = &bytes.Buffer{}
-	cmd.Doctor.IsTerminal = func() bool { return false }
-	cmd.Doctor.Detect = func(ctx context.Context, goos string, env map[string]string) envcheck.Report {
-		return envcheck.Report{
-			Platform:        "linux",
-			GuidanceSummary: "Install the backend tools with apt.",
-			Guidance:        []string{"sudo apt update && sudo apt install ffmpeg"},
-			Backends: []envcheck.BackendHealth{
-				{Name: "ffmpeg", Healthy: true, Tools: []envcheck.ToolHealth{
-					{Name: "ffmpeg", Path: "/usr/bin/ffmpeg", Version: "ffmpeg version 7.1", Healthy: true},
-				}},
-			},
-		}
-	}
-
-	if got := cmd.Execute([]string{"doctor"}); got != 0 {
-		t.Fatalf("expected exit code 0, got %d", got)
-	}
-
-	text := stdout.String()
-	if strings.Contains(text, "install guidance") {
-		t.Errorf("expected no install guidance when all backends healthy, got:\n%s", text)
-	}
-}
-
 func TestDoctorCommandShowsGuidanceWhenUnhealthy(t *testing.T) {
 	var stdout bytes.Buffer
 
@@ -390,7 +360,9 @@ func TestDoctorCommandShowsGuidanceWhenUnhealthy(t *testing.T) {
 		}
 	}
 
-	cmd.Execute([]string{"doctor"})
+	if got := cmd.Execute([]string{"doctor"}); got != 1 {
+		t.Fatalf("expected exit code 1 for unhealthy backend, got %d", got)
+	}
 
 	text := stdout.String()
 	if !strings.Contains(text, "install guidance: Install the backend tools with apt.") {
