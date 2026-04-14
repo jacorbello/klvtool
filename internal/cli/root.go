@@ -51,7 +51,7 @@ func (c *RootCommand) Execute(args []string) int {
 		return 0
 	}
 	if len(args) > 1 && args[0] == "help" {
-		c.writeUnsupportedArgs(args)
+		c.writeUnsupportedArgs(args[1:])
 		return usageExitCode
 	}
 	if len(args) > 0 && args[0] == "version" {

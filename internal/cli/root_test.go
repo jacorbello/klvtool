@@ -139,8 +139,11 @@ func TestHelpSubcommandWithExtraArgs(t *testing.T) {
 		t.Fatalf("expected stdout empty, got %q", stdout.String())
 	}
 	text := stderr.String()
-	if !strings.Contains(text, "error:") {
-		t.Fatalf("expected error on stderr, got %q", text)
+	if !strings.Contains(text, "error: unsupported arguments") {
+		t.Fatalf("expected unsupported-args diagnostic on stderr, got %q", text)
+	}
+	if !strings.Contains(text, "extraarg") {
+		t.Fatalf("expected unsupported argument name in stderr, got %q", text)
 	}
 }
 
