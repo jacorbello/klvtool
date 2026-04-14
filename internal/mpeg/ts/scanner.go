@@ -141,7 +141,7 @@ func (s *PacketScanner) recoverSync() error {
 			}
 			// True EOF: fewer than 189 bytes remain in the stream.
 			if len(peeked) < PacketSize {
-				return model.TSSync(fmt.Errorf("EOF while searching for sync byte"))
+				return model.TSSync(fmt.Errorf("not a valid MPEG-TS file (no sync byte found)"))
 			}
 			// At least 188 bytes left: last-packet fallback.
 			if peeked[0] == SyncByte {

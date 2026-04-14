@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"io"
+	"strings"
 	"testing"
 
 	"github.com/jacorbello/klvtool/internal/model"
@@ -380,5 +381,20 @@ func TestScannerRecoversSyncAfterGarbage(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("expected sync_recovery diagnostic, got %+v", diags)
+	}
+}
+
+func TestSyncFailureMessageMentionsInvalidFile(t *testing.T) {
+	// Feed non-TS data (no 0x47 sync bytes anywhere); must be >= 188 bytes
+	// so the first peek succeeds and recoverSync is reached.
+	data := bytes.Repeat([]byte{0xFF}, 200)
+	scanner := NewPacketScanner(bytes.NewReader(data), ScanConfig{})
+	_, err := scanner.Next()
+	if err == nil {
+		t.Fatal("expected error for non-TS data")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "not a valid MPEG-TS file") {
+		t.Errorf("expected friendly message containing 'not a valid MPEG-TS file'; got: %s", msg)
 	}
 }
