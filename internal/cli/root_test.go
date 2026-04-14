@@ -106,6 +106,44 @@ func TestRootRoutesToInspect(t *testing.T) {
 	}
 }
 
+func TestHelpSubcommand(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	cmd := NewRootCommand()
+	cmd.Out = &stdout
+	cmd.Err = &stderr
+
+	if got := cmd.Execute([]string{"help"}); got != 0 {
+		t.Fatalf("expected exit code 0, got %d", got)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected stderr empty, got %q", stderr.String())
+	}
+	text := stdout.String()
+	if !strings.Contains(text, "Usage:") {
+		t.Fatalf("expected usage text on stdout, got %q", text)
+	}
+}
+
+func TestHelpSubcommandWithExtraArgs(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	cmd := NewRootCommand()
+	cmd.Out = &stdout
+	cmd.Err = &stderr
+
+	if got := cmd.Execute([]string{"help", "extraarg"}); got != usageExitCode {
+		t.Fatalf("expected exit code %d, got %d", usageExitCode, got)
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("expected stdout empty, got %q", stdout.String())
+	}
+	text := stderr.String()
+	if !strings.Contains(text, "error:") {
+		t.Fatalf("expected error on stderr, got %q", text)
+	}
+}
+
 func TestExecuteUnsupportedArgs(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
