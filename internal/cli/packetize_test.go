@@ -67,6 +67,44 @@ func TestPacketizeRejectsSameInputAndOutputDirectory(t *testing.T) {
 	}
 }
 
+func TestPacketizeValidatesInputDirectoryExistence(t *testing.T) {
+	t.Run("non-existent directory", func(t *testing.T) {
+		var stdout, stderr bytes.Buffer
+		cmd := NewRootCommand()
+		cmd.Out = &stdout
+		cmd.Err = &stderr
+
+		missingDir := filepath.Join(t.TempDir(), "missing")
+		code := cmd.Execute([]string{"packetize", "--input", missingDir, "--out", t.TempDir()})
+		if code != 1 {
+			t.Fatalf("exit code = %d, want 1", code)
+		}
+		if text := stderr.String(); !strings.Contains(text, "input directory does not exist: "+missingDir) {
+			t.Fatalf("expected clear error about missing directory, got %q", text)
+		}
+	})
+
+	t.Run("file instead of directory", func(t *testing.T) {
+		var stdout, stderr bytes.Buffer
+		cmd := NewRootCommand()
+		cmd.Out = &stdout
+		cmd.Err = &stderr
+
+		tmpFile := filepath.Join(t.TempDir(), "notadir.txt")
+		if err := os.WriteFile(tmpFile, []byte("hello"), 0o644); err != nil {
+			t.Fatalf("create temp file: %v", err)
+		}
+
+		code := cmd.Execute([]string{"packetize", "--input", tmpFile, "--out", t.TempDir()})
+		if code != 1 {
+			t.Fatalf("exit code = %d, want 1", code)
+		}
+		if text := stderr.String(); !strings.Contains(text, "input path is not a directory") {
+			t.Fatalf("expected clear error about non-directory input, got %q", text)
+		}
+	})
+}
+
 func TestPacketizeWritesPacketCheckpointOutputs(t *testing.T) {
 	inputDir := t.TempDir()
 	outputDir := t.TempDir()

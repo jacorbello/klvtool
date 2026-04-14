@@ -103,6 +103,23 @@ func (c *PacketizeCommand) Execute(args []string) int {
 		return usageExitCode
 	}
 
+	info, err := os.Stat(inputDir)
+	if err != nil {
+		var e error
+		if os.IsNotExist(err) {
+			e = model.CheckpointRead(fmt.Errorf("input directory does not exist: %s", inputDir))
+		} else {
+			e = model.CheckpointRead(fmt.Errorf("cannot access input directory %q: %w", inputDir, err))
+		}
+		c.writeError(c.Err, e)
+		return exitCodeForError(e)
+	}
+	if !info.IsDir() {
+		e := model.CheckpointRead(fmt.Errorf("input path is not a directory: %s", inputDir))
+		c.writeError(c.Err, e)
+		return exitCodeForError(e)
+	}
+
 	packetMode := packetize.Mode(mode)
 	if packetMode != packetize.ModeStrict && packetMode != packetize.ModeBestEffort {
 		c.writeUsage(c.Err)
