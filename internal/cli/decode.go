@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -18,6 +19,9 @@ import (
 	"github.com/jacorbello/klvtool/internal/model"
 	"github.com/jacorbello/klvtool/internal/packetize"
 )
+
+// mpegTSPIDMax is the highest valid MPEG-TS packet identifier (13-bit field).
+const mpegTSPIDMax = 0x1FFF
 
 // DecodeCommand decodes MISB ST 0601 KLV from an MPEG-TS file into
 // typed records.
@@ -176,6 +180,11 @@ func (c *DecodeCommand) Execute(args []string) int {
 	if format != "ndjson" && format != "text" {
 		c.writeUsage(c.Err)
 		c.writeError(c.Err, model.InvalidUsage(fmt.Errorf("invalid format %q (want ndjson|text)", format)))
+		return usageExitCode
+	}
+	if pid < 0 || pid > mpegTSPIDMax {
+		c.writeUsage(c.Err)
+		c.writeError(c.Err, model.InvalidUsage(errors.New("--pid must be 0 (all) or 1-8191")))
 		return usageExitCode
 	}
 	if strings.TrimSpace(schema) != "" {
