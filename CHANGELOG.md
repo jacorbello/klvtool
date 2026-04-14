@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.0](https://github.com/jacorbello/klvtool/compare/v1.0.0...v1.1.0) (2026-04-14)
+
+
+### Features
+
+* add CSV output format to decode command ([#54](https://github.com/jacorbello/klvtool/issues/54)) ([0acf4e5](https://github.com/jacorbello/klvtool/commit/0acf4e52df0a47bf524da5323c53b522206b36b5))
+
 ## 1.0.0 (2026-04-14)
 
 
