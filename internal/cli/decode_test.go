@@ -661,3 +661,25 @@ func TestDecodePIDValidation(t *testing.T) {
 		})
 	}
 }
+
+func TestDecodeOutOpenFailure(t *testing.T) {
+	errBuf := &bytes.Buffer{}
+	cmd := &DecodeCommand{
+		Out:    &bytes.Buffer{},
+		Err:    errBuf,
+		Decode: fakeDecodePayloads,
+		Registry: func() *klv.Registry {
+			return testRegistry()
+		},
+		openOut: func(_ string) (io.WriteCloser, error) {
+			return nil, errors.New("permission denied")
+		},
+	}
+	code := cmd.Execute([]string{"--input", tempInputFile(t), "--out", "/tmp/out.ndjson"})
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1", code)
+	}
+	if !strings.Contains(errBuf.String(), "permission denied") {
+		t.Errorf("expected error on stderr; got: %s", errBuf.String())
+	}
+}

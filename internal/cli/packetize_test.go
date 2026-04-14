@@ -351,3 +351,24 @@ func TestPacketizeOverwriteWarningBehavior(t *testing.T) {
 	})
 
 }
+
+func TestPacketizeRejectsInvalidMode(t *testing.T) {
+	inputDir := t.TempDir()
+	outDir := t.TempDir()
+
+	var stdout, stderr bytes.Buffer
+	cmd := NewRootCommand()
+	cmd.Out = &stdout
+	cmd.Err = &stderr
+
+	code := cmd.Execute([]string{"packetize", "--input", inputDir, "--out", outDir, "--mode", "invalid"})
+	if code != usageExitCode {
+		t.Fatalf("exit code = %d, want %d; stderr=%q", code, usageExitCode, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "unsupported packetization mode") {
+		t.Errorf("expected mode error on stderr; got: %s", stderr.String())
+	}
+	if stdout.Len() != 0 {
+		t.Errorf("expected empty stdout, got %q", stdout.String())
+	}
+}
