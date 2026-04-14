@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"io"
 	"strings"
 	"testing"
 
@@ -460,6 +461,99 @@ func TestDecodeCommandRawTextAbsentWithoutFlag(t *testing.T) {
 	}
 	if strings.Contains(out.String(), "raw=") {
 		t.Errorf("unexpected raw= in text output without --raw flag")
+	}
+}
+
+// errCloser wraps a bytes.Buffer but returns an error on Close. Used to
+// verify that file close errors are captured and reported.
+type errCloser struct {
+	bytes.Buffer
+	closeErr error
+}
+
+func (e *errCloser) Close() error { return e.closeErr }
+
+// failWriter fails on Write and tracks whether Close was called.
+type failWriter struct {
+	writeErr error
+	closed   bool
+}
+
+func (f *failWriter) Write([]byte) (int, error) { return 0, f.writeErr }
+func (f *failWriter) Close() error              { f.closed = true; return nil }
+
+// TestDecodeCommandFileCloseErrorSurfaced verifies that when --out is used
+// and the file's Close returns an error, the command reports it on stderr
+// and exits non-zero.
+func TestDecodeCommandFileCloseErrorSurfaced(t *testing.T) {
+	dir := t.TempDir()
+	outPath := dir + "/out.ndjson"
+
+	errBuf := &bytes.Buffer{}
+	cmd := &DecodeCommand{
+		Out:    &bytes.Buffer{},
+		Err:    errBuf,
+		Decode: fakeDecodePayloads,
+		Registry: func() *klv.Registry {
+			return testRegistry()
+		},
+		openOut: func(_ string) (io.WriteCloser, error) {
+			return &errCloser{closeErr: errors.New("disk full on close")}, nil
+		},
+	}
+	code := cmd.Execute([]string{"--input", "fake.ts", "--out", outPath})
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1; stderr=%s", code, errBuf.String())
+	}
+	if !strings.Contains(errBuf.String(), "disk full on close") {
+		t.Errorf("expected close error on stderr; got: %s", errBuf.String())
+	}
+}
+
+// TestDecodeCommandFileCloseSuccessUnaffected verifies that normal --out
+// operation (successful close) still works correctly.
+func TestDecodeCommandFileCloseSuccessUnaffected(t *testing.T) {
+	dir := t.TempDir()
+	outPath := dir + "/out.ndjson"
+
+	errBuf := &bytes.Buffer{}
+	cmd := &DecodeCommand{
+		Out:    &bytes.Buffer{},
+		Err:    errBuf,
+		Decode: fakeDecodePayloads,
+		Registry: func() *klv.Registry {
+			return testRegistry()
+		},
+	}
+	code := cmd.Execute([]string{"--input", "fake.ts", "--out", outPath})
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0; stderr=%s", code, errBuf.String())
+	}
+}
+
+// TestDecodeCommandWriteErrorClosesFile verifies that when --out is used and
+// a write error occurs, the output file is still closed.
+func TestDecodeCommandWriteErrorClosesFile(t *testing.T) {
+	fw := &failWriter{writeErr: errors.New("broken pipe")}
+
+	errBuf := &bytes.Buffer{}
+	cmd := &DecodeCommand{
+		Out:    &bytes.Buffer{},
+		Err:    errBuf,
+		Decode: fakeDecodePayloads,
+		Registry: func() *klv.Registry {
+			return testRegistry()
+		},
+		openOut: func(_ string) (io.WriteCloser, error) {
+			return fw, nil
+		},
+	}
+	code := cmd.Execute([]string{"--input", "fake.ts", "--out", "/tmp/out.ndjson"})
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1", code)
+	}
+	if !fw.closed {
+		t.Fatal("expected output file to be closed after write error")
 	}
 }
 
