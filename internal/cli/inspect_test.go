@@ -200,6 +200,80 @@ func TestInspectSurfacesPESDiagnosticsEndToEnd(t *testing.T) {
 	}
 }
 
+func TestFormatPTSBehavior(t *testing.T) {
+	tests := []struct {
+		name  string
+		ticks int64
+		want  string
+	}{
+		{"zero", 0, "00:00:00.000"},
+		{"one second", 90000, "00:00:01.000"},
+		{"one minute", 90000 * 60, "00:01:00.000"},
+		{"one hour", 90000 * 3600, "01:00:00.000"},
+		{"with millis", 10819895, "00:02:00.221"},
+		{"larger value", 24123185, "00:04:28.035"},
+		{"sub-second only", 45000, "00:00:00.500"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := formatPTS(tt.ticks)
+			if got != tt.want {
+				t.Errorf("formatPTS(%d) = %q, want %q", tt.ticks, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestInspectOutputContainsPTSTime(t *testing.T) {
+	var out, errBuf bytes.Buffer
+
+	table := ts.StreamTable{
+		Programs: map[uint16][]ts.Stream{
+			1: {
+				{PID: 0x0300, StreamType: 0x06, ProgramNum: 1},
+			},
+		},
+	}
+	stats := InspectStats{
+		TotalPackets:  100,
+		PacketCounts:  map[uint16]int64{0x0300: 50},
+		PESUnitCounts: map[uint16]int{0x0300: 10},
+		FirstPTS:      map[uint16]int64{0x0300: 10819895},
+		LastPTS:       map[uint16]int64{0x0300: 24123185},
+	}
+
+	cmd := &InspectCommand{
+		Out: &out,
+		Err: &errBuf,
+		Inspect: func(path string) (ts.StreamTable, InspectStats, error) {
+			return table, stats, nil
+		},
+	}
+
+	input := filepath.Join(t.TempDir(), "test.ts")
+	if err := os.WriteFile(input, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	code := cmd.Execute([]string{"--input", input})
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0; stderr: %s", code, errBuf.String())
+	}
+
+	output := out.String()
+	if !strings.Contains(output, "10819895") {
+		t.Errorf("output should contain raw first PTS ticks, got:\n%s", output)
+	}
+	if !strings.Contains(output, "24123185") {
+		t.Errorf("output should contain raw last PTS ticks, got:\n%s", output)
+	}
+	if !strings.Contains(output, "(00:02:00.221)") {
+		t.Errorf("output should contain formatted first PTS, got:\n%s", output)
+	}
+	if !strings.Contains(output, "(00:04:28.035)") {
+		t.Errorf("output should contain formatted last PTS, got:\n%s", output)
+	}
+}
+
 // buildTSPacket constructs a synthetic 188-byte TS packet — a test-local
 // duplicate of internal/mpeg/ts.buildPacket since that helper is unexported.
 func buildTSPacket(pid uint16, cc uint8, pusi bool, payload []byte) []byte {
