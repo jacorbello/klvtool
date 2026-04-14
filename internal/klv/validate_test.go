@@ -130,6 +130,9 @@ func TestValidateVersionMismatch(t *testing.T) {
 	for _, d := range diags {
 		if d.Code == "ls_version_mismatch" {
 			found = true
+			if d.Severity != "note" {
+				t.Errorf("ls_version_mismatch severity = %q, want %q", d.Severity, "note")
+			}
 		}
 	}
 	if !found {

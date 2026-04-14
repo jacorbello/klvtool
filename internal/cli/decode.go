@@ -306,6 +306,9 @@ func (c *DecodeCommand) Execute(args []string) int {
 	// tag_decode_error), packetize-layer diagnostics, and validation
 	// failures. The label reflects that.
 	fmt.Fprintf(c.Err, "decoded %d packet(s), %d error diagnostic(s)\n", len(result.Records), errorCount) //nolint:errcheck
+	if pid != 0 && len(result.Records) == 0 {
+		fmt.Fprintf(c.Err, "warning: no KLV packets found on PID %d\n", pid) //nolint:errcheck
+	}
 	if strict && errorCount > 0 {
 		return 1
 	}
@@ -313,10 +316,20 @@ func (c *DecodeCommand) Execute(args []string) int {
 }
 
 func (c *DecodeCommand) writeUsage(w io.Writer) {
+	if w == nil {
+		return
+	}
 	fmt.Fprintln(w, "Usage: klvtool decode --input <file.ts> [--format ndjson|text] [--raw] [--strict] [--pid N] [--out path] [--schema urn]") //nolint:errcheck
+	fmt.Fprintln(w)                                                                                                                              //nolint:errcheck
+	fmt.Fprintln(w, "Decode MISB ST 0601 KLV metadata from an MPEG-TS file.")                                                                   //nolint:errcheck
+	fmt.Fprintln(w)                                                                                                                              //nolint:errcheck
+	fmt.Fprintln(w, "The --raw flag includes raw bytes per item: hex (0x...) in text format, base64 in NDJSON.") //nolint:errcheck
 }
 
 func (c *DecodeCommand) writeError(w io.Writer, err error) {
+	if w == nil || err == nil {
+		return
+	}
 	fmt.Fprintln(w, "error:", err) //nolint:errcheck
 }
 
@@ -335,7 +348,7 @@ type ndjsonItem struct {
 	Tag   int          `json:"tag"`
 	Name  string       `json:"name"`
 	Value record.Value `json:"value"`
-	Units string       `json:"units,omitempty"`
+	Units string       `json:"units"`
 	Raw   string       `json:"raw,omitempty"`
 }
 
@@ -356,9 +369,8 @@ func writeNDJSON(w io.Writer, index int, rec record.Record, includeRaw bool) err
 		Diagnostics: diags,
 	}
 	for _, it := range rec.Items {
-		ni := ndjsonItem{Tag: it.Tag, Name: it.Name, Value: it.Value}
+		ni := ndjsonItem{Tag: it.Tag, Name: it.Name, Value: it.Value, Units: it.Units}
 		if includeRaw {
-			ni.Units = it.Units
 			ni.Raw = encodeBase64(it.Raw)
 		}
 		nr.Items = append(nr.Items, ni)

@@ -29,7 +29,7 @@ func TestPacketManifestWriterWritesManifestLine(t *testing.T) {
 	}
 
 	got := buf.String()
-	if !strings.Contains(got, `"schemaVersion":"2"`) {
+	if !strings.Contains(got, `"schemaVersion":"3"`) {
 		t.Fatalf("expected schema version in output, got %q", got)
 	}
 	if !strings.HasSuffix(got, "\n") {

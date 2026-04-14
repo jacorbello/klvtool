@@ -116,7 +116,7 @@ func (c *ExtractCommand) Execute(args []string) int {
 		return exitCodeForError(e)
 	}
 
-	if _, err := os.Stat(filepath.Join(outDir, "manifest.ndjson")); err == nil && c.Err != nil {
+	if dirNonEmpty(outDir) && c.Err != nil {
 		_, _ = fmt.Fprintf(c.Err, "warning: output directory already exists, files will be overwritten: %s\n", outDir)
 	}
 
@@ -144,7 +144,7 @@ func (c *ExtractCommand) Execute(args []string) int {
 
 	if c.Out != nil {
 		_, _ = fmt.Fprintf(c.Out, "backend: %s (%s)\n", manifest.BackendName, manifest.BackendVersion)
-		_, _ = fmt.Fprintf(c.Out, "records: %d\n", len(manifest.Records))
+		_, _ = fmt.Fprintf(c.Out, "streams: %d\n", len(manifest.Records))
 		_, _ = fmt.Fprintf(c.Out, "manifest: %s\n", filepath.Join(outDir, "manifest.ndjson"))
 	}
 	return 0
@@ -308,6 +308,15 @@ func exitCodeForError(err error) int {
 		}
 	}
 	return 1
+}
+
+// dirNonEmpty returns true if dir exists and contains at least one entry.
+func dirNonEmpty(dir string) bool {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return false
+	}
+	return len(entries) > 0
 }
 
 func errorsAs(err error, target **model.Error) bool {

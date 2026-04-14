@@ -662,6 +662,31 @@ func TestDecodePIDValidation(t *testing.T) {
 	}
 }
 
+func TestNDJSONAlwaysIncludesUnits(t *testing.T) {
+	rec := record.Record{
+		Schema:    "urn:misb:KLV:bin:0601.19",
+		LSVersion: 19,
+		Checksum:  record.ChecksumInfo{Valid: true},
+		Items: []record.Item{
+			{Tag: 5, Name: "Platform Heading Angle", Value: record.FloatValue(159.97), Units: "°"},
+		},
+	}
+	var buf bytes.Buffer
+	if err := writeNDJSON(&buf, 0, rec, false); err != nil {
+		t.Fatalf("writeNDJSON: %v", err)
+	}
+	var parsed map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &parsed); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	items := parsed["items"].([]any)
+	item := items[0].(map[string]any)
+	units, ok := item["units"]
+	if !ok || units != "°" {
+		t.Errorf("expected units=° in NDJSON without --raw; got %v (present=%v)", units, ok)
+	}
+}
+
 func TestDecodeOutOpenFailure(t *testing.T) {
 	errBuf := &bytes.Buffer{}
 	cmd := &DecodeCommand{
@@ -681,5 +706,35 @@ func TestDecodeOutOpenFailure(t *testing.T) {
 	}
 	if !strings.Contains(errBuf.String(), "permission denied") {
 		t.Errorf("expected error on stderr; got: %s", errBuf.String())
+	}
+}
+
+func TestDecodeWarnsPIDNoMatch(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	cmd := &DecodeCommand{
+		Out: &stdout,
+		Err: &stderr,
+		Decode: func(path string, pid int, schema string) (DecodeResult, error) {
+			return DecodeResult{Records: nil}, nil
+		},
+	}
+	code := cmd.Execute([]string{"--input", tempInputFile(t), "--pid", "999"})
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0", code)
+	}
+	if !strings.Contains(stderr.String(), "no KLV packets found on PID 999") {
+		t.Errorf("expected PID no-match warning; got stderr=%q", stderr.String())
+	}
+}
+
+func TestDecodeHelpDocumentsRawEncoding(t *testing.T) {
+	var buf bytes.Buffer
+	cmd := &DecodeCommand{Out: &buf, Err: &bytes.Buffer{}}
+	code := cmd.Execute([]string{"--help"})
+	if code != 0 {
+		t.Fatalf("exit code = %d", code)
+	}
+	if !strings.Contains(buf.String(), "hex") || !strings.Contains(buf.String(), "base64") {
+		t.Errorf("--help should document raw encoding formats; got: %s", buf.String())
 	}
 }

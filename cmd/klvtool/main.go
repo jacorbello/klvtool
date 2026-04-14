@@ -7,5 +7,6 @@ import (
 )
 
 func main() {
+	ignoreSIGPIPE()
 	os.Exit(cli.Main())
 }

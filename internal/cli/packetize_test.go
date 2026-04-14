@@ -4,14 +4,17 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/jacorbello/klvtool/internal/extract"
 	"github.com/jacorbello/klvtool/internal/model"
 	"github.com/jacorbello/klvtool/internal/output"
+	"github.com/jacorbello/klvtool/internal/packetize"
 )
 
 func TestPacketizeHelpMixedWithFlags(t *testing.T) {
@@ -190,16 +193,16 @@ func TestPacketizeWritesPacketCheckpointOutputs(t *testing.T) {
 	if !bytes.Contains(manifestBytes, []byte(`"packetPath":"packets/klv-001.json"`)) {
 		t.Fatalf("expected packet manifest to reference packet checkpoint path, got %s", manifestBytes)
 	}
-	if !bytes.Contains(manifestBytes, []byte(`"schemaVersion":"2"`)) {
-		t.Fatalf("expected packet manifest schema version 2, got %s", manifestBytes)
+	if !bytes.Contains(manifestBytes, []byte(`"schemaVersion":"3"`)) {
+		t.Fatalf("expected packet manifest schema version 3, got %s", manifestBytes)
 	}
 
 	packetBytes, err := os.ReadFile(filepath.Join(outputDir, "packets", "klv-001.json"))
 	if err != nil {
 		t.Fatalf("read packet checkpoint: %v", err)
 	}
-	if !bytes.Contains(packetBytes, []byte(`"schemaVersion":"2"`)) {
-		t.Fatalf("expected packet checkpoint schema version 2, got %s", packetBytes)
+	if !bytes.Contains(packetBytes, []byte(`"schemaVersion":"3"`)) {
+		t.Fatalf("expected packet checkpoint schema version 3, got %s", packetBytes)
 	}
 	if !bytes.Contains(packetBytes, []byte(`"mode":"best-effort"`)) {
 		t.Fatalf("expected packet checkpoint to record mode, got %s", packetBytes)
@@ -214,7 +217,7 @@ func TestPacketizeWritesPacketCheckpointOutputs(t *testing.T) {
 		t.Fatalf("expected packet checkpoint to include parsed count, got %s", packetBytes)
 	}
 	for _, want := range [][]byte{
-		[]byte(`"packetEnd":19`),
+		[]byte(`"packetEndInclusive":19`),
 		[]byte(`"rawKeyHex":"060e2b34000000000000000000000000"`),
 		[]byte(`"rawValueHex":"aabbcc"`),
 	} {
@@ -350,6 +353,64 @@ func TestPacketizeOverwriteWarningBehavior(t *testing.T) {
 		}
 	})
 
+	t.Run("existing output dir with non-manifest files emits warning", func(t *testing.T) {
+		inputDir := setupInput(t)
+		outDir := t.TempDir()
+
+		if err := os.WriteFile(filepath.Join(outDir, "somefile.bin"), []byte("data"), 0o644); err != nil {
+			t.Fatalf("seed file: %v", err)
+		}
+
+		var stdout, stderr bytes.Buffer
+		cmd := NewRootCommand()
+		cmd.Out = &stdout
+		cmd.Err = &stderr
+
+		code := cmd.Execute([]string{"packetize", "--input", inputDir, "--out", outDir})
+		if code != 0 {
+			t.Fatalf("exit code = %d, want 0; stderr=%q", code, stderr.String())
+		}
+		want := "warning: output directory already exists, files will be overwritten: " + outDir
+		if !strings.Contains(stderr.String(), want) {
+			t.Fatalf("expected overwrite warning for non-empty dir, got %q", stderr.String())
+		}
+	})
+
+}
+
+func TestPacketCheckpointUsesPacketEndInclusive(t *testing.T) {
+	stream := packetize.PacketizedStream{
+		Source:        extract.RawPayloadRecord{RecordID: "klv-001"},
+		Mode:          packetize.ModeStrict,
+		ParserVersion: "1",
+		ParsedCount:   1,
+		Packets: []packetize.Packet{
+			{
+				PacketIndex:        0,
+				PacketStart:        0,
+				KeyStart:           0,
+				LengthStart:        16,
+				ValueStart:         18,
+				PacketEndExclusive: 259,
+				Key:                make([]byte, 16),
+				Length:             241,
+				Value:              make([]byte, 241),
+				Classification:     packetize.ClassificationUniversalSet,
+			},
+		},
+	}
+
+	checkpoint := toPacketCheckpoint(stream)
+	data, err := json.Marshal(checkpoint)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if !strings.Contains(string(data), `"packetEndInclusive"`) {
+		t.Errorf("expected JSON field 'packetEndInclusive'; got: %s", string(data))
+	}
+	if strings.Contains(string(data), `"packetEnd":`) {
+		t.Errorf("expected 'packetEndInclusive' not legacy 'packetEnd'; got: %s", string(data))
+	}
 }
 
 func TestPacketizeRejectsInvalidMode(t *testing.T) {

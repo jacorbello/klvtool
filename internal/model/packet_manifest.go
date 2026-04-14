@@ -2,7 +2,7 @@ package model
 
 import "encoding/json"
 
-const PacketSchemaVersion = "2"
+const PacketSchemaVersion = "3"
 
 // PacketManifest captures the packet checkpoint output for one extraction record.
 type PacketManifest struct {
@@ -78,7 +78,7 @@ type PacketRecord struct {
 	KeyStart       int                `json:"keyStart"`
 	LengthStart    int                `json:"lengthStart"`
 	ValueStart     int                `json:"valueStart"`
-	PacketEnd      int                `json:"packetEnd"`
+	PacketEndInclusive int             `json:"packetEndInclusive"`
 	RawKeyHex      string             `json:"rawKeyHex"`
 	Length         int                `json:"length"`
 	RawValueHex    string             `json:"rawValueHex"`

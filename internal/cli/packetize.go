@@ -127,7 +127,7 @@ func (c *PacketizeCommand) Execute(args []string) int {
 		return usageExitCode
 	}
 
-	if _, err := os.Stat(filepath.Join(outDir, "manifest.ndjson")); err == nil && c.Err != nil {
+	if dirNonEmpty(outDir) && c.Err != nil {
 		_, _ = fmt.Fprintf(c.Err, "warning: output directory already exists, files will be overwritten: %s\n", outDir)
 	}
 
@@ -336,7 +336,7 @@ func toPacketCheckpoint(stream packetize.PacketizedStream) model.PacketCheckpoin
 			KeyStart:       packet.KeyStart,
 			LengthStart:    packet.LengthStart,
 			ValueStart:     packet.ValueStart,
-			PacketEnd:      packet.PacketEndExclusive - 1,
+			PacketEndInclusive: packet.PacketEndExclusive - 1,
 			RawKeyHex:      hex.EncodeToString(packet.Key),
 			Length:         packet.Length,
 			RawValueHex:    hex.EncodeToString(packet.Value),
