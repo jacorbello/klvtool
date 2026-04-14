@@ -215,3 +215,94 @@ func TestPacketizeWritesPacketCheckpointOutputs(t *testing.T) {
 		t.Fatalf("expected stdout summary, got %q", stdout.String())
 	}
 }
+
+func TestPacketizeOverwriteWarningBehavior(t *testing.T) {
+	// Helper to set up a valid input dir with manifest and payload.
+	setupInput := func(t *testing.T) string {
+		t.Helper()
+		inputDir := t.TempDir()
+		payloadDir := filepath.Join(inputDir, "payloads")
+		if err := os.MkdirAll(payloadDir, 0o755); err != nil {
+			t.Fatalf("mkdir payloads: %v", err)
+		}
+		payload := append([]byte{0x06, 0x0e, 0x2b, 0x34}, bytes.Repeat([]byte{0x00}, 12)...)
+		payload = append(payload, 0x03, 0xaa, 0xbb, 0xcc)
+		payloadResult, err := output.WritePayload(payloadDir, "klv-001", payload)
+		if err != nil {
+			t.Fatalf("write payload: %v", err)
+		}
+		sum := sha256.Sum256(payload)
+		manifest := model.Manifest{
+			SchemaVersion:   "1",
+			SourceInputPath: "sample.ts",
+			BackendName:     "ffmpeg",
+			BackendVersion:  "7.1",
+			Records: []model.Record{
+				{
+					RecordID:    "klv-001",
+					PID:         256,
+					PayloadPath: filepath.ToSlash(filepath.Join("payloads", filepath.Base(payloadResult.Path))),
+					PayloadSize: payloadResult.Size,
+					PayloadHash: "sha256:" + hex.EncodeToString(sum[:]),
+				},
+			},
+		}
+		manifestFile, err := os.Create(filepath.Join(inputDir, "manifest.ndjson"))
+		if err != nil {
+			t.Fatalf("create manifest: %v", err)
+		}
+		if err := output.NewManifestWriter(manifestFile).WriteManifest(manifest); err != nil {
+			if closeErr := manifestFile.Close(); closeErr != nil {
+				t.Fatalf("write manifest: %v; close manifest: %v", err, closeErr)
+			}
+			t.Fatalf("write manifest: %v", err)
+		}
+		if err := manifestFile.Close(); err != nil {
+			t.Fatalf("close manifest: %v", err)
+		}
+		return inputDir
+	}
+
+	t.Run("fresh output dir emits no warning", func(t *testing.T) {
+		inputDir := setupInput(t)
+		outDir := t.TempDir()
+
+		var stdout, stderr bytes.Buffer
+		cmd := NewRootCommand()
+		cmd.Out = &stdout
+		cmd.Err = &stderr
+
+		code := cmd.Execute([]string{"packetize", "--input", inputDir, "--out", outDir})
+		if code != 0 {
+			t.Fatalf("exit code = %d, want 0; stderr=%q", code, stderr.String())
+		}
+		if stderr.Len() != 0 {
+			t.Fatalf("expected empty stderr on fresh dir, got %q", stderr.String())
+		}
+	})
+
+	t.Run("existing output dir with manifest emits warning", func(t *testing.T) {
+		inputDir := setupInput(t)
+		outDir := t.TempDir()
+
+		// Pre-populate output dir with manifest.ndjson
+		if err := os.WriteFile(filepath.Join(outDir, "manifest.ndjson"), []byte("{}"), 0o644); err != nil {
+			t.Fatalf("seed manifest: %v", err)
+		}
+
+		var stdout, stderr bytes.Buffer
+		cmd := NewRootCommand()
+		cmd.Out = &stdout
+		cmd.Err = &stderr
+
+		code := cmd.Execute([]string{"packetize", "--input", inputDir, "--out", outDir})
+		if code != 0 {
+			t.Fatalf("exit code = %d, want 0; stderr=%q", code, stderr.String())
+		}
+		want := "warning: output directory already exists, files will be overwritten: " + outDir
+		if !strings.Contains(stderr.String(), want) {
+			t.Fatalf("expected overwrite warning on stderr, got %q", stderr.String())
+		}
+	})
+
+}
