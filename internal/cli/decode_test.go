@@ -38,7 +38,8 @@ func TestDecodeRejectsNonExistentInput(t *testing.T) {
 		},
 	}
 
-	got := cmd.Execute([]string{"--input", "/nonexistent/file.ts"})
+	missing := filepath.Join(t.TempDir(), "missing.ts")
+	got := cmd.Execute([]string{"--input", missing})
 	if got != 1 {
 		t.Fatalf("exit code = %d, want 1", got)
 	}
@@ -46,8 +47,32 @@ func TestDecodeRejectsNonExistentInput(t *testing.T) {
 	if !strings.Contains(text, "ts_read_failure") {
 		t.Fatalf("expected ts_read_failure error code, got %q", text)
 	}
-	if !strings.Contains(text, "/nonexistent/file.ts") {
+	if !strings.Contains(text, missing) {
 		t.Fatalf("expected file path in error, got %q", text)
+	}
+}
+
+func TestDecodeRejectsDirectory(t *testing.T) {
+	var stderr bytes.Buffer
+	cmd := &DecodeCommand{
+		Out: nil,
+		Err: &stderr,
+		Decode: func(path string, pid int, schema string) (DecodeResult, error) {
+			t.Fatal("decode should not be called for directory input")
+			return DecodeResult{}, nil
+		},
+	}
+
+	got := cmd.Execute([]string{"--input", t.TempDir()})
+	if got != 1 {
+		t.Fatalf("exit code = %d, want 1", got)
+	}
+	text := stderr.String()
+	if !strings.Contains(text, "ts_read_failure") {
+		t.Fatalf("expected ts_read_failure error code, got %q", text)
+	}
+	if !strings.Contains(text, "regular file") {
+		t.Fatalf("expected 'regular file' message, got %q", text)
 	}
 }
 

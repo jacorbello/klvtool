@@ -21,7 +21,8 @@ func TestInspectRejectsNonExistentInput(t *testing.T) {
 		},
 	}
 
-	got := cmd.Execute([]string{"--input", "/nonexistent/file.ts"})
+	missing := filepath.Join(t.TempDir(), "missing.ts")
+	got := cmd.Execute([]string{"--input", missing})
 	if got != 1 {
 		t.Fatalf("exit code = %d, want 1", got)
 	}
@@ -29,8 +30,32 @@ func TestInspectRejectsNonExistentInput(t *testing.T) {
 	if !strings.Contains(text, "ts_read_failure") {
 		t.Fatalf("expected ts_read_failure error code, got %q", text)
 	}
-	if !strings.Contains(text, "/nonexistent/file.ts") {
+	if !strings.Contains(text, missing) {
 		t.Fatalf("expected file path in error, got %q", text)
+	}
+}
+
+func TestInspectRejectsDirectory(t *testing.T) {
+	var stderr bytes.Buffer
+	cmd := &InspectCommand{
+		Out: nil,
+		Err: &stderr,
+		Inspect: func(path string) (ts.StreamTable, InspectStats, error) {
+			t.Fatal("inspect should not be called for directory input")
+			return ts.StreamTable{}, InspectStats{}, nil
+		},
+	}
+
+	got := cmd.Execute([]string{"--input", t.TempDir()})
+	if got != 1 {
+		t.Fatalf("exit code = %d, want 1", got)
+	}
+	text := stderr.String()
+	if !strings.Contains(text, "ts_read_failure") {
+		t.Fatalf("expected ts_read_failure error code, got %q", text)
+	}
+	if !strings.Contains(text, "not a regular file") {
+		t.Fatalf("expected 'not a regular file' message, got %q", text)
 	}
 }
 

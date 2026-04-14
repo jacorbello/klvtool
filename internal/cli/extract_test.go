@@ -182,7 +182,8 @@ func TestExtractRejectsNonExistentInput(t *testing.T) {
 		},
 	}
 
-	got := cmd.Execute([]string{"extract", "--input", "/nonexistent/file.ts", "--out", t.TempDir()})
+	missing := filepath.Join(t.TempDir(), "missing.ts")
+	got := cmd.Execute([]string{"extract", "--input", missing, "--out", t.TempDir()})
 	if got != 1 {
 		t.Fatalf("exit code = %d, want 1", got)
 	}
@@ -190,8 +191,31 @@ func TestExtractRejectsNonExistentInput(t *testing.T) {
 	if !strings.Contains(text, "ts_read_failure") {
 		t.Fatalf("expected ts_read_failure error code, got %q", text)
 	}
-	if !strings.Contains(text, "/nonexistent/file.ts") {
+	if !strings.Contains(text, missing) {
 		t.Fatalf("expected file path in error, got %q", text)
+	}
+}
+
+func TestExtractRejectsDirectory(t *testing.T) {
+	var stderr bytes.Buffer
+	cmd := NewRootCommand()
+	cmd.Out = nil
+	cmd.Err = &stderr
+	cmd.Extract.Detect = func(ctx context.Context, goos string, env map[string]string) envcheck.Report {
+		t.Fatal("detect should not be called for directory input")
+		return envcheck.Report{}
+	}
+
+	got := cmd.Execute([]string{"extract", "--input", t.TempDir(), "--out", t.TempDir()})
+	if got != 1 {
+		t.Fatalf("exit code = %d, want 1", got)
+	}
+	text := stderr.String()
+	if !strings.Contains(text, "ts_read_failure") {
+		t.Fatalf("expected ts_read_failure error code, got %q", text)
+	}
+	if !strings.Contains(text, "not a regular file") {
+		t.Fatalf("expected 'not a regular file' message, got %q", text)
 	}
 }
 

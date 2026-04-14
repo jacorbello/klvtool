@@ -211,8 +211,19 @@ func (c *DecodeCommand) Execute(args []string) int {
 		}
 	}
 
-	if _, err := os.Stat(inputPath); err != nil {
-		e := model.TSRead(fmt.Errorf("input file does not exist: %s", inputPath))
+	info, err := os.Stat(inputPath)
+	if err != nil {
+		var e error
+		if os.IsNotExist(err) {
+			e = model.TSRead(fmt.Errorf("input file does not exist: %s", inputPath))
+		} else {
+			e = model.TSRead(fmt.Errorf("failed to stat input file %q: %w", inputPath, err))
+		}
+		c.writeError(c.Err, e)
+		return exitCodeForError(e)
+	}
+	if !info.Mode().IsRegular() {
+		e := model.TSRead(fmt.Errorf("input path must be a regular file: %s", inputPath))
 		c.writeError(c.Err, e)
 		return exitCodeForError(e)
 	}
