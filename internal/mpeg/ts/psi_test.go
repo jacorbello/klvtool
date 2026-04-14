@@ -158,7 +158,7 @@ func TestDiscoverStreamsFromSyntheticFile(t *testing.T) {
 	buf.Write(dataPkt)
 
 	r := bytes.NewReader(buf.Bytes())
-	table, err := DiscoverStreams(r)
+	table, _, err := DiscoverStreams(r)
 	if err != nil {
 		t.Fatalf("DiscoverStreams: %v", err)
 	}
@@ -175,6 +175,80 @@ func TestDiscoverStreamsFromSyntheticFile(t *testing.T) {
 	}
 	if streams[0].StreamType != 0x06 {
 		t.Errorf("stream type = 0x%02X, want 0x06", streams[0].StreamType)
+	}
+}
+
+// TestDiscoverStreamsWarnsWhenCapReachedWithoutPMT verifies that when
+// the packet cap is reached without finding any PMT, a warning
+// diagnostic is returned containing the cap value.
+func TestDiscoverStreamsWarnsWhenCapReachedWithoutPMT(t *testing.T) {
+	var buf bytes.Buffer
+
+	// PAT announcing program 1 → PMT PID 0x1000.
+	patPkt := buildPacket(0x0000, 0, true, []byte{
+		0x00, 0x00, 0xB0, 0x0D,
+		0x00, 0x01, 0xC1, 0x00, 0x00,
+		0x00, 0x01, 0xF0, 0x00,
+		0x00, 0x00, 0x00, 0x00,
+	})
+	buf.Write(patPkt)
+
+	// Fill remaining packets with non-PMT data so the cap is hit.
+	for i := 0; i < maxDiscoveryPackets; i++ {
+		buf.Write(buildPacket(0x0300, uint8(i&0x0F), false, []byte{0xFF}))
+	}
+
+	r := bytes.NewReader(buf.Bytes())
+	_, diags, err := DiscoverStreams(r)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(diags) == 0 {
+		t.Fatal("expected a warning diagnostic, got none")
+	}
+	found := false
+	for _, d := range diags {
+		if d.Severity == "warning" && d.Code == "discovery_cap_reached" {
+			found = true
+			if !bytes.Contains([]byte(d.Message), []byte("10000")) {
+				t.Errorf("warning message should include cap value 10000, got: %s", d.Message)
+			}
+		}
+	}
+	if !found {
+		t.Errorf("expected diagnostic with code discovery_cap_reached, got: %+v", diags)
+	}
+}
+
+// TestDiscoverStreamsNoDiagnosticWhenPMTFoundWithinCap verifies that
+// normal discovery (PMT found quickly) produces no diagnostics.
+func TestDiscoverStreamsNoDiagnosticWhenPMTFoundWithinCap(t *testing.T) {
+	var buf bytes.Buffer
+
+	patPkt := buildPacket(0x0000, 0, true, []byte{
+		0x00, 0x00, 0xB0, 0x0D,
+		0x00, 0x01, 0xC1, 0x00, 0x00,
+		0x00, 0x01, 0xF0, 0x00,
+		0x00, 0x00, 0x00, 0x00,
+	})
+	buf.Write(patPkt)
+
+	pmtPkt := buildPacket(0x1000, 0, true, []byte{
+		0x00, 0x02, 0xB0, 0x12,
+		0x00, 0x01, 0xC1, 0x00, 0x00,
+		0xE1, 0x00, 0xF0, 0x00,
+		0x06, 0xE3, 0x00, 0xF0, 0x00,
+		0x00, 0x00, 0x00, 0x00,
+	})
+	buf.Write(pmtPkt)
+
+	r := bytes.NewReader(buf.Bytes())
+	_, diags, err := DiscoverStreams(r)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(diags) != 0 {
+		t.Errorf("expected no diagnostics, got: %+v", diags)
 	}
 }
 
@@ -267,7 +341,7 @@ func TestDiscoverStreamsWaitsForValidPMTParse(t *testing.T) {
 	file.Write(realPMT)
 
 	r := bytes.NewReader(file.Bytes())
-	table, err := DiscoverStreams(r)
+	table, _, err := DiscoverStreams(r)
 	if err != nil {
 		t.Fatalf("DiscoverStreams: %v", err)
 	}

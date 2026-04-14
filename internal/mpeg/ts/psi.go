@@ -218,8 +218,9 @@ func (p *PSIParser) parsePMT(pmtPID uint16, data []byte) bool {
 }
 
 // DiscoverStreams reads enough of the source to parse PAT/PMT and returns
-// the complete StreamTable.
-func DiscoverStreams(r io.ReadSeeker) (StreamTable, error) {
+// the complete StreamTable along with any diagnostics encountered during
+// discovery (e.g. warnings when the packet cap is reached).
+func DiscoverStreams(r io.ReadSeeker) (StreamTable, []Diagnostic, error) {
 	scanner := NewPacketScanner(r, ScanConfig{PayloadPIDs: map[uint16]bool{pidPAT: true}})
 	psi := NewPSIParser()
 
@@ -228,9 +229,9 @@ func DiscoverStreams(r io.ReadSeeker) (StreamTable, error) {
 		pkt, err := scanner.Next()
 		if err != nil {
 			if err == io.EOF {
-				return StreamTable{}, model.TSParse(fmt.Errorf("PAT not found in stream"))
+				return StreamTable{}, nil, model.TSParse(fmt.Errorf("PAT not found in stream"))
 			}
-			return StreamTable{}, err
+			return StreamTable{}, nil, err
 		}
 		if psi.Feed(pkt) {
 			pmtPIDs = make(map[uint16]bool)
@@ -242,7 +243,7 @@ func DiscoverStreams(r io.ReadSeeker) (StreamTable, error) {
 	}
 
 	if _, err := r.Seek(0, io.SeekStart); err != nil {
-		return StreamTable{}, model.TSRead(fmt.Errorf("seek to start: %w", err))
+		return StreamTable{}, nil, model.TSRead(fmt.Errorf("seek to start: %w", err))
 	}
 
 	allPIDs := map[uint16]bool{pidPAT: true}
@@ -265,7 +266,7 @@ func DiscoverStreams(r io.ReadSeeker) (StreamTable, error) {
 			if err == io.EOF {
 				break
 			}
-			return StreamTable{}, err
+			return StreamTable{}, nil, err
 		}
 		packetsScanned++
 		if psi.Feed(pkt) && pmtPIDs[pkt.PID] {
@@ -276,5 +277,15 @@ func DiscoverStreams(r io.ReadSeeker) (StreamTable, error) {
 		}
 	}
 
-	return psi.Table(), nil
+	table := psi.Table()
+	var diags []Diagnostic
+	if len(table.Programs) == 0 && packetsScanned >= maxDiscoveryPackets {
+		diags = append(diags, Diagnostic{
+			Severity: "warning",
+			Code:     "discovery_cap_reached",
+			Message:  fmt.Sprintf("PMT not found after scanning %d packets; stream table is empty", maxDiscoveryPackets),
+		})
+	}
+
+	return table, diags, nil
 }

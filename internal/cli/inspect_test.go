@@ -274,6 +274,48 @@ func TestInspectOutputContainsPTSTime(t *testing.T) {
 	}
 }
 
+// TestInspectSurfacesDiscoveryCapWarning verifies that when the injected
+// inspect function returns a discovery_cap_reached diagnostic, it appears
+// in the printed report.
+func TestInspectSurfacesDiscoveryCapWarning(t *testing.T) {
+	var out, errBuf bytes.Buffer
+
+	table := ts.StreamTable{Programs: map[uint16][]ts.Stream{}}
+	stats := InspectStats{
+		TotalPackets:  0,
+		PacketCounts:  map[uint16]int64{},
+		PESUnitCounts: map[uint16]int{},
+		Diagnostics: []ts.Diagnostic{
+			{Severity: "warning", Code: "discovery_cap_reached", Message: "PMT not found after scanning 10000 packets; stream table is empty"},
+		},
+	}
+
+	cmd := &InspectCommand{
+		Out: &out,
+		Err: &errBuf,
+		Inspect: func(path string) (ts.StreamTable, InspectStats, error) {
+			return table, stats, nil
+		},
+	}
+
+	input := filepath.Join(t.TempDir(), "test.ts")
+	if err := os.WriteFile(input, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	code := cmd.Execute([]string{"--input", input})
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0; stderr: %s", code, errBuf.String())
+	}
+
+	output := out.String()
+	if !strings.Contains(output, "discovery_cap_reached") {
+		t.Errorf("expected discovery_cap_reached in output, got:\n%s", output)
+	}
+	if !strings.Contains(output, "10000") {
+		t.Errorf("expected cap value 10000 in output, got:\n%s", output)
+	}
+}
+
 // buildTSPacket constructs a synthetic 188-byte TS packet — a test-local
 // duplicate of internal/mpeg/ts.buildPacket since that helper is unexported.
 func buildTSPacket(pid uint16, cc uint8, pusi bool, payload []byte) []byte {
