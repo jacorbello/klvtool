@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"time"
 
@@ -90,7 +91,7 @@ func (c *UpdateCommand) Execute(args []string) int {
 		return 0
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
 	ua := "klvtool/" + c.Version
@@ -154,6 +155,7 @@ func (c *UpdateCommand) runGoInstall(ctx context.Context, goBin, tag string) int
 		return 1
 	}
 	_, _ = fmt.Fprintf(c.Out, "updated via go install to %s\n", tag)
+	c.warnIfExeOutsideGopath()
 	return 0
 }
 
@@ -258,6 +260,37 @@ func (c *UpdateCommand) runGo() func(ctx context.Context, goBin string, args []s
 		return c.RunGo
 	}
 	return defaultRunGo
+}
+
+func (c *UpdateCommand) warnIfExeOutsideGopath() {
+	exePath, err := c.executable()()
+	if err != nil {
+		return
+	}
+	exeDir := filepath.Dir(exePath)
+
+	// Check GOBIN first, then GOPATH/bin, then default ~/go/bin.
+	targets := []string{}
+	if gobin := os.Getenv("GOBIN"); gobin != "" {
+		targets = append(targets, gobin)
+	}
+	if gopath := os.Getenv("GOPATH"); gopath != "" {
+		targets = append(targets, filepath.Join(gopath, "bin"))
+	}
+	if home, err := os.UserHomeDir(); err == nil {
+		targets = append(targets, filepath.Join(home, "go", "bin"))
+	}
+
+	for _, t := range targets {
+		if exeDir == t {
+			return
+		}
+	}
+
+	_, _ = fmt.Fprintf(c.Out, "note: go install writes to GOBIN/GOPATH, but the current executable is %s\n", exePath)
+	if len(targets) > 0 {
+		_, _ = fmt.Fprintf(c.Out, "  the new binary is likely in %s\n", targets[0])
+	}
 }
 
 func (c *UpdateCommand) writeError(w io.Writer, err error) {

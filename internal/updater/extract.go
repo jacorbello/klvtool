@@ -45,6 +45,9 @@ func extractFromTarGz(archive []byte, wantName string) ([]byte, error) {
 		if base != wantName {
 			continue
 		}
+		if h.Typeflag != tar.TypeReg && h.Typeflag != '\x00' { // '\x00' is legacy regular file flag
+			return nil, fmt.Errorf("archive member %q is not a regular file", wantName)
+		}
 		if h.Size < 0 {
 			return nil, fmt.Errorf("invalid tar header size for %q", wantName)
 		}
@@ -68,6 +71,9 @@ func extractFromZip(archive []byte, wantName string) ([]byte, error) {
 		base := filepath.Base(f.Name)
 		if base != wantName {
 			continue
+		}
+		if !f.FileInfo().Mode().IsRegular() {
+			return nil, fmt.Errorf("archive member %q is not a regular file", wantName)
 		}
 		if f.UncompressedSize64 > maxBinary {
 			return nil, fmt.Errorf("archive member %q too large", wantName)

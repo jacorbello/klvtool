@@ -5,6 +5,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"compress/gzip"
+	"os"
 	"strings"
 	"testing"
 )
@@ -61,6 +62,45 @@ func TestExtractPublishedBinary_missingBinary(t *testing.T) {
 	_, err := ExtractPublishedBinary(archive, "linux")
 	if err == nil {
 		t.Fatal("expected error")
+	}
+}
+
+func TestExtractPublishedBinary_tarGzRejectsSymlink(t *testing.T) {
+	var buf bytes.Buffer
+	gw := gzip.NewWriter(&buf)
+	tw := tar.NewWriter(gw)
+	_ = tw.WriteHeader(&tar.Header{
+		Name:     "klvtool",
+		Typeflag: tar.TypeSymlink,
+		Linkname: "/etc/passwd",
+	})
+	_ = tw.Close()
+	_ = gw.Close()
+
+	_, err := ExtractPublishedBinary(buf.Bytes(), "linux")
+	if err == nil {
+		t.Fatal("expected error for symlink entry")
+	}
+	if !strings.Contains(err.Error(), "not a regular file") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestExtractPublishedBinary_zipRejectsDirectory(t *testing.T) {
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	// Create a directory entry named "klvtool"
+	h := &zip.FileHeader{Name: "klvtool/"}
+	h.SetMode(os.ModeDir | 0o755)
+	_, err := zw.CreateHeader(h)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = zw.Close()
+
+	_, err = ExtractPublishedBinary(buf.Bytes(), "linux")
+	if err == nil {
+		t.Fatal("expected error for directory entry")
 	}
 }
 

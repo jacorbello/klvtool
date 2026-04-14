@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestUpdateSkipsDev(t *testing.T) {
@@ -201,6 +202,82 @@ func TestUpdateBadFlagUsesInvalidUsage(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String(), "invalid_usage") {
 		t.Fatalf("got %q", stderr.String())
+	}
+}
+
+func TestUpdateUsesAdequateTimeout(t *testing.T) {
+	// Verify the update command uses a timeout longer than 60s to handle
+	// slow networks and go install builds.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"tag_name": "v2.0.0",
+			"assets":   []any{},
+		})
+	}))
+	defer srv.Close()
+
+	var capturedDeadline time.Time
+	root := NewRootCommand()
+	root.Out = &bytes.Buffer{}
+	root.Err = &bytes.Buffer{}
+	root.Version = "v1.0.0"
+	root.Update.ReleaseURL = srv.URL
+	root.Update.LookPath = func(string) (string, error) { return "/fake/go", nil }
+	root.Update.RunGo = func(ctx context.Context, _ string, _ []string) ([]byte, []byte, error) {
+		dl, ok := ctx.Deadline()
+		if ok {
+			capturedDeadline = dl
+		}
+		return nil, nil, nil
+	}
+	root.Update.Executable = func() (string, error) { return "/fake/go/bin/klvtool", nil }
+
+	root.Execute([]string{"update"})
+
+	if capturedDeadline.IsZero() {
+		t.Fatal("expected context deadline to be set")
+	}
+	remaining := time.Until(capturedDeadline)
+	// The timeout should be at least 4 minutes (allowing for test overhead).
+	if remaining < 4*time.Minute {
+		t.Fatalf("timeout too short: %v remaining", remaining)
+	}
+}
+
+func TestUpdateGoInstallWarnsWhenExeOutsideGopath(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"tag_name": "v2.0.0",
+			"assets":   []any{},
+		})
+	}))
+	defer srv.Close()
+
+	var stdout bytes.Buffer
+	root := NewRootCommand()
+	root.Out = &stdout
+	root.Err = &bytes.Buffer{}
+	root.Version = "v1.0.0"
+	root.Update.ReleaseURL = srv.URL
+	root.Update.LookPath = func(file string) (string, error) {
+		if file == "go" {
+			return "/usr/local/go/bin/go", nil
+		}
+		return "", fmt.Errorf("not found")
+	}
+	root.Update.Executable = func() (string, error) {
+		return "/usr/local/bin/klvtool", nil
+	}
+	root.Update.RunGo = func(ctx context.Context, goBin string, args []string) ([]byte, []byte, error) {
+		return nil, nil, nil
+	}
+
+	if got := root.Execute([]string{"update"}); got != 0 {
+		t.Fatalf("exit %d", got)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "note:") {
+		t.Fatalf("expected warning about install location, got %q", out)
 	}
 }
 
