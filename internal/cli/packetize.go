@@ -32,6 +32,7 @@ type PacketizeCommand struct {
 	ReadRawPayloads func(string) ([]extract.RawPayloadRecord, error)
 	Parser          packetParser
 	NewManifestOut  func(io.Writer) packetManifestWriter
+	OpenManifest    func(string) (io.WriteCloser, error)
 }
 
 func NewPacketizeCommand() *PacketizeCommand {
@@ -172,17 +173,19 @@ func (c *PacketizeCommand) writeOutputs(outDir, sourcePath string, streams []pac
 	}
 
 	manifestPath := filepath.Join(outDir, "manifest.ndjson")
-	file, err := os.Create(manifestPath)
+	open := c.openManifest()
+	file, err := open(manifestPath)
 	if err != nil {
 		return model.OutputWrite(fmt.Errorf("create packet manifest file %q: %w", manifestPath, err))
 	}
-	defer func() {
-		_ = file.Close()
-	}()
 
 	writer := c.packetManifestWriter(file)
 	if err := writer.WriteManifest(manifest); err != nil {
+		_ = file.Close()
 		return err
+	}
+	if err := file.Close(); err != nil {
+		return model.OutputWrite(err)
 	}
 	return nil
 }
@@ -215,6 +218,15 @@ func (c *PacketizeCommand) parser() packetParser {
 		return c.Parser
 	}
 	return packetize.NewParser()
+}
+
+func (c *PacketizeCommand) openManifest() func(string) (io.WriteCloser, error) {
+	if c != nil && c.OpenManifest != nil {
+		return c.OpenManifest
+	}
+	return func(path string) (io.WriteCloser, error) {
+		return os.Create(path)
+	}
 }
 
 func (c *PacketizeCommand) packetManifestWriter(w io.Writer) packetManifestWriter {
