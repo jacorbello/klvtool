@@ -110,6 +110,19 @@ func TestVersionCheckDevBuild(t *testing.T) {
 	}
 }
 
+func TestVersionRejectsStrayArgs(t *testing.T) {
+	var stderr bytes.Buffer
+	cmd := NewRootCommand()
+	cmd.Err = &stderr
+
+	if got := cmd.Execute([]string{"version", "bogus"}); got != 2 {
+		t.Fatalf("expected exit 2, got %d", got)
+	}
+	if !strings.Contains(stderr.String(), "unsupported arguments") {
+		t.Fatalf("expected unsupported arguments error, got %q", stderr.String())
+	}
+}
+
 func TestVersionHelpFlag(t *testing.T) {
 	var stdout bytes.Buffer
 	cmd := NewRootCommand()
