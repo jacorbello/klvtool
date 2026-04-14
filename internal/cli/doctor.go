@@ -138,9 +138,17 @@ func (c *DoctorCommand) writeReport(w io.Writer, report envcheck.Report) {
 		v = "dev"
 	}
 
+	anyUnhealthy := false
+	for _, b := range report.Backends {
+		if !b.Healthy {
+			anyUnhealthy = true
+			break
+		}
+	}
+
 	_, _ = fmt.Fprintf(w, "klvtool: %s\n", v)
 	_, _ = fmt.Fprintf(w, "platform: %s\n", report.Platform)
-	if report.GuidanceSummary != "" {
+	if anyUnhealthy && report.GuidanceSummary != "" {
 		_, _ = fmt.Fprintf(w, "install guidance: %s\n", report.GuidanceSummary)
 	}
 	_, _ = fmt.Fprintln(w)
