@@ -336,7 +336,7 @@ func toPacketCheckpoint(stream packetize.PacketizedStream) model.PacketCheckpoin
 			KeyStart:       packet.KeyStart,
 			LengthStart:    packet.LengthStart,
 			ValueStart:     packet.ValueStart,
-			PacketEnd:      packet.PacketEndExclusive - 1,
+			PacketEndInclusive: packet.PacketEndExclusive - 1,
 			RawKeyHex:      hex.EncodeToString(packet.Key),
 			Length:         packet.Length,
 			RawValueHex:    hex.EncodeToString(packet.Value),

@@ -59,7 +59,7 @@ func TestPacketCheckpointMarshalJSONUsesStablePacketAndDiagnosticArrays(t *testi
 				KeyStart:       0,
 				LengthStart:    16,
 				ValueStart:     17,
-				PacketEnd:      19,
+				PacketEndInclusive:      19,
 				RawKeyHex:      "060e2b34",
 				Length:         3,
 				RawValueHex:    "aabbcc",

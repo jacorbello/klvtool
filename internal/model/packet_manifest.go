@@ -78,7 +78,7 @@ type PacketRecord struct {
 	KeyStart       int                `json:"keyStart"`
 	LengthStart    int                `json:"lengthStart"`
 	ValueStart     int                `json:"valueStart"`
-	PacketEnd      int                `json:"packetEndInclusive"`
+	PacketEndInclusive int             `json:"packetEndInclusive"`
 	RawKeyHex      string             `json:"rawKeyHex"`
 	Length         int                `json:"length"`
 	RawValueHex    string             `json:"rawValueHex"`
