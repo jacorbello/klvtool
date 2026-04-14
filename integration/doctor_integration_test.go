@@ -2,6 +2,7 @@ package integration
 
 import (
 	"bytes"
+	"os/exec"
 	"strings"
 	"testing"
 
@@ -9,6 +10,12 @@ import (
 )
 
 func TestDoctorIntegration(t *testing.T) {
+	for _, tool := range []string{"ffmpeg", "ffprobe"} {
+		if _, err := exec.LookPath(tool); err != nil {
+			t.Skipf("%s not available: %v", tool, err)
+		}
+	}
+
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 
