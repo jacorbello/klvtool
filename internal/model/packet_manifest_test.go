@@ -25,8 +25,8 @@ func TestPacketManifestMarshalJSONUsesStableEmptySlices(t *testing.T) {
 	}
 
 	got := string(data)
-	if !strings.Contains(got, `"schemaVersion":"2"`) {
-		t.Fatalf("expected packet manifest schema version 2 in %s", got)
+	if !strings.Contains(got, `"schemaVersion":"3"`) {
+		t.Fatalf("expected packet manifest schema version 3 in %s", got)
 	}
 	for _, want := range []string{`"records":[`, `"diagnostics":[]`} {
 		if !strings.Contains(got, want) {
@@ -72,7 +72,7 @@ func TestPacketCheckpointMarshalJSONUsesStablePacketAndDiagnosticArrays(t *testi
 	}
 
 	got := string(data)
-	for _, want := range []string{`"schemaVersion":"2"`, `"packets":[`, `"packetEnd":19`, `"rawKeyHex":"060e2b34"`, `"rawValueHex":"aabbcc"`, `"diagnostics":[]`} {
+	for _, want := range []string{`"schemaVersion":"3"`, `"packets":[`, `"packetEndInclusive":19`, `"rawKeyHex":"060e2b34"`, `"rawValueHex":"aabbcc"`, `"diagnostics":[]`} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("expected %q in %s", want, got)
 		}
