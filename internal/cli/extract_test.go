@@ -158,6 +158,89 @@ func TestExtractWritesManifestAndPayloads(t *testing.T) {
 	}
 }
 
+func TestExtractWarnsWhenOutputDirExists(t *testing.T) {
+	healthyDetect := func(ctx context.Context, goos string, env map[string]string) envcheck.Report {
+		return envcheck.Report{
+			Backends: []envcheck.BackendHealth{
+				{Name: "ffmpeg", Healthy: true},
+			},
+		}
+	}
+	successExtractor := stubExtractor{
+		run: func(ctx context.Context, req extract.RunRequest) (extract.RunResult, error) {
+			return extract.RunResult{
+				Backend:        extract.BackendDescriptor{Name: "ffmpeg", Healthy: true},
+				BackendVersion: "7.1",
+				Records:        nil,
+			}, nil
+		},
+	}
+
+	t.Run("fresh output dir emits no warning", func(t *testing.T) {
+		root := t.TempDir()
+		outDir := filepath.Join(root, "fresh")
+
+		var stdout, stderr bytes.Buffer
+		cmd := NewRootCommand()
+		cmd.Out = &stdout
+		cmd.Err = &stderr
+		cmd.Extract.Detect = healthyDetect
+		cmd.Extract.Extractor = successExtractor
+
+		code := cmd.Execute([]string{"extract", "--input", "sample.ts", "--out", outDir})
+		if code != 0 {
+			t.Fatalf("exit code = %d, want 0; stderr=%q", code, stderr.String())
+		}
+		if strings.Contains(stderr.String(), "warning: output directory already exists") {
+			t.Errorf("expected no overwrite warning for fresh dir, got stderr=%q", stderr.String())
+		}
+	})
+
+	t.Run("existing dir with manifest emits warning", func(t *testing.T) {
+		outDir := t.TempDir()
+		if err := os.WriteFile(filepath.Join(outDir, "manifest.ndjson"), []byte("{}"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+
+		var stdout, stderr bytes.Buffer
+		cmd := NewRootCommand()
+		cmd.Out = &stdout
+		cmd.Err = &stderr
+		cmd.Extract.Detect = healthyDetect
+		cmd.Extract.Extractor = successExtractor
+
+		code := cmd.Execute([]string{"extract", "--input", "sample.ts", "--out", outDir})
+		if code != 0 {
+			t.Fatalf("exit code = %d, want 0; stderr=%q", code, stderr.String())
+		}
+		if !strings.Contains(stderr.String(), "warning: output directory already exists") {
+			t.Errorf("expected overwrite warning on stderr, got %q", stderr.String())
+		}
+		if !strings.Contains(stderr.String(), outDir) {
+			t.Errorf("expected warning to include output dir path %q, got %q", outDir, stderr.String())
+		}
+	})
+
+	t.Run("existing empty dir emits no warning", func(t *testing.T) {
+		outDir := t.TempDir()
+
+		var stdout, stderr bytes.Buffer
+		cmd := NewRootCommand()
+		cmd.Out = &stdout
+		cmd.Err = &stderr
+		cmd.Extract.Detect = healthyDetect
+		cmd.Extract.Extractor = successExtractor
+
+		code := cmd.Execute([]string{"extract", "--input", "sample.ts", "--out", outDir})
+		if code != 0 {
+			t.Fatalf("exit code = %d, want 0; stderr=%q", code, stderr.String())
+		}
+		if strings.Contains(stderr.String(), "warning: output directory already exists") {
+			t.Errorf("expected no overwrite warning for empty dir, got stderr=%q", stderr.String())
+		}
+	})
+}
+
 func TestExitCodeForTypedErrors(t *testing.T) {
 	if got := exitCodeForError(model.InvalidUsage(errors.New("bad"))); got != usageExitCode {
 		t.Fatalf("expected invalid usage exit code %d, got %d", usageExitCode, got)
