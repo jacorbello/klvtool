@@ -293,7 +293,7 @@ func packetCheckpointFilename(recordID string) (string, error) {
 
 	name := strings.Trim(b.String(), "._-")
 	if name == "" {
-		return "", fmt.Errorf("record id is required")
+		return "", model.OutputWrite(fmt.Errorf("record id is required"))
 	}
 	return name + ".json", nil
 }

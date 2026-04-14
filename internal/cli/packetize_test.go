@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -278,6 +279,20 @@ func TestPacketizeOverwriteWarningBehavior(t *testing.T) {
 		}
 		if stderr.Len() != 0 {
 			t.Fatalf("expected empty stderr on fresh dir, got %q", stderr.String())
+		}
+	})
+
+	t.Run("empty record id returns model.OutputWrite error", func(t *testing.T) {
+		_, err := packetCheckpointFilename("")
+		if err == nil {
+			t.Fatal("expected error for empty record id")
+		}
+		var mErr *model.Error
+		if !errors.As(err, &mErr) {
+			t.Fatalf("expected model.Error, got %T: %v", err, err)
+		}
+		if mErr.Code != model.CodeOutputWrite {
+			t.Fatalf("expected code %q, got %q", model.CodeOutputWrite, mErr.Code)
 		}
 	})
 

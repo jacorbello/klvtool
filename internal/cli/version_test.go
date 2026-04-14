@@ -123,6 +123,36 @@ func TestVersionRejectsStrayArgs(t *testing.T) {
 	}
 }
 
+func TestVersionErrorsUseModelErrorCodes(t *testing.T) {
+	tests := []struct {
+		name     string
+		args     []string
+		wantCode string
+	}{
+		{
+			name:     "stray args include invalid_usage code",
+			args:     []string{"version", "bogus"},
+			wantCode: "invalid_usage",
+		},
+		{
+			name:     "bad flag includes invalid_usage code",
+			args:     []string{"version", "--nope"},
+			wantCode: "invalid_usage",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var stderr bytes.Buffer
+			cmd := NewRootCommand()
+			cmd.Err = &stderr
+			cmd.Execute(tt.args)
+			if !strings.Contains(stderr.String(), tt.wantCode) {
+				t.Fatalf("expected error to contain %q, got %q", tt.wantCode, stderr.String())
+			}
+		})
+	}
+}
+
 func TestVersionHelpFlag(t *testing.T) {
 	var stdout bytes.Buffer
 	cmd := NewRootCommand()
