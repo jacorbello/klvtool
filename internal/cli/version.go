@@ -10,6 +10,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/jacorbello/klvtool/internal/model"
 	"github.com/jacorbello/klvtool/internal/version"
 )
 
@@ -43,13 +44,13 @@ func (c *VersionCommand) Execute(args []string) int {
 			return 0
 		}
 		c.writeUsage(c.Err)
-		_, _ = fmt.Fprintf(c.Err, "error: %v\n", err)
+		c.writeError(c.Err, model.InvalidUsage(err))
 		return usageExitCode
 	}
 
 	if len(fs.Args()) > 0 {
 		c.writeUsage(c.Err)
-		_, _ = fmt.Fprintf(c.Err, "error: unsupported arguments: %v\n", fs.Args())
+		c.writeError(c.Err, model.InvalidUsage(fmt.Errorf("unsupported arguments: %v", fs.Args())))
 		return usageExitCode
 	}
 
@@ -120,6 +121,13 @@ func (c *VersionCommand) httpClient() *http.Client {
 		return c.HTTPClient
 	}
 	return http.DefaultClient
+}
+
+func (c *VersionCommand) writeError(w io.Writer, err error) {
+	if w == nil || err == nil {
+		return
+	}
+	_, _ = fmt.Fprintf(w, "error: %v\n", err)
 }
 
 func (c *VersionCommand) writeUsage(w io.Writer) {
