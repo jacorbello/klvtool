@@ -218,7 +218,7 @@ func defaultInspect(path string) (ts.StreamTable, InspectStats, error) {
 	}
 	defer func() { _ = file.Close() }()
 
-	table, err := ts.DiscoverStreams(file)
+	table, discoveryDiags, err := ts.DiscoverStreams(file)
 	if err != nil {
 		return ts.StreamTable{}, InspectStats{}, err
 	}
@@ -266,6 +266,7 @@ func defaultInspect(path string) (ts.StreamTable, InspectStats, error) {
 		recordPESStats(&stats, &u)
 	}
 
+	stats.Diagnostics = append(stats.Diagnostics, discoveryDiags...)
 	stats.Diagnostics = append(stats.Diagnostics, scanner.Diagnostics()...)
 	return table, stats, nil
 }

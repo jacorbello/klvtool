@@ -22,7 +22,7 @@ func TestDiscoverStreamsFromSampleTS(t *testing.T) {
 	}
 	defer func() { _ = file.Close() }()
 
-	table, err := ts.DiscoverStreams(file)
+	table, _, err := ts.DiscoverStreams(file)
 	if err != nil {
 		t.Fatalf("DiscoverStreams: %v", err)
 	}
@@ -63,7 +63,7 @@ func TestFullScanPESReassemblyFromSampleTS(t *testing.T) {
 	}
 	defer func() { _ = file.Close() }()
 
-	table, err := ts.DiscoverStreams(file)
+	table, _, err := ts.DiscoverStreams(file)
 	if err != nil {
 		t.Fatalf("DiscoverStreams: %v", err)
 	}
