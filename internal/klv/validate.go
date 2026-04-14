@@ -63,7 +63,7 @@ func Validate(spec specs.SpecVersion, rec *record.Record) []record.Diagnostic {
 	if rec.LSVersion >= 0 && rec.LSVersion != spec.ExpectedVersion() {
 		vt := spec.VersionTag()
 		diags = append(diags, record.Diagnostic{
-			Severity: "error",
+			Severity: "note",
 			Code:     "ls_version_mismatch",
 			Message:  fmt.Sprintf("LS version %d does not match spec %d", rec.LSVersion, spec.ExpectedVersion()),
 			Tag:      &vt,
