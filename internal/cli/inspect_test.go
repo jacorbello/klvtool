@@ -316,6 +316,17 @@ func TestInspectSurfacesDiscoveryCapWarning(t *testing.T) {
 	}
 }
 
+func TestInspectRejectsStrayArgs(t *testing.T) {
+	var stderr bytes.Buffer
+	cmd := &InspectCommand{Out: &bytes.Buffer{}, Err: &stderr}
+	if got := cmd.Execute([]string{"stray"}); got != 2 {
+		t.Fatalf("exit code = %d, want 2", got)
+	}
+	if !strings.Contains(stderr.String(), "unsupported arguments") {
+		t.Fatalf("expected unsupported arguments error, got %q", stderr.String())
+	}
+}
+
 // buildTSPacket constructs a synthetic 188-byte TS packet — a test-local
 // duplicate of internal/mpeg/ts.buildPacket since that helper is unexported.
 func buildTSPacket(pid uint16, cc uint8, pusi bool, payload []byte) []byte {

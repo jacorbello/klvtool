@@ -216,6 +216,17 @@ func TestPacketizeWritesPacketCheckpointOutputs(t *testing.T) {
 	}
 }
 
+func TestPacketizeRejectsStrayArgs(t *testing.T) {
+	var stderr bytes.Buffer
+	cmd := &PacketizeCommand{Out: &bytes.Buffer{}, Err: &stderr}
+	if got := cmd.Execute([]string{"stray"}); got != 2 {
+		t.Fatalf("exit code = %d, want 2", got)
+	}
+	if !strings.Contains(stderr.String(), "unsupported arguments") {
+		t.Fatalf("expected unsupported arguments error, got %q", stderr.String())
+	}
+}
+
 func TestPacketizeOverwriteWarningBehavior(t *testing.T) {
 	// Helper to set up a valid input dir with manifest and payload.
 	setupInput := func(t *testing.T) string {

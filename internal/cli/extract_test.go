@@ -312,6 +312,17 @@ func TestExtractWarnsWhenOutputDirExists(t *testing.T) {
 	})
 }
 
+func TestExtractRejectsStrayArgs(t *testing.T) {
+	var stderr bytes.Buffer
+	cmd := &ExtractCommand{Out: &bytes.Buffer{}, Err: &stderr}
+	if got := cmd.Execute([]string{"stray"}); got != 2 {
+		t.Fatalf("exit code = %d, want 2", got)
+	}
+	if !strings.Contains(stderr.String(), "unsupported arguments") {
+		t.Fatalf("expected unsupported arguments error, got %q", stderr.String())
+	}
+}
+
 func TestExitCodeForTypedErrors(t *testing.T) {
 	if got := exitCodeForError(model.InvalidUsage(errors.New("bad"))); got != usageExitCode {
 		t.Fatalf("expected invalid usage exit code %d, got %d", usageExitCode, got)
