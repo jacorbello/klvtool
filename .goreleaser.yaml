@@ -32,6 +32,7 @@ changelog:
   use: github-native
 
 release:
+  use_existing_draft: true
   github:
     owner: jacorbello
     name: klvtool
