@@ -70,6 +70,7 @@ make build
 ./bin/klvtool packetize --input /tmp/klvtool-raw --out /tmp/klvtool-packets --mode best-effort
 ./bin/klvtool decode --input testdata/fixtures/sample.ts --format ndjson
 ./bin/klvtool decode --input testdata/fixtures/sample.ts --format text --raw
+./bin/klvtool decode --input testdata/fixtures/sample.ts --step
 ./bin/klvtool decode --input testdata/fixtures/sample.ts --format csv --out /tmp/decode.csv
 ```
 
@@ -79,6 +80,8 @@ make build
 |------|---------|-------------|
 | `--input` | (required) | Path to MPEG-TS input file |
 | `--format` | `ndjson` | Output format: `ndjson`, `text`, or `csv` |
+| `--view` | `auto` | Presentation mode: `auto`, `pretty`, or `raw`; `auto` prefers pretty output on TTYs and raw output when piped |
+| `--step` | `false` | Interactive packet stepping on TTYs with one-handed controls: `r` next, `w` previous, `d` next diagnostic, `e` next error, `q` quit |
 | `--raw` | `false` | Include raw bytes (base64 in NDJSON; hex `0x...` in text and CSV) and units per item in text mode; in CSV, units are always included and `--raw` adds a `raw` column |
 | `--strict` | `false` | Exit 1 if any error-severity diagnostic is emitted |
 | `--pid` | `0` (all) | Limit to a specific KLV data stream PID |
@@ -127,6 +130,14 @@ klvtool decode --input <input.ts> --pid <pid> --format text
 ```
 
 This is the fastest way to separate “the file has multiple data streams” from “this specific PID contains decodable KLV.” If decoding succeeds only when pinned to one PID, keep using `--pid` for the rest of your analysis and issue reports.
+
+If you need to walk packet-by-packet instead of streaming the whole decode, use step mode:
+
+```bash
+klvtool decode --input <input.ts> --pid <pid> --step
+```
+
+Step mode uses one-handed controls: `r` next packet, `w` previous packet, `d` next packet with any diagnostic, `e` next packet with an error diagnostic, `q` quit.
 
 ### Scenario: Investigate parsing or semantic validation failures
 

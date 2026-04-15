@@ -78,6 +78,12 @@ func TestHelpArgs(t *testing.T) {
 			if !strings.Contains(text, version.String()) {
 				t.Fatalf("expected help text to include version %q, got %q", version.String(), text)
 			}
+			if !strings.Contains(text, "Common workflows:") {
+				t.Fatalf("expected task-oriented workflow section, got %q", text)
+			}
+			if !strings.Contains(text, "inspect -> decode") {
+				t.Fatalf("expected inspect/decode workflow hint, got %q", text)
+			}
 		})
 	}
 }

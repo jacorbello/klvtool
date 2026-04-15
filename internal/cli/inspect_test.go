@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -99,6 +100,51 @@ func TestInspectPrintsStreamInventory(t *testing.T) {
 	}
 	if !bytes.Contains([]byte(output), []byte("1000")) {
 		t.Errorf("output should contain total packet count, got:\n%s", output)
+	}
+}
+
+func TestInspectPrettyViewOnTTYAddsWorkflowHints(t *testing.T) {
+	var out, errBuf bytes.Buffer
+
+	table := ts.StreamTable{
+		Programs: map[uint16][]ts.Stream{
+			1: {
+				{PID: 0x0100, StreamType: 0x1B, ProgramNum: 1},
+				{PID: 0x0300, StreamType: 0x06, ProgramNum: 1},
+			},
+		},
+	}
+	stats := InspectStats{
+		TotalPackets:  1000,
+		PacketCounts:  map[uint16]int64{0x0100: 900, 0x0300: 50},
+		PESUnitCounts: map[uint16]int{0x0300: 10},
+	}
+
+	cmd := &InspectCommand{
+		Out:         &out,
+		Err:         &errBuf,
+		Inspect:     func(path string) (ts.StreamTable, InspectStats, error) { return table, stats, nil },
+		isOutputTTY: func(io.Writer) bool { return true },
+	}
+
+	input := filepath.Join(t.TempDir(), "test.ts")
+	if err := os.WriteFile(input, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	code := cmd.Execute([]string{"--input", input})
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0; stderr: %s", code, errBuf.String())
+	}
+
+	output := out.String()
+	if !strings.Contains(output, "Likely metadata") {
+		t.Fatalf("expected pretty metadata classification, got:\n%s", output)
+	}
+	if !strings.Contains(output, "Next steps") {
+		t.Fatalf("expected footer hints, got:\n%s", output)
+	}
+	if !strings.Contains(output, "--pid 768") {
+		t.Fatalf("expected PID-specific decode hint, got:\n%s", output)
 	}
 }
 

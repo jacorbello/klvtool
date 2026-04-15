@@ -35,6 +35,8 @@ type ExtractCommand struct {
 	GOOS string
 	Env  map[string]string
 
+	isOutputTTY func(io.Writer) bool
+
 	Detect         func(context.Context, string, map[string]string) envcheck.Report
 	Extractor      extractRunner
 	WritePayload   payloadWriterFunc
@@ -69,9 +71,11 @@ func (c *ExtractCommand) Execute(args []string) int {
 
 	var inputPath string
 	var outDir string
+	var view string
 
 	fs.StringVar(&inputPath, "input", "", "path to the MPEG-TS input file")
 	fs.StringVar(&outDir, "out", "", "directory for extracted payloads and manifest")
+	fs.StringVar(&view, "view", string(viewAuto), "presentation mode: auto, pretty, or raw")
 
 	if err := fs.Parse(args); err != nil {
 		if err == flag.ErrHelp {
@@ -98,6 +102,14 @@ func (c *ExtractCommand) Execute(args []string) int {
 		c.writeError(c.Err, model.InvalidUsage(fmt.Errorf("output directory is required")))
 		return usageExitCode
 	}
+	viewMode, err := parseViewMode(view)
+	if err != nil {
+		c.writeUsage(c.Err)
+		c.writeError(c.Err, model.InvalidUsage(err))
+		return usageExitCode
+	}
+	prettyView := usePrettyView(viewMode, c.outputTTY(c.Out))
+	color := newColorizer(prettyView && supportsANSI())
 
 	info, err := os.Stat(inputPath)
 	if err != nil {
@@ -117,7 +129,7 @@ func (c *ExtractCommand) Execute(args []string) int {
 	}
 
 	if dirNonEmpty(outDir) && c.Err != nil {
-		_, _ = fmt.Fprintf(c.Err, "warning: output directory already exists, files will be overwritten: %s\n", outDir)
+		_, _ = fmt.Fprintln(c.Err, warningLine(color, "output directory already exists, files will be overwritten: %s", outDir))
 	}
 
 	report := c.detect()
@@ -146,6 +158,14 @@ func (c *ExtractCommand) Execute(args []string) int {
 		_, _ = fmt.Fprintf(c.Out, "backend: %s (%s)\n", manifest.BackendName, manifest.BackendVersion)
 		_, _ = fmt.Fprintf(c.Out, "streams: %d\n", len(manifest.Records))
 		_, _ = fmt.Fprintf(c.Out, "manifest: %s\n", filepath.Join(outDir, "manifest.ndjson"))
+		if prettyView {
+			writeHintFooters(c.Out, color, []hintFooter{
+				{
+					Title: "Packetize the extracted raw payloads",
+					Body:  fmt.Sprintf("klvtool packetize --input %s --out ./klvtool-packets --mode best-effort", outDir),
+				},
+			})
+		}
 	}
 	return 0
 }
@@ -269,6 +289,8 @@ func (c *ExtractCommand) writeUsage(w io.Writer) {
 	_, _ = fmt.Fprintln(w)
 	_, _ = fmt.Fprintln(w, "Validate backend availability, extract KLV/data payloads, and write manifest output.")
 	_, _ = fmt.Fprintln(w)
+	_, _ = fmt.Fprintln(w, "Use this when you want raw checkpoint artifacts for packetize or bug reports.")
+	_, _ = fmt.Fprintln(w)
 	_, _ = fmt.Fprintln(w, "Required tools:")
 	_, _ = fmt.Fprintln(w, "  ffmpeg:  ffmpeg, ffprobe")
 }
@@ -277,7 +299,14 @@ func (c *ExtractCommand) writeError(w io.Writer, err error) {
 	if w == nil || err == nil {
 		return
 	}
-	_, _ = fmt.Fprintf(w, "error: %v\n", err)
+	_, _ = fmt.Fprintln(w, errorLine(newColorizer(c.outputTTY(w) && supportsANSI()), err))
+}
+
+func (c *ExtractCommand) outputTTY(w io.Writer) bool {
+	if c != nil && c.isOutputTTY != nil {
+		return c.isOutputTTY(w)
+	}
+	return isTTYWriter(w)
 }
 
 func ffmpegDescriptor(report envcheck.Report) extract.BackendDescriptor {

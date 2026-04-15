@@ -29,6 +29,8 @@ type PacketizeCommand struct {
 	Out io.Writer
 	Err io.Writer
 
+	isOutputTTY func(io.Writer) bool
+
 	ReadRawPayloads func(string) ([]extract.RawPayloadRecord, error)
 	Parser          packetParser
 	NewManifestOut  func(io.Writer) packetManifestWriter
@@ -62,10 +64,12 @@ func (c *PacketizeCommand) Execute(args []string) int {
 	var inputDir string
 	var outDir string
 	var mode string
+	var view string
 
 	fs.StringVar(&inputDir, "input", "", "directory containing raw payload checkpoint output")
 	fs.StringVar(&outDir, "out", "", "directory for packet checkpoint output")
 	fs.StringVar(&mode, "mode", string(packetize.ModeStrict), "parser mode: strict or best-effort")
+	fs.StringVar(&view, "view", string(viewAuto), "presentation mode: auto, pretty, or raw")
 
 	if err := fs.Parse(args); err != nil {
 		if err == flag.ErrHelp {
@@ -126,9 +130,17 @@ func (c *PacketizeCommand) Execute(args []string) int {
 		c.writeError(c.Err, model.InvalidUsage(fmt.Errorf("unsupported packetization mode %q", mode)))
 		return usageExitCode
 	}
+	viewMode, err := parseViewMode(view)
+	if err != nil {
+		c.writeUsage(c.Err)
+		c.writeError(c.Err, model.InvalidUsage(err))
+		return usageExitCode
+	}
+	prettyView := usePrettyView(viewMode, c.outputTTY(c.Out))
+	color := newColorizer(prettyView && supportsANSI())
 
 	if dirNonEmpty(outDir) && c.Err != nil {
-		_, _ = fmt.Fprintf(c.Err, "warning: output directory already exists, files will be overwritten: %s\n", outDir)
+		_, _ = fmt.Fprintln(c.Err, warningLine(color, "output directory already exists, files will be overwritten: %s", outDir))
 	}
 
 	records, err := c.rawPayloadReader()(inputDir)
@@ -155,6 +167,14 @@ func (c *PacketizeCommand) Execute(args []string) int {
 	if c.Out != nil {
 		_, _ = fmt.Fprintf(c.Out, "records: %d\n", len(streams))
 		_, _ = fmt.Fprintf(c.Out, "manifest: %s\n", filepath.Join(outDir, "manifest.ndjson"))
+		if prettyView {
+			writeHintFooters(c.Out, color, []hintFooter{
+				{
+					Title: "Decode against the original transport stream after packet inspection",
+					Body:  "klvtool decode --input sample.ts",
+				},
+			})
+		}
 	}
 	return 0
 }
@@ -218,13 +238,22 @@ func (c *PacketizeCommand) writeUsage(w io.Writer) {
 	_, _ = fmt.Fprintln(w, "Usage: klvtool packetize --input <raw-checkpoint-dir> --out <dir> [--mode strict|best-effort]")
 	_, _ = fmt.Fprintln(w)
 	_, _ = fmt.Fprintln(w, "Replay raw extraction checkpoints, parse KLV packets, and write packet checkpoint output.")
+	_, _ = fmt.Fprintln(w)
+	_, _ = fmt.Fprintln(w, "Use this after extract when you need KLV framing diagnostics or packet checkpoint artifacts.")
 }
 
 func (c *PacketizeCommand) writeError(w io.Writer, err error) {
 	if w == nil || err == nil {
 		return
 	}
-	_, _ = fmt.Fprintf(w, "error: %v\n", err)
+	_, _ = fmt.Fprintln(w, errorLine(newColorizer(c.outputTTY(w) && supportsANSI()), err))
+}
+
+func (c *PacketizeCommand) outputTTY(w io.Writer) bool {
+	if c != nil && c.isOutputTTY != nil {
+		return c.isOutputTTY(w)
+	}
+	return isTTYWriter(w)
 }
 
 func (c *PacketizeCommand) rawPayloadReader() func(string) ([]extract.RawPayloadRecord, error) {

@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -236,6 +237,69 @@ func TestPacketizeWritesPacketCheckpointOutputs(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "records: 1") {
 		t.Fatalf("expected stdout summary, got %q", stdout.String())
+	}
+}
+
+func TestPacketizePrettyViewAddsWorkflowHints(t *testing.T) {
+	inputDir := t.TempDir()
+	outputDir := t.TempDir()
+
+	payloadDir := filepath.Join(inputDir, "payloads")
+	if err := os.MkdirAll(payloadDir, 0o755); err != nil {
+		t.Fatalf("mkdir payloads: %v", err)
+	}
+
+	payload := append([]byte{0x06, 0x0e, 0x2b, 0x34}, bytes.Repeat([]byte{0x00}, 12)...)
+	payload = append(payload, 0x03, 0xaa, 0xbb, 0xcc)
+	payloadResult, err := output.WritePayload(payloadDir, "klv-001", payload)
+	if err != nil {
+		t.Fatalf("write payload: %v", err)
+	}
+
+	sum := sha256.Sum256(payload)
+	manifest := model.Manifest{
+		SchemaVersion:   "1",
+		SourceInputPath: "sample.ts",
+		BackendName:     "ffmpeg",
+		BackendVersion:  "7.1",
+		Records: []model.Record{
+			{
+				RecordID:    "klv-001",
+				PID:         256,
+				PayloadPath: filepath.ToSlash(filepath.Join("payloads", filepath.Base(payloadResult.Path))),
+				PayloadSize: payloadResult.Size,
+				PayloadHash: "sha256:" + hex.EncodeToString(sum[:]),
+			},
+		},
+	}
+
+	manifestFile, err := os.Create(filepath.Join(inputDir, "manifest.ndjson"))
+	if err != nil {
+		t.Fatalf("create manifest: %v", err)
+	}
+	if err := output.NewManifestWriter(manifestFile).WriteManifest(manifest); err != nil {
+		_ = manifestFile.Close()
+		t.Fatalf("write manifest: %v", err)
+	}
+	if err := manifestFile.Close(); err != nil {
+		t.Fatalf("close manifest: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	cmd := NewRootCommand()
+	cmd.Out = &stdout
+	cmd.Err = &stderr
+	cmd.Packetize.isOutputTTY = func(io.Writer) bool { return true }
+
+	if got := cmd.Execute([]string{"packetize", "--input", inputDir, "--out", outputDir, "--mode", "best-effort"}); got != 0 {
+		t.Fatalf("expected exit code 0, got %d; stderr=%q", got, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "Next steps") {
+		t.Fatalf("expected workflow hints, got %q", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "klvtool decode --input sample.ts") {
+		t.Fatalf("expected decode hint, got %q", stdout.String())
 	}
 }
 

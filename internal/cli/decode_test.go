@@ -204,6 +204,59 @@ func TestDecodeCommandNDJSONOutput(t *testing.T) {
 	}
 }
 
+func TestDecodeCommandDefaultsToPrettyTextOnTTY(t *testing.T) {
+	out := &bytes.Buffer{}
+	errBuf := &bytes.Buffer{}
+	cmd := &DecodeCommand{
+		Out:    out,
+		Err:    errBuf,
+		Decode: fakeDecodePayloads,
+		Registry: func() *klv.Registry {
+			return testRegistry()
+		},
+		isOutputTTY: func(io.Writer) bool { return true },
+		isInputTTY:  func(io.Reader) bool { return true },
+	}
+	code := cmd.Execute([]string{"--input", tempInputFile(t)})
+	if code != 0 {
+		t.Fatalf("exit code = %d, stderr=%s", code, errBuf.String())
+	}
+	if strings.Contains(out.String(), `{"schema"`) {
+		t.Fatalf("expected pretty text output on tty, got ndjson: %s", out.String())
+	}
+	if !strings.Contains(out.String(), "Packet 0") {
+		t.Fatalf("expected packet header in pretty tty output, got: %s", out.String())
+	}
+	if !strings.Contains(out.String(), "Next steps") {
+		t.Fatalf("expected footer hints in pretty tty output, got: %s", out.String())
+	}
+}
+
+func TestDecodeCommandViewRawDisablesTTYPrettyDefault(t *testing.T) {
+	out := &bytes.Buffer{}
+	errBuf := &bytes.Buffer{}
+	cmd := &DecodeCommand{
+		Out:    out,
+		Err:    errBuf,
+		Decode: fakeDecodePayloads,
+		Registry: func() *klv.Registry {
+			return testRegistry()
+		},
+		isOutputTTY: func(io.Writer) bool { return true },
+		isInputTTY:  func(io.Reader) bool { return true },
+	}
+	code := cmd.Execute([]string{"--input", tempInputFile(t), "--view", "raw"})
+	if code != 0 {
+		t.Fatalf("exit code = %d, stderr=%s", code, errBuf.String())
+	}
+	if !strings.HasPrefix(strings.TrimSpace(out.String()), "{") {
+		t.Fatalf("expected NDJSON in raw view, got: %s", out.String())
+	}
+	if strings.Contains(out.String(), "Next steps") {
+		t.Fatalf("did not expect footer hints in raw view, got: %s", out.String())
+	}
+}
+
 func TestTextOutputOmitsUnitsWithoutRawFlag(t *testing.T) {
 	var buf bytes.Buffer
 	rec := record.Record{
@@ -316,6 +369,178 @@ func TestDecodeCommandTextOutput(t *testing.T) {
 	}
 	if !strings.Contains(got, "Platform Heading Angle") {
 		t.Errorf("missing item: %s", got)
+	}
+}
+
+func TestDecodeCommandStepRequiresInteractiveTTY(t *testing.T) {
+	out := &bytes.Buffer{}
+	errBuf := &bytes.Buffer{}
+	cmd := &DecodeCommand{
+		Out:      out,
+		Err:      errBuf,
+		Decode:   fakeDecodePayloads,
+		Registry: testRegistry,
+	}
+	code := cmd.Execute([]string{"--input", tempInputFile(t), "--step"})
+	if code != usageExitCode {
+		t.Fatalf("exit code = %d, want %d", code, usageExitCode)
+	}
+	if !strings.Contains(errBuf.String(), "--step requires an interactive terminal") {
+		t.Fatalf("expected interactive terminal error, got: %s", errBuf.String())
+	}
+}
+
+func TestDecodeCommandStepSkipsToDiagnosticAndQuits(t *testing.T) {
+	out := &bytes.Buffer{}
+	errBuf := &bytes.Buffer{}
+	cmd := &DecodeCommand{
+		Out: out,
+		Err: errBuf,
+		Decode: func(_ string, _ int, _ string) (DecodeResult, error) {
+			return DecodeResult{
+				Records: []record.Record{
+					{
+						Schema:   "urn:misb:KLV:bin:0601.19",
+						Checksum: record.ChecksumInfo{Valid: true},
+						Items:    []record.Item{{Tag: 2, Name: "Precision Time Stamp", Value: record.StringValue("2023-03-02T12:34:56.789Z")}},
+					},
+					{
+						Schema:   "urn:misb:KLV:bin:0601.19",
+						Checksum: record.ChecksumInfo{Valid: true},
+						Items:    []record.Item{{Tag: 47, Name: "Error Indicator", Value: record.UintValue(3)}},
+						Diagnostics: []record.Diagnostic{
+							{Severity: "warning", Code: "tag_range_violation", Message: "warning packet"},
+						},
+					},
+				},
+			}, nil
+		},
+		Registry:    testRegistry,
+		In:          strings.NewReader("dq"),
+		isOutputTTY: func(io.Writer) bool { return true },
+		isInputTTY:  func(io.Reader) bool { return true },
+		makeRaw:     func(io.Reader) (func() error, error) { return nil, nil },
+	}
+	code := cmd.Execute([]string{"--input", tempInputFile(t), "--step"})
+	if code != 0 {
+		t.Fatalf("exit code = %d, stderr=%s", code, errBuf.String())
+	}
+	got := out.String()
+	if !strings.Contains(got, "Precision Time Stamp") {
+		t.Fatalf("expected first packet to render before diagnostic jump, got: %s", got)
+	}
+	if !strings.Contains(got, "warning packet") {
+		t.Fatalf("expected diagnostic packet output, got: %s", got)
+	}
+	if !strings.Contains(errBuf.String(), "step [r=next,w=prev,d=diag,e=error,q=quit]>") {
+		t.Fatalf("expected step prompt on stderr, got: %s", errBuf.String())
+	}
+}
+
+func TestDecodeCommandStepShowsFirstPacketBeforePrompt(t *testing.T) {
+	out := &bytes.Buffer{}
+	errBuf := &bytes.Buffer{}
+	cmd := &DecodeCommand{
+		Out:         out,
+		Err:         errBuf,
+		Decode:      fakeDecodePayloads,
+		Registry:    testRegistry,
+		In:          strings.NewReader("q"),
+		isOutputTTY: func(io.Writer) bool { return true },
+		isInputTTY:  func(io.Reader) bool { return true },
+		makeRaw:     func(io.Reader) (func() error, error) { return nil, nil },
+	}
+	code := cmd.Execute([]string{"--input", tempInputFile(t), "--step"})
+	if code != 0 {
+		t.Fatalf("exit code = %d, stderr=%s", code, errBuf.String())
+	}
+	if !strings.Contains(out.String(), "Packet 0") {
+		t.Fatalf("expected first packet to render before prompt, got: %s", out.String())
+	}
+}
+
+func TestDecodeCommandStepQuitStillPrintsFooterHints(t *testing.T) {
+	out := &bytes.Buffer{}
+	errBuf := &bytes.Buffer{}
+	cmd := &DecodeCommand{
+		Out:         out,
+		Err:         errBuf,
+		Decode:      fakeDecodePayloads,
+		Registry:    testRegistry,
+		In:          strings.NewReader("q"),
+		isOutputTTY: func(io.Writer) bool { return true },
+		isInputTTY:  func(io.Reader) bool { return true },
+		makeRaw:     func(io.Reader) (func() error, error) { return nil, nil },
+	}
+	code := cmd.Execute([]string{"--input", tempInputFile(t), "--step"})
+	if code != 0 {
+		t.Fatalf("exit code = %d, stderr=%s", code, errBuf.String())
+	}
+	if !strings.Contains(out.String(), "Next steps") {
+		t.Fatalf("expected footer hints after quitting step mode, got: %s", out.String())
+	}
+}
+
+func TestDecodeCommandStepPrintsControlsLegend(t *testing.T) {
+	out := &bytes.Buffer{}
+	errBuf := &bytes.Buffer{}
+	cmd := &DecodeCommand{
+		Out:         out,
+		Err:         errBuf,
+		Decode:      fakeDecodePayloads,
+		Registry:    testRegistry,
+		In:          strings.NewReader("q"),
+		isOutputTTY: func(io.Writer) bool { return true },
+		isInputTTY:  func(io.Reader) bool { return true },
+		makeRaw:     func(io.Reader) (func() error, error) { return nil, nil },
+	}
+	code := cmd.Execute([]string{"--input", tempInputFile(t), "--step"})
+	if code != 0 {
+		t.Fatalf("exit code = %d, stderr=%s", code, errBuf.String())
+	}
+	for _, want := range []string{
+		"r=next",
+		"w=previous",
+		"d=next diagnostic",
+		"e=next error",
+		"q=quit",
+	} {
+		if !strings.Contains(errBuf.String(), want) {
+			t.Fatalf("expected step legend %q in stderr, got: %s", want, errBuf.String())
+		}
+	}
+}
+
+func TestDecodeCommandStepUsesSingleKeyNextAndPrevious(t *testing.T) {
+	out := &bytes.Buffer{}
+	errBuf := &bytes.Buffer{}
+	cmd := &DecodeCommand{
+		Out: out,
+		Err: errBuf,
+		Decode: func(_ string, _ int, _ string) (DecodeResult, error) {
+			return DecodeResult{
+				Records: []record.Record{
+					{Schema: "urn:misb:KLV:bin:0601.19", Items: []record.Item{{Tag: 2, Name: "Packet Zero", Value: record.StringValue("zero")}}},
+					{Schema: "urn:misb:KLV:bin:0601.19", Items: []record.Item{{Tag: 3, Name: "Packet One", Value: record.StringValue("one")}}},
+				},
+			}, nil
+		},
+		Registry:    testRegistry,
+		In:          strings.NewReader("rwq"),
+		isOutputTTY: func(io.Writer) bool { return true },
+		isInputTTY:  func(io.Reader) bool { return true },
+		makeRaw:     func(io.Reader) (func() error, error) { return nil, nil },
+	}
+	code := cmd.Execute([]string{"--input", tempInputFile(t), "--step"})
+	if code != 0 {
+		t.Fatalf("exit code = %d, stderr=%s", code, errBuf.String())
+	}
+	got := out.String()
+	if strings.Count(got, "Packet 0") < 2 {
+		t.Fatalf("expected previous navigation to revisit packet 0, got: %s", got)
+	}
+	if !strings.Contains(got, "Packet 1") {
+		t.Fatalf("expected next navigation to reach packet 1, got: %s", got)
 	}
 }
 

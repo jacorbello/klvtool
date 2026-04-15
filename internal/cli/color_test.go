@@ -29,6 +29,24 @@ func TestColorizerEnabledWrapsDim(t *testing.T) {
 	}
 }
 
+func TestColorizerEnabledWrapsYellow(t *testing.T) {
+	c := newColorizer(true)
+	got := c.yellow("warn")
+	want := "\033[33mwarn\033[0m"
+	if got != want {
+		t.Fatalf("yellow(%q) = %q, want %q", "warn", got, want)
+	}
+}
+
+func TestColorizerEnabledWrapsCyan(t *testing.T) {
+	c := newColorizer(true)
+	got := c.cyan("hint")
+	want := "\033[36mhint\033[0m"
+	if got != want {
+		t.Fatalf("cyan(%q) = %q, want %q", "hint", got, want)
+	}
+}
+
 func TestColorizerDisabledPassesThrough(t *testing.T) {
 	c := newColorizer(false)
 	for _, tc := range []struct {
