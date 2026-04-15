@@ -78,6 +78,7 @@ func (c *CompletionCommand) writeError(w io.Writer, msg string) {
 func writeBashCompletion(w io.Writer) {
 	_, _ = fmt.Fprint(w, `_klvtool() {
     local cur prev commands
+    COMPREPLY=()
     cur="${COMP_WORDS[COMP_CWORD]}"
     prev="${COMP_WORDS[COMP_CWORD-1]}"
     commands="version update doctor inspect extract decode packetize diagnose completion"
@@ -95,6 +96,7 @@ func writeBashCompletion(w io.Writer) {
             COMPREPLY=($(compgen -W "--dry-run --prefer-binary" -- "$cur"))
             ;;
         doctor)
+            COMPREPLY=()
             ;;
         inspect)
             case "$prev" in
@@ -105,7 +107,8 @@ func writeBashCompletion(w io.Writer) {
             ;;
         extract)
             case "$prev" in
-                --input|--out) COMPREPLY=($(compgen -f -- "$cur")) ;;
+                --input) COMPREPLY=($(compgen -f -- "$cur")) ;;
+                --out) COMPREPLY=($(compgen -d -- "$cur")) ;;
                 --view) COMPREPLY=($(compgen -W "auto pretty raw" -- "$cur")) ;;
                 *) COMPREPLY=($(compgen -W "--input --out --view" -- "$cur")) ;;
             esac
@@ -115,13 +118,13 @@ func writeBashCompletion(w io.Writer) {
                 --input|--out) COMPREPLY=($(compgen -f -- "$cur")) ;;
                 --format) COMPREPLY=($(compgen -W "ndjson text csv" -- "$cur")) ;;
                 --view) COMPREPLY=($(compgen -W "auto pretty raw" -- "$cur")) ;;
-                --pid|--schema) ;;
+                --pid|--schema) COMPREPLY=() ;;
                 *) COMPREPLY=($(compgen -W "--input --format --view --raw --strict --step --pid --out --schema" -- "$cur")) ;;
             esac
             ;;
         packetize)
             case "$prev" in
-                --input|--out) COMPREPLY=($(compgen -f -- "$cur")) ;;
+                --input|--out) COMPREPLY=($(compgen -d -- "$cur")) ;;
                 --mode) COMPREPLY=($(compgen -W "strict best-effort" -- "$cur")) ;;
                 --view) COMPREPLY=($(compgen -W "auto pretty raw" -- "$cur")) ;;
                 *) COMPREPLY=($(compgen -W "--input --out --mode --view" -- "$cur")) ;;

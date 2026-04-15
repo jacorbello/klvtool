@@ -122,9 +122,23 @@ func (c *DiagnoseCommand) run(inputPath string, pretty bool) int {
 	w := c.Out
 	color := newColorizer(pretty && supportsANSI())
 
+	detect := c.Detect
+	if detect == nil {
+		detect = defaultDoctorDetect
+	}
+	inspect := c.Inspect
+	if inspect == nil {
+		inspect = defaultInspect
+	}
+	decode := c.Decode
+	if decode == nil {
+		decodeCmd := NewDecodeCommand()
+		decode = decodeCmd.Decode
+	}
+
 	// Stage 1: Health check
 	stop := startSpinner(c.Err, color, pretty, "Checking backend health...")
-	report := c.Detect(context.Background(), c.goos(), c.env())
+	report := detect(context.Background(), c.goos(), c.env())
 	stop()
 	c.writeHealthSection(w, color, report)
 
@@ -142,7 +156,7 @@ func (c *DiagnoseCommand) run(inputPath string, pretty bool) int {
 
 	// Stage 2: Inspect
 	stop = startSpinner(c.Err, color, pretty, "Scanning transport stream...")
-	table, stats, err := c.Inspect(inputPath)
+	table, stats, err := inspect(inputPath)
 	stop()
 	if err != nil {
 		c.writeStoppedAt(w, color, stageInspect)
@@ -173,7 +187,7 @@ func (c *DiagnoseCommand) run(inputPath string, pretty bool) int {
 	// Stage 3: Decode each candidate PID.
 	for _, pid := range metaPIDs {
 		stop = startSpinner(c.Err, color, pretty, fmt.Sprintf("Decoding PID 0x%04X...", pid))
-		result, err := c.Decode(inputPath, int(pid), "")
+		result, err := decode(inputPath, int(pid), "")
 		stop()
 		if err != nil {
 			_, _ = fmt.Fprintln(w)
@@ -249,7 +263,7 @@ func (c *DiagnoseCommand) writeTransportSection(w io.Writer, color colorizer, ta
 			typeName := streamTypeName(stream.StreamType)
 			count := stats.PacketCounts[stream.PID]
 			streamLabel := typeName
-			if isLikelyMetadataStream(stream.StreamType) {
+			if pretty && isLikelyMetadataStream(stream.StreamType) {
 				streamLabel = "Likely metadata: " + typeName
 			}
 			_, _ = fmt.Fprintf(w, "    PID 0x%04X  %s  packets=%d\n", stream.PID, streamLabel, count)
