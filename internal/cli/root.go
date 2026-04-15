@@ -20,6 +20,8 @@ type RootCommand struct {
 	Inspect    *InspectCommand
 	Decode     *DecodeCommand
 	Packetize  *PacketizeCommand
+	Diagnose   *DiagnoseCommand
+	Completion *CompletionCommand
 	VersionCmd *VersionCommand
 	Update     *UpdateCommand
 }
@@ -35,6 +37,8 @@ func NewRootCommand() *RootCommand {
 		Inspect:    NewInspectCommand(),
 		Decode:     NewDecodeCommand(),
 		Packetize:  NewPacketizeCommand(),
+		Diagnose:   NewDiagnoseCommand(),
+		Completion: NewCompletionCommand(),
 		VersionCmd: NewVersionCommand(),
 		Update:     NewUpdateCommand(),
 	}
@@ -77,6 +81,12 @@ func (c *RootCommand) Execute(args []string) int {
 	if len(args) > 0 && args[0] == "packetize" {
 		return c.packetizeCommand().Execute(args[1:])
 	}
+	if len(args) > 0 && args[0] == "diagnose" {
+		return c.diagnoseCommand().Execute(args[1:])
+	}
+	if len(args) > 0 && args[0] == "completion" {
+		return c.completionCommand().Execute(args[1:])
+	}
 	c.writeUnsupportedArgs(args)
 	return usageExitCode
 }
@@ -100,13 +110,15 @@ func (c *RootCommand) writeUsage(w io.Writer) {
 	_, _ = fmt.Fprintln(w, "CLI for inspecting MPEG-TS streams, extracting KLV payloads, packetizing raw checkpoints, and decoding MISB metadata.")
 	_, _ = fmt.Fprintln(w)
 	_, _ = fmt.Fprintln(w, "Commands:")
-	_, _ = fmt.Fprintln(w, "  version  Print version information.")
-	_, _ = fmt.Fprintln(w, "  update   Update to the latest GitHub release.")
-	_, _ = fmt.Fprintln(w, "  doctor   Check backend availability and environment health.")
-	_, _ = fmt.Fprintln(w, "  extract  Extract payloads and write manifest output.")
-	_, _ = fmt.Fprintln(w, "  inspect  Inspect MPEG-TS stream inventory and diagnostics.")
-	_, _ = fmt.Fprintln(w, "  decode   Decode MISB ST 0601 KLV records to NDJSON, text, or CSV.")
-	_, _ = fmt.Fprintln(w, "  packetize Replay raw checkpoints and write packet output.")
+	_, _ = fmt.Fprintln(w, "  version     Print version information.")
+	_, _ = fmt.Fprintln(w, "  update      Update to the latest GitHub release.")
+	_, _ = fmt.Fprintln(w, "  doctor      Check backend availability and environment health.")
+	_, _ = fmt.Fprintln(w, "  extract     Extract payloads and write manifest output.")
+	_, _ = fmt.Fprintln(w, "  inspect     Inspect MPEG-TS stream inventory and diagnostics.")
+	_, _ = fmt.Fprintln(w, "  decode      Decode MISB ST 0601 KLV records to NDJSON, text, or CSV.")
+	_, _ = fmt.Fprintln(w, "  packetize   Replay raw checkpoints and write packet output.")
+	_, _ = fmt.Fprintln(w, "  diagnose    Run the full diagnostic pipeline on an input file.")
+	_, _ = fmt.Fprintln(w, "  completion  Generate shell completion scripts.")
 	_, _ = fmt.Fprintln(w)
 	_, _ = fmt.Fprintln(w, "Common workflows:")
 	_, _ = fmt.Fprintln(w, "  inspect -> decode")
@@ -198,6 +210,34 @@ func (c *RootCommand) packetizeCommand() *PacketizeCommand {
 	packetizeCmd.Out = c.Out
 	packetizeCmd.Err = c.Err
 	return packetizeCmd
+}
+
+func (c *RootCommand) diagnoseCommand() *DiagnoseCommand {
+	if c == nil {
+		return NewDiagnoseCommand()
+	}
+	d := c.Diagnose
+	if d == nil {
+		d = NewDiagnoseCommand()
+		c.Diagnose = d
+	}
+	d.Out = c.Out
+	d.Err = c.Err
+	return d
+}
+
+func (c *RootCommand) completionCommand() *CompletionCommand {
+	if c == nil {
+		return NewCompletionCommand()
+	}
+	comp := c.Completion
+	if comp == nil {
+		comp = NewCompletionCommand()
+		c.Completion = comp
+	}
+	comp.Out = c.Out
+	comp.Err = c.Err
+	return comp
 }
 
 func (c *RootCommand) versionCommand() *VersionCommand {
