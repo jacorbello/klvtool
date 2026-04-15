@@ -250,7 +250,15 @@ func isLikelyMetadataStream(streamType uint8) bool {
 }
 
 func inspectHints(table ts.StreamTable) []hintFooter {
-	for _, streams := range table.Programs {
+	// Iterate programs in sorted order for deterministic output.
+	programNums := make([]int, 0, len(table.Programs))
+	for pn := range table.Programs {
+		programNums = append(programNums, int(pn))
+	}
+	sort.Ints(programNums)
+
+	for _, pn := range programNums {
+		streams := table.Programs[uint16(pn)]
 		for _, stream := range streams {
 			if isLikelyMetadataStream(stream.StreamType) {
 				return []hintFooter{

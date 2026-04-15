@@ -1304,3 +1304,34 @@ func TestDecodeHelpDocumentsRawEncoding(t *testing.T) {
 		t.Errorf("--help should document raw encoding formats; got: %s", buf.String())
 	}
 }
+
+func TestDecodeNilStderrStreamDiagnosticsDoNotPanic(t *testing.T) {
+	cmd := &DecodeCommand{
+		Out: &bytes.Buffer{},
+		Err: nil,
+		Decode: func(_ string, _ int, _ string) (DecodeResult, error) {
+			return DecodeResult{
+				StreamDiagnostics: []record.Diagnostic{
+					{Severity: "error", Code: "packetize_bad", Message: "something broke"},
+				},
+			}, nil
+		},
+	}
+	code := cmd.Execute([]string{"--input", tempInputFile(t)})
+	// Should not panic; exit 0 because --strict is not set.
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0", code)
+	}
+}
+
+func TestDecodeNilStderrSummaryDoesNotPanic(t *testing.T) {
+	cmd := &DecodeCommand{
+		Out:    &bytes.Buffer{},
+		Err:    nil,
+		Decode: fakeDecodePayloads,
+	}
+	code := cmd.Execute([]string{"--input", tempInputFile(t)})
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0", code)
+	}
+}

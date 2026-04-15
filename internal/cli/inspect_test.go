@@ -373,6 +373,37 @@ func TestInspectRejectsStrayArgs(t *testing.T) {
 	}
 }
 
+func TestInspectHintsDeterministicPID(t *testing.T) {
+	table := ts.StreamTable{
+		Programs: map[uint16][]ts.Stream{
+			1: {
+				{PID: 0x0500, StreamType: 0x1B, ProgramNum: 1},
+				{PID: 0x0300, StreamType: 0x06, ProgramNum: 1},
+			},
+			2: {
+				{PID: 0x0400, StreamType: 0x06, ProgramNum: 2},
+			},
+		},
+	}
+	// Run multiple times to confirm determinism across map iteration orders.
+	var first string
+	for i := 0; i < 20; i++ {
+		hints := inspectHints(table)
+		if len(hints) == 0 {
+			t.Fatal("expected hints")
+		}
+		if i == 0 {
+			first = hints[0].Body
+		} else if hints[0].Body != first {
+			t.Fatalf("non-deterministic hint: first=%q, got=%q on iteration %d", first, hints[0].Body, i)
+		}
+	}
+	// The lowest program number with metadata should be selected (program 1, PID 0x0300 = 768).
+	if !strings.Contains(first, "--pid 768") {
+		t.Fatalf("expected PID 768 in hint, got: %s", first)
+	}
+}
+
 // buildTSPacket constructs a synthetic 188-byte TS packet — a test-local
 // duplicate of internal/mpeg/ts.buildPacket since that helper is unexported.
 func buildTSPacket(pid uint16, cc uint8, pusi bool, payload []byte) []byte {

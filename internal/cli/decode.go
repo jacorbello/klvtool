@@ -364,7 +364,9 @@ func (c *DecodeCommand) Execute(args []string) int {
 	// streams that produced zero decoded KLV packets) are reported to
 	// stderr and counted toward --strict, but not emitted as packets.
 	for _, d := range result.StreamDiagnostics {
-		fmt.Fprintf(c.Err, "[stream] %s %s: %s\n", colorSeverity(color, d.Severity), d.Code, d.Message) //nolint:errcheck
+		if c.Err != nil {
+			fmt.Fprintf(c.Err, "[stream] %s %s: %s\n", colorSeverity(color, d.Severity), d.Code, d.Message) //nolint:errcheck
+		}
 		if d.Severity == "error" {
 			errorCount++
 		}
@@ -384,9 +386,12 @@ func (c *DecodeCommand) Execute(args []string) int {
 	// errorCount includes structural decode errors (e.g. unknown_spec,
 	// tag_decode_error), packetize-layer diagnostics, and validation
 	// failures. The label reflects that.
-	fmt.Fprintf(c.Err, "decoded %d packet(s), %d error diagnostic(s)\n", len(result.Records), errorCount) //nolint:errcheck
-	if pid != 0 && len(result.Records) == 0 {
-		fmt.Fprintln(c.Err, warningLine(color, "no KLV packets found on PID %d", pid)) //nolint:errcheck
+	if c.Err != nil {
+		errColor := newColorizer(c.outputTTY(c.Err) && supportsANSI())
+		fmt.Fprintf(c.Err, "decoded %d packet(s), %d error diagnostic(s)\n", len(result.Records), errorCount) //nolint:errcheck
+		if pid != 0 && len(result.Records) == 0 {
+			fmt.Fprintln(c.Err, warningLine(errColor, "no KLV packets found on PID %d", pid)) //nolint:errcheck
+		}
 	}
 	if strict && errorCount > 0 {
 		return 1

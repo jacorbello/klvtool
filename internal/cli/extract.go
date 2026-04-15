@@ -129,7 +129,8 @@ func (c *ExtractCommand) Execute(args []string) int {
 	}
 
 	if dirNonEmpty(outDir) && c.Err != nil {
-		_, _ = fmt.Fprintln(c.Err, warningLine(color, "output directory already exists, files will be overwritten: %s", outDir))
+		errColor := newColorizer(c.outputTTY(c.Err) && supportsANSI())
+		_, _ = fmt.Fprintln(c.Err, warningLine(errColor, "output directory already exists, files will be overwritten: %s", outDir))
 	}
 
 	report := c.detect()

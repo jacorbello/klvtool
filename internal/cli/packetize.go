@@ -140,7 +140,8 @@ func (c *PacketizeCommand) Execute(args []string) int {
 	color := newColorizer(prettyView && supportsANSI())
 
 	if dirNonEmpty(outDir) && c.Err != nil {
-		_, _ = fmt.Fprintln(c.Err, warningLine(color, "output directory already exists, files will be overwritten: %s", outDir))
+		errColor := newColorizer(c.outputTTY(c.Err) && supportsANSI())
+		_, _ = fmt.Fprintln(c.Err, warningLine(errColor, "output directory already exists, files will be overwritten: %s", outDir))
 	}
 
 	records, err := c.rawPayloadReader()(inputDir)
@@ -171,7 +172,7 @@ func (c *PacketizeCommand) Execute(args []string) int {
 			writeHintFooters(c.Out, color, []hintFooter{
 				{
 					Title: "Decode against the original transport stream after packet inspection",
-					Body:  "klvtool decode --input sample.ts",
+					Body:  "klvtool decode --input <file.ts>",
 				},
 			})
 		}

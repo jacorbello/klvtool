@@ -298,8 +298,8 @@ func TestPacketizePrettyViewAddsWorkflowHints(t *testing.T) {
 	if !strings.Contains(stdout.String(), "Next steps") {
 		t.Fatalf("expected workflow hints, got %q", stdout.String())
 	}
-	if !strings.Contains(stdout.String(), "klvtool decode --input sample.ts") {
-		t.Fatalf("expected decode hint, got %q", stdout.String())
+	if !strings.Contains(stdout.String(), "klvtool decode --input <file.ts>") {
+		t.Fatalf("expected decode hint with placeholder, got %q", stdout.String())
 	}
 }
 
