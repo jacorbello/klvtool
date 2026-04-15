@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.1](https://github.com/jacorbello/klvtool/compare/v1.1.0...v1.1.1) (2026-04-15)
+
+
+### Bug Fixes
+
+* publish release assets via draft release ([#56](https://github.com/jacorbello/klvtool/issues/56)) ([9b5c4ed](https://github.com/jacorbello/klvtool/commit/9b5c4ed2217e8eb039a3d5fa97dc42a67076eb65))
+
 ## [1.1.0](https://github.com/jacorbello/klvtool/compare/v1.0.0...v1.1.0) (2026-04-14)
 
 
