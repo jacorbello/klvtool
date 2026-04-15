@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bufio"
 	"context"
 	"encoding/base64"
 	"encoding/csv"
@@ -28,6 +29,7 @@ const mpegTSPIDMax = 0x1FFF
 // DecodeCommand decodes MISB ST 0601 KLV from an MPEG-TS file into
 // typed records.
 type DecodeCommand struct {
+	In  io.Reader
 	Out io.Writer
 	Err io.Writer
 	// Decode runs the decode pipeline. When schema is non-empty, the
@@ -37,7 +39,10 @@ type DecodeCommand struct {
 	Registry func() *klv.Registry
 	// openOut creates the output file for --out. Defaults to os.Create.
 	// Exposed for testing close-error propagation.
-	openOut func(path string) (io.WriteCloser, error)
+	openOut     func(path string) (io.WriteCloser, error)
+	isOutputTTY func(io.Writer) bool
+	isInputTTY  func(io.Reader) bool
+	makeRaw     func(io.Reader) (func() error, error)
 }
 
 // DecodeResult holds decoded records plus stream-level diagnostics that
@@ -53,6 +58,7 @@ type DecodeResult struct {
 // NewDecodeCommand returns a DecodeCommand with default runtime dependencies.
 func NewDecodeCommand() *DecodeCommand {
 	c := &DecodeCommand{
+		In:  os.Stdin,
 		Out: os.Stdout,
 		Err: os.Stderr,
 		Registry: func() *klv.Registry {
@@ -158,6 +164,8 @@ func (c *DecodeCommand) Execute(args []string) int {
 		pid       int
 		outPath   string
 		schema    string
+		view      string
+		step      bool
 	)
 	fs.StringVar(&inputPath, "input", "", "path to the MPEG-TS input file")
 	fs.StringVar(&format, "format", "ndjson", "output format: ndjson, text, or csv")
@@ -166,6 +174,8 @@ func (c *DecodeCommand) Execute(args []string) int {
 	fs.IntVar(&pid, "pid", 0, "limit to a specific KLV data stream PID (0 = all)")
 	fs.StringVar(&outPath, "out", "", "write output to a file instead of stdout")
 	fs.StringVar(&schema, "schema", "", "override auto-detection with a specific spec URN")
+	fs.StringVar(&view, "view", string(viewAuto), "presentation mode: auto, pretty, or raw")
+	fs.BoolVar(&step, "step", false, "step through decoded packets interactively")
 
 	if err := fs.Parse(args); err != nil {
 		if err == flag.ErrHelp {
@@ -211,6 +221,12 @@ func (c *DecodeCommand) Execute(args []string) int {
 			return usageExitCode
 		}
 	}
+	viewMode, err := parseViewMode(view)
+	if err != nil {
+		c.writeUsage(c.Err)
+		c.writeError(c.Err, model.InvalidUsage(err))
+		return usageExitCode
+	}
 
 	info, err := os.Stat(inputPath)
 	if err != nil {
@@ -240,6 +256,28 @@ func (c *DecodeCommand) Execute(args []string) int {
 		return exitCodeForError(err)
 	}
 
+	outputTTY := c.outputTTY(c.Out)
+	prettyView := usePrettyView(viewMode, outputTTY)
+	inputTTY := c.inputTTY(c.In)
+	formatSet := false
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == "format" {
+			formatSet = true
+		}
+	})
+	effectiveFormat := format
+	if prettyView && !formatSet {
+		effectiveFormat = "text"
+	}
+	if step {
+		if !prettyView || !outputTTY || !inputTTY {
+			c.writeUsage(c.Err)
+			c.writeError(c.Err, model.InvalidUsage(errors.New("--step requires an interactive terminal")))
+			return usageExitCode
+		}
+		effectiveFormat = "text"
+	}
+
 	sink := c.Out
 	var closer io.Closer
 	if outPath != "" {
@@ -259,9 +297,10 @@ func (c *DecodeCommand) Execute(args []string) int {
 	}
 
 	exitCode := 0
+	color := newColorizer(prettyView && supportsANSI())
 
 	var csvW *csv.Writer
-	if format == "csv" {
+	if effectiveFormat == "csv" {
 		csvW = csv.NewWriter(sink)
 		if err := writeCSVHeader(csvW, raw); err != nil {
 			c.writeError(c.Err, model.OutputWrite(err))
@@ -271,30 +310,39 @@ func (c *DecodeCommand) Execute(args []string) int {
 	}
 
 	var errorCount int
-records:
-	for i, rec := range result.Records {
-		switch format {
-		case "ndjson":
-			if err := writeNDJSON(sink, i, rec, raw); err != nil {
-				c.writeError(c.Err, model.OutputWrite(err))
-				exitCode = 1
-				break records
-			}
-		case "text":
-			if err := writeText(sink, i, rec, raw); err != nil {
-				c.writeError(c.Err, model.OutputWrite(err))
-				exitCode = 1
-				break records
-			}
-		case "csv":
-			if csvW != nil {
-				if err := writeCSVRecords(csvW, i, rec, raw); err != nil {
+	if step {
+		if code, err := c.runStepMode(sink, result.Records, raw, color); err != nil {
+			c.writeError(c.Err, model.OutputWrite(err))
+			exitCode = code
+		}
+	} else {
+	records:
+		for i, rec := range result.Records {
+			switch effectiveFormat {
+			case "ndjson":
+				if err := writeNDJSON(sink, i, rec, raw); err != nil {
 					c.writeError(c.Err, model.OutputWrite(err))
 					exitCode = 1
 					break records
 				}
+			case "text":
+				if err := writeTextView(sink, i, rec, raw, color); err != nil {
+					c.writeError(c.Err, model.OutputWrite(err))
+					exitCode = 1
+					break records
+				}
+			case "csv":
+				if csvW != nil {
+					if err := writeCSVRecords(csvW, i, rec, raw); err != nil {
+						c.writeError(c.Err, model.OutputWrite(err))
+						exitCode = 1
+						break records
+					}
+				}
 			}
 		}
+	}
+	for _, rec := range result.Records {
 		for _, d := range rec.Diagnostics {
 			if d.Severity == "error" {
 				errorCount++
@@ -302,7 +350,7 @@ records:
 		}
 	}
 
-	if format == "csv" && csvW != nil {
+	if effectiveFormat == "csv" && csvW != nil {
 		csvW.Flush()
 		if err := csvW.Error(); err != nil {
 			if exitCode == 0 {
@@ -316,7 +364,9 @@ records:
 	// streams that produced zero decoded KLV packets) are reported to
 	// stderr and counted toward --strict, but not emitted as packets.
 	for _, d := range result.StreamDiagnostics {
-		fmt.Fprintf(c.Err, "[stream] %s %s: %s\n", d.Severity, d.Code, d.Message) //nolint:errcheck
+		if c.Err != nil {
+			fmt.Fprintf(c.Err, "[stream] %s %s: %s\n", colorSeverity(color, d.Severity), d.Code, d.Message) //nolint:errcheck
+		}
 		if d.Severity == "error" {
 			errorCount++
 		}
@@ -336,12 +386,18 @@ records:
 	// errorCount includes structural decode errors (e.g. unknown_spec,
 	// tag_decode_error), packetize-layer diagnostics, and validation
 	// failures. The label reflects that.
-	fmt.Fprintf(c.Err, "decoded %d packet(s), %d error diagnostic(s)\n", len(result.Records), errorCount) //nolint:errcheck
-	if pid != 0 && len(result.Records) == 0 {
-		fmt.Fprintf(c.Err, "warning: no KLV packets found on PID %d\n", pid) //nolint:errcheck
+	if c.Err != nil {
+		errColor := newColorizer(c.outputTTY(c.Err) && supportsANSI())
+		fmt.Fprintf(c.Err, "decoded %d packet(s), %d error diagnostic(s)\n", len(result.Records), errorCount) //nolint:errcheck
+		if pid != 0 && len(result.Records) == 0 {
+			fmt.Fprintln(c.Err, warningLine(errColor, "no KLV packets found on PID %d", pid)) //nolint:errcheck
+		}
 	}
 	if strict && errorCount > 0 {
 		return 1
+	}
+	if prettyView && effectiveFormat == "text" {
+		writeHintFooters(c.Out, color, decodeHints(inputPath, pid))
 	}
 	return 0
 }
@@ -350,18 +406,21 @@ func (c *DecodeCommand) writeUsage(w io.Writer) {
 	if w == nil {
 		return
 	}
-	fmt.Fprintln(w, "Usage: klvtool decode --input <file.ts> [--format ndjson|text|csv] [--raw] [--strict] [--pid N] [--out path] [--schema urn]") //nolint:errcheck
-	fmt.Fprintln(w)                                                                                                                                //nolint:errcheck
-	fmt.Fprintln(w, "Decode MISB ST 0601 KLV metadata from an MPEG-TS file.")                                                                      //nolint:errcheck
-	fmt.Fprintln(w)                                                                                                                                //nolint:errcheck
-	fmt.Fprintln(w, "The --raw flag includes raw bytes per item: hex (0x...) in text and csv formats, base64 in NDJSON.")                          //nolint:errcheck
+	fmt.Fprintln(w, "Usage: klvtool decode --input <file.ts> [--format ndjson|text|csv] [--view auto|pretty|raw] [--step] [--raw] [--strict] [--pid N] [--out path] [--schema urn]") //nolint:errcheck
+	fmt.Fprintln(w)                                                                                                                                                                  //nolint:errcheck
+	fmt.Fprintln(w, "Decode MISB ST 0601 KLV metadata from an MPEG-TS file.")                                                                                                        //nolint:errcheck
+	fmt.Fprintln(w)                                                                                                                                                                  //nolint:errcheck
+	fmt.Fprintln(w, "Use this after inspect to validate a likely metadata PID or to review packets in a terminal-friendly view.")                                                    //nolint:errcheck
+	fmt.Fprintln(w)                                                                                                                                                                  //nolint:errcheck
+	fmt.Fprintln(w, "The --raw flag includes raw bytes per item: hex (0x...) in text and csv formats, base64 in NDJSON.")                                                            //nolint:errcheck
+	fmt.Fprintln(w, "Use --step for one-handed packet navigation: r=next, w=previous, d=next diagnostic, e=next error, q=quit.")                                                     //nolint:errcheck
 }
 
 func (c *DecodeCommand) writeError(w io.Writer, err error) {
 	if w == nil || err == nil {
 		return
 	}
-	fmt.Fprintln(w, "error:", err) //nolint:errcheck
+	fmt.Fprintln(w, errorLine(newColorizer(c.outputTTY(w) && supportsANSI()), err)) //nolint:errcheck
 }
 
 // ndjsonRecord is the serialization shape for one packet.
@@ -465,8 +524,9 @@ func formatRawHex(b []byte) string {
 	return fmt.Sprintf("0x%x", b)
 }
 
-func writeText(w io.Writer, index int, rec record.Record, includeRaw bool) error {
-	if _, err := fmt.Fprintf(w, "Packet %d   schema=%s  checksum=%s\n", index, rec.Schema, checksumLabel(rec)); err != nil {
+func writeTextView(w io.Writer, index int, rec record.Record, includeRaw bool, color colorizer) error {
+	header := fmt.Sprintf("Packet %d   schema=%s  checksum=%s", index, rec.Schema, checksumLabel(rec))
+	if _, err := fmt.Fprintln(w, color.bold(header)); err != nil {
 		return err
 	}
 	for _, it := range rec.Items {
@@ -484,7 +544,7 @@ func writeText(w io.Writer, index int, rec record.Record, includeRaw bool) error
 		}
 	}
 	for _, d := range rec.Diagnostics {
-		if _, err := fmt.Fprintf(w, "  ! [%s] %s: %s%s\n", d.Severity, d.Code, d.Message, formatDiagnosticContext(d)); err != nil {
+		if _, err := fmt.Fprintf(w, "  ! [%s] %s: %s%s\n", colorSeverity(color, d.Severity), d.Code, d.Message, formatDiagnosticContext(d)); err != nil {
 			return err
 		}
 	}
@@ -492,6 +552,135 @@ func writeText(w io.Writer, index int, rec record.Record, includeRaw bool) error
 		return err
 	}
 	return nil
+}
+
+func writeText(w io.Writer, index int, rec record.Record, includeRaw bool) error {
+	return writeTextView(w, index, rec, includeRaw, newColorizer(false))
+}
+
+func colorSeverity(color colorizer, severity string) string {
+	switch severity {
+	case "error":
+		return color.red(severity)
+	case "warning":
+		return color.yellow(severity)
+	default:
+		return severity
+	}
+}
+
+func (c *DecodeCommand) outputTTY(w io.Writer) bool {
+	if c != nil && c.isOutputTTY != nil {
+		return c.isOutputTTY(w)
+	}
+	return isTTYWriter(w)
+}
+
+func (c *DecodeCommand) inputTTY(r io.Reader) bool {
+	if c != nil && c.isInputTTY != nil {
+		return c.isInputTTY(r)
+	}
+	return isTTYReader(r)
+}
+
+func (c *DecodeCommand) enableRawInput(r io.Reader) (func() error, error) {
+	if c != nil && c.makeRaw != nil {
+		return c.makeRaw(r)
+	}
+	return makeRawInput(r)
+}
+
+func (c *DecodeCommand) runStepMode(w io.Writer, records []record.Record, raw bool, color colorizer) (int, error) {
+	if len(records) == 0 {
+		return 0, nil
+	}
+	reader := bufio.NewReader(c.In)
+	index := 0
+	restore, err := c.enableRawInput(c.In)
+	if err != nil {
+		return 1, err
+	}
+	if restore != nil {
+		defer func() { _ = restore() }()
+	}
+	if c.Err != nil {
+		_, _ = fmt.Fprintln(c.Err, color.cyan("step mode: r=next, w=previous, d=next diagnostic, e=next error, q=quit"))
+	}
+	for {
+		if err := writeTextView(w, index, records[index], raw, color); err != nil {
+			return 1, err
+		}
+		if c.Err != nil {
+			_, _ = fmt.Fprint(c.Err, color.cyan("step [r=next,w=prev,d=diag,e=error,q=quit]> "))
+		}
+		ch, err := reader.ReadByte()
+		if errors.Is(err, io.EOF) {
+			return 0, nil
+		}
+		if err != nil {
+			return 1, err
+		}
+		switch ch {
+		case 'q':
+			return 0, nil
+		case '\n', '\r':
+			continue
+		case 'r':
+			if index < len(records)-1 {
+				index++
+			}
+		case 'w':
+			if index > 0 {
+				index--
+			}
+		case 'd':
+			next := nextMatchingRecord(records, index+1, func(rec record.Record) bool {
+				return len(rec.Diagnostics) > 0
+			})
+			if next == -1 {
+				return 0, nil
+			}
+			index = next
+		case 'e':
+			next := nextMatchingRecord(records, index+1, func(rec record.Record) bool {
+				for _, d := range rec.Diagnostics {
+					if d.Severity == "error" {
+						return true
+					}
+				}
+				return false
+			})
+			if next == -1 {
+				return 0, nil
+			}
+			index = next
+		}
+	}
+}
+
+func nextMatchingRecord(records []record.Record, start int, match func(record.Record) bool) int {
+	for i := start; i < len(records); i++ {
+		if match(records[i]) {
+			return i
+		}
+	}
+	return -1
+}
+
+func decodeHints(inputPath string, pid int) []hintFooter {
+	hints := []hintFooter{
+		{
+			Title: "Cross-check stream structure",
+			Body:  fmt.Sprintf("klvtool inspect --input %s", inputPath),
+		},
+	}
+	if pid != 0 {
+		hints = append(hints, hintFooter{
+			Title: "Capture raw payload checkpoints",
+			Body:  fmt.Sprintf("klvtool extract --input %s --out ./klvtool-raw", inputPath),
+		})
+	}
+	return hints
 }
 
 // checksumLabel distinguishes the four states operator output needs:

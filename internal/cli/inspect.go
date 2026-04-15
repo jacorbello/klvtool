@@ -27,6 +27,8 @@ type InspectCommand struct {
 	Out     io.Writer
 	Err     io.Writer
 	Inspect func(path string) (ts.StreamTable, InspectStats, error)
+
+	isOutputTTY func(io.Writer) bool
 }
 
 func NewInspectCommand() *InspectCommand {
@@ -50,7 +52,9 @@ func (c *InspectCommand) Execute(args []string) int {
 	fs.SetOutput(io.Discard)
 
 	var inputPath string
+	var view string
 	fs.StringVar(&inputPath, "input", "", "path to the MPEG-TS input file")
+	fs.StringVar(&view, "view", string(viewAuto), "presentation mode: auto, pretty, or raw")
 
 	if err := fs.Parse(args); err != nil {
 		if err == flag.ErrHelp {
@@ -69,6 +73,12 @@ func (c *InspectCommand) Execute(args []string) int {
 	if strings.TrimSpace(inputPath) == "" {
 		c.writeUsage(c.Err)
 		c.writeError(c.Err, model.InvalidUsage(fmt.Errorf("input path is required")))
+		return usageExitCode
+	}
+	viewMode, err := parseViewMode(view)
+	if err != nil {
+		c.writeUsage(c.Err)
+		c.writeError(c.Err, model.InvalidUsage(err))
 		return usageExitCode
 	}
 
@@ -100,17 +110,18 @@ func (c *InspectCommand) Execute(args []string) int {
 		return exitCodeForError(err)
 	}
 
-	c.writeReport(table, stats)
+	c.writeReport(table, stats, usePrettyView(viewMode, c.outputTTY(c.Out)))
 	return 0
 }
 
-func (c *InspectCommand) writeReport(table ts.StreamTable, stats InspectStats) {
+func (c *InspectCommand) writeReport(table ts.StreamTable, stats InspectStats, pretty bool) {
 	w := c.Out
 	if w == nil {
 		return
 	}
+	color := newColorizer(pretty && supportsANSI())
 
-	_, _ = fmt.Fprintf(w, "total packets: %d\n", stats.TotalPackets)
+	_, _ = fmt.Fprintf(w, "%stotal packets: %d\n", labelPrefix(color, pretty, "Transport "), stats.TotalPackets)
 	_, _ = fmt.Fprintln(w)
 
 	programNums := make([]int, 0, len(table.Programs))
@@ -121,13 +132,17 @@ func (c *InspectCommand) writeReport(table ts.StreamTable, stats InspectStats) {
 
 	for _, pn := range programNums {
 		streams := table.Programs[uint16(pn)]
-		_, _ = fmt.Fprintf(w, "program %d:\n", pn)
+		_, _ = fmt.Fprintf(w, "%s%d:\n", labelPrefix(color, pretty, "program "), pn)
 
 		for _, stream := range streams {
 			typeName := streamTypeName(stream.StreamType)
 			count := stats.PacketCounts[stream.PID]
+			streamLabel := typeName
+			if pretty && isLikelyMetadataStream(stream.StreamType) {
+				streamLabel = "Likely metadata: " + typeName
+			}
 			_, _ = fmt.Fprintf(w, "  PID 0x%04X  type=0x%02X (%s)  packets=%d",
-				stream.PID, stream.StreamType, typeName, count)
+				stream.PID, stream.StreamType, streamLabel, count)
 
 			if pesCount, ok := stats.PESUnitCounts[stream.PID]; ok && pesCount > 0 {
 				_, _ = fmt.Fprintf(w, "  PES units=%d", pesCount)
@@ -145,10 +160,13 @@ func (c *InspectCommand) writeReport(table ts.StreamTable, stats InspectStats) {
 
 	if len(stats.Diagnostics) > 0 {
 		_, _ = fmt.Fprintln(w)
-		_, _ = fmt.Fprintf(w, "diagnostics: %d\n", len(stats.Diagnostics))
+		_, _ = fmt.Fprintf(w, "%s%d\n", labelPrefix(color, pretty, "diagnostics: "), len(stats.Diagnostics))
 		for _, d := range stats.Diagnostics {
-			_, _ = fmt.Fprintf(w, "  [%s] %s: %s\n", d.Severity, d.Code, d.Message)
+			_, _ = fmt.Fprintf(w, "  [%s] %s: %s\n", colorSeverity(color, d.Severity), d.Code, d.Message)
 		}
+	}
+	if pretty {
+		writeHintFooters(w, color, inspectHints(table))
 	}
 }
 
@@ -201,14 +219,67 @@ func (c *InspectCommand) writeUsage(w io.Writer) {
 	}
 	_, _ = fmt.Fprintln(w, "Usage: klvtool inspect --input <file.ts>")
 	_, _ = fmt.Fprintln(w)
-	_, _ = fmt.Fprintln(w, "Inspect an MPEG-TS file: stream inventory, packet counts, PES timing, continuity diagnostics.")
+	_, _ = fmt.Fprintln(w, "Inspect an MPEG-TS file: stream inventory, packet counts, PES timing, and continuity diagnostics.")
+	_, _ = fmt.Fprintln(w)
+	_, _ = fmt.Fprintln(w, "Use this first to find likely metadata streams before decode.")
 }
 
 func (c *InspectCommand) writeError(w io.Writer, err error) {
 	if w == nil || err == nil {
 		return
 	}
-	_, _ = fmt.Fprintf(w, "error: %v\n", err)
+	_, _ = fmt.Fprintln(w, errorLine(newColorizer(c.outputTTY(w) && supportsANSI()), err))
+}
+
+func (c *InspectCommand) outputTTY(w io.Writer) bool {
+	if c != nil && c.isOutputTTY != nil {
+		return c.isOutputTTY(w)
+	}
+	return isTTYWriter(w)
+}
+
+func labelPrefix(color colorizer, pretty bool, label string) string {
+	if !pretty {
+		return label
+	}
+	return color.bold(label)
+}
+
+func isLikelyMetadataStream(streamType uint8) bool {
+	return streamType == 0x06 || streamType == 0x15
+}
+
+func inspectHints(table ts.StreamTable) []hintFooter {
+	// Iterate programs in sorted order for deterministic output.
+	programNums := make([]int, 0, len(table.Programs))
+	for pn := range table.Programs {
+		programNums = append(programNums, int(pn))
+	}
+	sort.Ints(programNums)
+
+	for _, pn := range programNums {
+		streams := table.Programs[uint16(pn)]
+		for _, stream := range streams {
+			if isLikelyMetadataStream(stream.StreamType) {
+				return []hintFooter{
+					{
+						Title: "Decode the likely metadata stream",
+						Body:  fmt.Sprintf("klvtool decode --input <file.ts> --pid %d", stream.PID),
+					},
+					{
+						Title: "Capture raw payload checkpoints",
+						Body:  "klvtool extract --input <file.ts> --out ./klvtool-raw",
+					},
+				}
+			}
+		}
+	}
+	return []hintFooter{
+		{
+			Title: "Try a full decode if metadata streams were not obvious",
+			Body:  "klvtool decode --input <file.ts>",
+		},
+	}
 }
 
 func defaultInspect(path string) (ts.StreamTable, InspectStats, error) {

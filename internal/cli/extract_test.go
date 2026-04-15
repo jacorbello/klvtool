@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -187,6 +188,49 @@ func TestExtractWritesManifestAndPayloads(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "manifest:") {
 		t.Fatalf("expected stdout summary, got %q", stdout.String())
+	}
+}
+
+func TestExtractPrettyViewAddsWorkflowHints(t *testing.T) {
+	root := t.TempDir()
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	cmd := NewRootCommand()
+	cmd.Out = &stdout
+	cmd.Err = &stderr
+	cmd.Extract.Detect = func(ctx context.Context, goos string, env map[string]string) envcheck.Report {
+		return envcheck.Report{
+			Backends: []envcheck.BackendHealth{
+				{Name: "ffmpeg", Healthy: true},
+			},
+		}
+	}
+	cmd.Extract.Extractor = stubExtractor{
+		run: func(ctx context.Context, req extract.RunRequest) (extract.RunResult, error) {
+			return extract.RunResult{
+				Backend:        extract.BackendDescriptor{Name: "ffmpeg", Healthy: true},
+				BackendVersion: "7.1",
+				Records: []extract.PayloadRecord{
+					{RecordID: "rec-001", PID: 481, Payload: []byte{0x01, 0x02, 0x03}},
+				},
+			}, nil
+		},
+	}
+	cmd.Extract.isOutputTTY = func(io.Writer) bool { return true }
+
+	input := filepath.Join(t.TempDir(), "sample.ts")
+	if err := os.WriteFile(input, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := cmd.Execute([]string{"extract", "--input", input, "--out", root}); got != 0 {
+		t.Fatalf("expected successful extract exit code 0, got %d; stderr=%q", got, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "Next steps") {
+		t.Fatalf("expected workflow hints, got %q", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "klvtool packetize --input") {
+		t.Fatalf("expected packetize hint, got %q", stdout.String())
 	}
 }
 
