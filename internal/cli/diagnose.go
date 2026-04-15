@@ -123,7 +123,9 @@ func (c *DiagnoseCommand) run(inputPath string, pretty bool) int {
 	color := newColorizer(pretty && supportsANSI())
 
 	// Stage 1: Health check
+	stop := startSpinner(c.Err, color, pretty, "Checking backend health...")
 	report := c.Detect(context.Background(), c.goos(), c.env())
+	stop()
 	c.writeHealthSection(w, color, report)
 
 	for _, b := range report.Backends {
@@ -139,7 +141,9 @@ func (c *DiagnoseCommand) run(inputPath string, pretty bool) int {
 	}
 
 	// Stage 2: Inspect
+	stop = startSpinner(c.Err, color, pretty, "Scanning transport stream...")
 	table, stats, err := c.Inspect(inputPath)
+	stop()
 	if err != nil {
 		c.writeStoppedAt(w, color, stageInspect)
 		_, _ = fmt.Fprintf(w, "  %s\n", err)
@@ -168,7 +172,9 @@ func (c *DiagnoseCommand) run(inputPath string, pretty bool) int {
 
 	// Stage 3: Decode each candidate PID.
 	for _, pid := range metaPIDs {
+		stop = startSpinner(c.Err, color, pretty, fmt.Sprintf("Decoding PID 0x%04X...", pid))
 		result, err := c.Decode(inputPath, int(pid), "")
+		stop()
 		if err != nil {
 			_, _ = fmt.Fprintln(w)
 			c.writeStoppedAt(w, color, stageDecode)
