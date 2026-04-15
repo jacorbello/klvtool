@@ -118,6 +118,45 @@ func TestRootRoutesToInspect(t *testing.T) {
 	}
 }
 
+func TestRootRoutesToDiagnose(t *testing.T) {
+	var out, errBuf bytes.Buffer
+
+	root := &RootCommand{
+		Out: &out,
+		Err: &errBuf,
+		Diagnose: &DiagnoseCommand{
+			Out: &out,
+			Err: &errBuf,
+		},
+	}
+
+	// Without --input the command returns a usage error, proving dispatch worked.
+	code := root.Execute([]string{"diagnose"})
+	if code != usageExitCode {
+		t.Errorf("exit code = %d, want %d; stderr: %s", code, usageExitCode, errBuf.String())
+	}
+	if !strings.Contains(errBuf.String(), "input path is required") {
+		t.Errorf("expected input-required error from diagnose, got %q", errBuf.String())
+	}
+}
+
+func TestRootRoutesToCompletion(t *testing.T) {
+	var out, errBuf bytes.Buffer
+
+	root := &RootCommand{
+		Out: &out,
+		Err: &errBuf,
+	}
+
+	code := root.Execute([]string{"completion", "bash"})
+	if code != 0 {
+		t.Errorf("exit code = %d, want 0; stderr: %s", code, errBuf.String())
+	}
+	if !strings.Contains(out.String(), "complete -F") {
+		t.Errorf("expected bash completion output, got %q", out.String())
+	}
+}
+
 func TestHelpSubcommand(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
