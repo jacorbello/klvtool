@@ -11,6 +11,8 @@ Commands:
 - `klvtool extract` validates backend health, extracts KLV/data payloads using `ffmpeg`, and writes extracted payloads plus a JSON manifest line to `manifest.ndjson`.
 - `klvtool packetize` replays a raw extraction checkpoint directory and writes packet checkpoint output plus a packet manifest.
 - `klvtool decode` decodes MISB ST 0601.19 KLV from an MPEG-TS file into typed records with structural and per-tag validation.
+- `klvtool diagnose` runs the full diagnostic pipeline (health check, transport inspection, KLV decode) on a single file and produces a consolidated report.
+- `klvtool completion` generates shell completion scripts for bash, zsh, or fish.
 
 ## Installation
 
@@ -72,6 +74,7 @@ make build
 ./bin/klvtool decode --input testdata/fixtures/sample.ts --format text --raw
 ./bin/klvtool decode --input testdata/fixtures/sample.ts --step
 ./bin/klvtool decode --input testdata/fixtures/sample.ts --format csv --out /tmp/decode.csv
+./bin/klvtool diagnose --input testdata/fixtures/sample.ts
 ```
 
 ### Decode flags
@@ -90,9 +93,43 @@ make build
 
 The `testdata/fixtures/sample.ts` path is a local fixture reference. If that file is not present in your checkout, use any equivalent MPEG-TS sample that exposes KLV payloads for the extract and packetize smoke flow.
 
+### Diagnose
+
+`klvtool diagnose` runs the recommended troubleshooting sequence automatically: it checks backend health, scans the transport stream, identifies likely metadata PIDs, and decodes them — all in one command.
+
+```bash
+klvtool diagnose --input <input.ts>
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--input` | (required) | Path to MPEG-TS input file |
+| `--view` | `auto` | Presentation mode: `auto`, `pretty`, or `raw` |
+
+The command stops at the first failing stage and suggests the exact manual command for deeper investigation. In pretty mode (TTY), a spinner shows progress during each stage and the output includes next-step hints.
+
+Use `diagnose` as the starting point for any new file. If you need more control, use the individual commands described in the troubleshooting section below.
+
+### Shell completions
+
+Generate tab-completion scripts for your shell:
+
+```bash
+# Bash
+eval "$(klvtool completion bash)"
+
+# Zsh
+eval "$(klvtool completion zsh)"
+
+# Fish
+klvtool completion fish | source
+```
+
+To persist completions across sessions, write the output to the appropriate shell config file (e.g., `~/.bashrc`, `~/.zshrc`, or `~/.config/fish/completions/klvtool.fish`).
+
 ## Troubleshooting Source Issues
 
-When you are diagnosing a bad source file, use the commands in this order:
+When you are diagnosing a bad source file, the quickest path is `klvtool diagnose --input <file.ts>`, which runs the sequence below automatically. For finer control, use the commands individually in this order:
 
 1. `klvtool doctor` to verify the local runtime.
 2. `klvtool inspect` to see whether the MPEG-TS structure looks sane.
