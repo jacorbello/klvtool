@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/jacorbello/klvtool/compare/v1.1.2...v1.2.0) (2026-04-15)
+
+
+### Features
+
+* add diagnose command and shell completions ([#62](https://github.com/jacorbello/klvtool/issues/62)) ([a8f0c24](https://github.com/jacorbello/klvtool/commit/a8f0c248d2b65bda824ca22c0dc2a7ad1445b926))
+
 ## [1.1.2](https://github.com/jacorbello/klvtool/compare/v1.1.1...v1.1.2) (2026-04-15)
 
 
