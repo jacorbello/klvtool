@@ -174,6 +174,53 @@ func TestAnalyzerCleanStreamIsPlayableNotDegraded(t *testing.T) {
 	}
 }
 
+func TestAnalyzerBFrameReorderingNotFlaggedAsDrops(t *testing.T) {
+	// Simulate decode-order PTS from an H.264 stream with B-frames:
+	// encode order  I P B B P B B P B B ...
+	// PTS in decode order arrives non-monotonically. The analyzer must
+	// sort PTS samples before computing deltas so reordering does not
+	// look like frame drops.
+	a := NewAnalyzer(0x0100)
+	a.Feed(mkPES(t, 0x0100, 0, NALSPS, NALPPS, NALIDR))
+	const step int64 = 3003
+	// 30 presentations, emitted in an IPBBPBB... pattern.
+	order := []int{3, 1, 2, 6, 4, 5, 9, 7, 8, 12, 10, 11, 15, 13, 14, 18, 16, 17, 21, 19, 20, 24, 22, 23, 27, 25, 26, 30, 28, 29}
+	for _, frameIdx := range order {
+		a.Feed(mkPES(t, 0x0100, int64(frameIdx)*step, NALSlice))
+	}
+
+	rep := a.Report()
+	if rep.Verdict != VerdictPlayable {
+		t.Fatalf("B-frame reorder flagged as %q (reasons: %v)", rep.Verdict, rep.Reasons)
+	}
+	if rep.DoubleGapCount != 0 || rep.LargerGapCount != 0 {
+		t.Errorf("sorted deltas should have no multi-frame gaps, got double=%d larger=%d",
+			rep.DoubleGapCount, rep.LargerGapCount)
+	}
+}
+
+func TestAnalyzerDuplicatePTSDoesNotInflateDrops(t *testing.T) {
+	// Two PES units sharing the same PTS produce a zero delta that must
+	// be dropped, not classified as a gap.
+	a := NewAnalyzer(0x0100)
+	a.Feed(mkPES(t, 0x0100, 0, NALSPS, NALPPS, NALIDR))
+	pts := int64(3003)
+	for i := 0; i < 20; i++ {
+		a.Feed(mkPES(t, 0x0100, pts, NALSlice))
+		a.Feed(mkPES(t, 0x0100, pts, NALSlice)) // duplicate
+		pts += 3003
+	}
+
+	rep := a.Report()
+	if rep.Verdict != VerdictPlayable {
+		t.Errorf("duplicate PTS flagged as %q (reasons: %v)", rep.Verdict, rep.Reasons)
+	}
+	if rep.DoubleGapCount != 0 || rep.LargerGapCount != 0 {
+		t.Errorf("zero-delta samples should be filtered, got double=%d larger=%d",
+			rep.DoubleGapCount, rep.LargerGapCount)
+	}
+}
+
 func TestAnalyzerFixHintOnlyForStalls(t *testing.T) {
 	// Playable: no hint.
 	a := NewAnalyzer(0x0100)

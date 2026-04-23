@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sort"
 
 	"github.com/jacorbello/klvtool/internal/h264"
 	"github.com/jacorbello/klvtool/internal/model"
@@ -33,6 +34,7 @@ func isKnownVideoStreamType(st uint8) bool {
 
 // unsupportedVideoStreams returns the video streams present in the
 // table whose NAL bitstream klvtool does not yet scan. Currently: H.265.
+// Results are sorted by PID so render order is stable across runs.
 func unsupportedVideoStreams(table ts.StreamTable) []ts.Stream {
 	var out []ts.Stream
 	for _, streams := range table.Programs {
@@ -42,6 +44,7 @@ func unsupportedVideoStreams(table ts.StreamTable) []ts.Stream {
 			}
 		}
 	}
+	sort.Slice(out, func(i, j int) bool { return out[i].PID < out[j].PID })
 	return out
 }
 
