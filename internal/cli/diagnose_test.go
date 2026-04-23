@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/jacorbello/klvtool/internal/envcheck"
+	"github.com/jacorbello/klvtool/internal/h264"
 	"github.com/jacorbello/klvtool/internal/klv/record"
 	ts "github.com/jacorbello/klvtool/internal/mpeg/ts"
 )
@@ -474,6 +475,168 @@ func TestDiagnoseDecodesCorrectPID(t *testing.T) {
 	}
 	if decodedPID != 0x0051 {
 		t.Errorf("decoded PID = 0x%04X, want 0x0051", decodedPID)
+	}
+}
+
+func playableVideoReports() []h264.VideoReport {
+	pts := int64(90000)
+	return []h264.VideoReport{{
+		PID:         0x0044,
+		StreamType:  0x1B,
+		Verdict:     h264.VerdictPlayable,
+		IDRCount:    39,
+		SPSCount:    41,
+		PPSCount:    41,
+		NonIDRCount: 4408,
+		PESUnits:    4488,
+		FirstIDRPTS: &pts,
+		LastIDRPTS:  &pts,
+	}}
+}
+
+func stallsVideoReports() []h264.VideoReport {
+	return []h264.VideoReport{{
+		PID:         0x0044,
+		StreamType:  0x1B,
+		Verdict:     h264.VerdictStallsInMSE,
+		Reasons:     []string{"no IDR frames found (scanned 1943 PES units) — MSE requires an IDR at stream start"},
+		FixHint:     "Re-encode with libx264 to synthesize IDR frames. Example:\n    ffmpeg -i <input.ts> ...",
+		IDRCount:    0,
+		SPSCount:    58,
+		PPSCount:    58,
+		NonIDRCount: 1943,
+		PESUnits:    1943,
+	}}
+}
+
+func TestDiagnoseVideoSectionPlayable(t *testing.T) {
+	var out, errBuf bytes.Buffer
+	cmd := newTestDiagnoseCommand(&out, &errBuf)
+	input := tempDiagnoseInput(t)
+
+	cmd.Detect = func(context.Context, string, map[string]string) envcheck.Report {
+		return healthyReport()
+	}
+	cmd.Inspect = func(string) (ts.StreamTable, InspectStats, error) {
+		return metadataStreamTable(), metadataInspectStats(), nil
+	}
+	cmd.VideoAnalyze = func(_ string, _ ts.StreamTable) ([]h264.VideoReport, error) {
+		return playableVideoReports(), nil
+	}
+	cmd.Decode = func(string, int, string) (DecodeResult, error) {
+		return cleanDecodeResult(), nil
+	}
+
+	code := cmd.Execute([]string{"--input", input})
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0; stderr: %s", code, errBuf.String())
+	}
+	text := out.String()
+	if !strings.Contains(text, "Video") || !strings.Contains(text, "PLAYABLE") {
+		t.Errorf("expected video PLAYABLE section, got %q", text)
+	}
+	if !strings.Contains(text, "IDR") || !strings.Contains(text, "39") {
+		t.Errorf("expected IDR count in output, got %q", text)
+	}
+}
+
+func TestDiagnoseVideoSectionStallsInMSE(t *testing.T) {
+	var out, errBuf bytes.Buffer
+	cmd := newTestDiagnoseCommand(&out, &errBuf)
+	cmd.isOutputTTY = func(_ io.Writer) bool { return true }
+	input := tempDiagnoseInput(t)
+
+	cmd.Detect = func(context.Context, string, map[string]string) envcheck.Report {
+		return healthyReport()
+	}
+	cmd.Inspect = func(string) (ts.StreamTable, InspectStats, error) {
+		return metadataStreamTable(), metadataInspectStats(), nil
+	}
+	cmd.VideoAnalyze = func(_ string, _ ts.StreamTable) ([]h264.VideoReport, error) {
+		return stallsVideoReports(), nil
+	}
+	cmd.Decode = func(string, int, string) (DecodeResult, error) {
+		return cleanDecodeResult(), nil
+	}
+
+	code := cmd.Execute([]string{"--input", input})
+	// Non-fatal: KLV decode still runs, exit 0.
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0 (video is non-fatal); stderr: %s", code, errBuf.String())
+	}
+	text := out.String()
+	if !strings.Contains(text, "STALLS_IN_MSE") {
+		t.Errorf("expected STALLS_IN_MSE in output, got %q", text)
+	}
+	if !strings.Contains(text, "no IDR frames") {
+		t.Errorf("expected IDR reason in output, got %q", text)
+	}
+	if !strings.Contains(text, "libx264") {
+		t.Errorf("expected libx264 fix hint in pretty-mode output, got %q", text)
+	}
+	// KLV decode must still have run.
+	if !strings.Contains(text, "packets decoded: 2") {
+		t.Errorf("expected KLV decode section to still run, got %q", text)
+	}
+}
+
+func TestDiagnoseVideoAnalyzeErrorIsNonFatal(t *testing.T) {
+	var out, errBuf bytes.Buffer
+	cmd := newTestDiagnoseCommand(&out, &errBuf)
+	input := tempDiagnoseInput(t)
+
+	cmd.Detect = func(context.Context, string, map[string]string) envcheck.Report {
+		return healthyReport()
+	}
+	cmd.Inspect = func(string) (ts.StreamTable, InspectStats, error) {
+		return metadataStreamTable(), metadataInspectStats(), nil
+	}
+	cmd.VideoAnalyze = func(_ string, _ ts.StreamTable) ([]h264.VideoReport, error) {
+		return nil, fmt.Errorf("boom")
+	}
+	cmd.Decode = func(string, int, string) (DecodeResult, error) {
+		return cleanDecodeResult(), nil
+	}
+
+	code := cmd.Execute([]string{"--input", input})
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0; stderr: %s", code, errBuf.String())
+	}
+	text := out.String()
+	if !strings.Contains(text, "packets decoded: 2") {
+		t.Errorf("expected KLV decode section to run even when video analyzer errors, got %q", text)
+	}
+}
+
+func TestDiagnoseH265StreamShowsNotSupportedNotice(t *testing.T) {
+	var out, errBuf bytes.Buffer
+	cmd := newTestDiagnoseCommand(&out, &errBuf)
+	input := tempDiagnoseInput(t)
+
+	cmd.Detect = func(context.Context, string, map[string]string) envcheck.Report {
+		return healthyReport()
+	}
+	cmd.Inspect = func(string) (ts.StreamTable, InspectStats, error) {
+		return ts.StreamTable{Programs: map[uint16][]ts.Stream{
+			1: {{PID: 0x0100, StreamType: 0x24, ProgramNum: 1}},
+		}}, metadataInspectStats(), nil
+	}
+	// Use the real default so the H.265 notice path is exercised end-to-end.
+	cmd.VideoAnalyze = defaultVideoAnalyze
+	cmd.Decode = func(string, int, string) (DecodeResult, error) {
+		return cleanDecodeResult(), nil
+	}
+
+	code := cmd.Execute([]string{"--input", input})
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0; stderr: %s", code, errBuf.String())
+	}
+	text := out.String()
+	if !strings.Contains(text, "H.265") && !strings.Contains(text, "0x0100") {
+		t.Errorf("expected H.265 stream mentioned in output, got %q", text)
+	}
+	if !strings.Contains(text, "not yet analyzed") {
+		t.Errorf("expected 'not yet analyzed' notice for H.265, got %q", text)
 	}
 }
 

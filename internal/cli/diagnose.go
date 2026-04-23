@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/jacorbello/klvtool/internal/envcheck"
+	"github.com/jacorbello/klvtool/internal/h264"
 	"github.com/jacorbello/klvtool/internal/model"
 	ts "github.com/jacorbello/klvtool/internal/mpeg/ts"
 )
@@ -21,10 +22,11 @@ type DiagnoseCommand struct {
 	Out io.Writer
 	Err io.Writer
 
-	isOutputTTY func(io.Writer) bool
-	Detect      func(context.Context, string, map[string]string) envcheck.Report
-	Inspect     func(path string) (ts.StreamTable, InspectStats, error)
-	Decode      func(path string, pid int, schema string) (DecodeResult, error)
+	isOutputTTY  func(io.Writer) bool
+	Detect       func(context.Context, string, map[string]string) envcheck.Report
+	Inspect      func(path string) (ts.StreamTable, InspectStats, error)
+	VideoAnalyze func(path string, table ts.StreamTable) ([]h264.VideoReport, error)
+	Decode       func(path string, pid int, schema string) (DecodeResult, error)
 
 	GOOS    string
 	Env     map[string]string
@@ -34,12 +36,13 @@ type DiagnoseCommand struct {
 // NewDiagnoseCommand returns a DiagnoseCommand with default runtime dependencies.
 func NewDiagnoseCommand() *DiagnoseCommand {
 	cmd := &DiagnoseCommand{
-		Out:     os.Stdout,
-		Err:     os.Stderr,
-		GOOS:    runtime.GOOS,
-		Env:     currentEnvMap(),
-		Detect:  defaultDoctorDetect,
-		Inspect: defaultInspect,
+		Out:          os.Stdout,
+		Err:          os.Stderr,
+		GOOS:         runtime.GOOS,
+		Env:          currentEnvMap(),
+		Detect:       defaultDoctorDetect,
+		Inspect:      defaultInspect,
+		VideoAnalyze: defaultVideoAnalyze,
 	}
 	// Decode is wired to the same pipeline as DecodeCommand.
 	decodeCmd := NewDecodeCommand()
@@ -171,6 +174,20 @@ func (c *DiagnoseCommand) run(inputPath string, pretty bool) int {
 
 	c.writeTransportSection(w, color, table, stats, pretty)
 
+	// Stage 2.5: Video analysis (non-fatal — any failure is reported
+	// and the pipeline continues into KLV decode).
+	if videoAnalyze := c.VideoAnalyze; videoAnalyze != nil {
+		stop = startSpinner(c.Err, color, pretty, "Analyzing video bitstream...")
+		videoReports, vErr := videoAnalyze(inputPath, table)
+		stop()
+		if vErr != nil {
+			_, _ = fmt.Fprintln(w)
+			_, _ = fmt.Fprintf(w, "%s%s\n", labelPrefix(color, true, "Video "), color.yellow("analysis skipped: "+vErr.Error()))
+		} else {
+			c.writeVideoSection(w, color, videoReports, unsupportedVideoStreams(table), pretty)
+		}
+	}
+
 	// Find candidate metadata PIDs.
 	metaPIDs := candidateMetadataPIDs(table)
 	if len(metaPIDs) == 0 {
@@ -269,6 +286,63 @@ func (c *DiagnoseCommand) writeTransportSection(w io.Writer, color colorizer, ta
 			_, _ = fmt.Fprintf(w, "    PID 0x%04X  %s  packets=%d\n", stream.PID, streamLabel, count)
 		}
 	}
+}
+
+func (c *DiagnoseCommand) writeVideoSection(w io.Writer, color colorizer, reports []h264.VideoReport, unsupported []ts.Stream, pretty bool) {
+	if w == nil {
+		return
+	}
+	if len(reports) == 0 && len(unsupported) == 0 {
+		_, _ = fmt.Fprintln(w)
+		_, _ = fmt.Fprintf(w, "%sno video streams found\n", labelPrefix(color, true, "Video "))
+		return
+	}
+	for _, rep := range reports {
+		_, _ = fmt.Fprintln(w)
+		_, _ = fmt.Fprintf(w, "%sPID 0x%04X  %s  %s\n",
+			labelPrefix(color, true, "Video "),
+			rep.PID,
+			streamTypeName(rep.StreamType),
+			verdictLabel(color, rep.Verdict),
+		)
+		_, _ = fmt.Fprintf(w, "  IDR frames:   %d\n", rep.IDRCount)
+		_, _ = fmt.Fprintf(w, "  SPS:          %d\n", rep.SPSCount)
+		_, _ = fmt.Fprintf(w, "  PPS:          %d\n", rep.PPSCount)
+		_, _ = fmt.Fprintf(w, "  Non-IDR:      %d\n", rep.NonIDRCount)
+		if rep.DeltaMode > 0 {
+			_, _ = fmt.Fprintf(w, "  PTS gaps:     single=%d  double=%d  larger=%d  (mode Δ=%d ticks)\n",
+				rep.SingleGapCount, rep.DoubleGapCount, rep.LargerGapCount, rep.DeltaMode)
+		}
+		for _, reason := range rep.Reasons {
+			_, _ = fmt.Fprintf(w, "  %s %s\n", color.yellow("!"), reason)
+		}
+		if pretty && rep.FixHint != "" {
+			_, _ = fmt.Fprintln(w)
+			_, _ = fmt.Fprintf(w, "  Hint: %s\n", rep.FixHint)
+		}
+	}
+	for _, s := range unsupported {
+		_, _ = fmt.Fprintln(w)
+		_, _ = fmt.Fprintf(w, "%sPID 0x%04X  %s  %s\n",
+			labelPrefix(color, true, "Video "),
+			s.PID,
+			streamTypeName(s.StreamType),
+			color.yellow("not yet analyzed"),
+		)
+		_, _ = fmt.Fprintf(w, "  klvtool currently analyzes H.264 only; this stream type is recognized but skipped.\n")
+	}
+}
+
+func verdictLabel(color colorizer, v h264.Verdict) string {
+	switch v {
+	case h264.VerdictPlayable:
+		return color.green(string(v))
+	case h264.VerdictStallsInMSE:
+		return color.red(string(v))
+	case h264.VerdictDegraded:
+		return color.yellow(string(v))
+	}
+	return string(v)
 }
 
 func (c *DiagnoseCommand) writeDecodeSection(w io.Writer, color colorizer, pid uint16, result DecodeResult) {
@@ -395,9 +469,10 @@ func (c *DiagnoseCommand) writeUsage(w io.Writer) {
 	}
 	_, _ = fmt.Fprintln(w, "Usage: klvtool diagnose --input <file.ts>")
 	_, _ = fmt.Fprintln(w)
-	_, _ = fmt.Fprintln(w, "Run the full diagnostic pipeline: health check, transport inspection, and KLV decode.")
+	_, _ = fmt.Fprintln(w, "Run the full diagnostic pipeline: health check, transport inspection, video bitstream analysis, and KLV decode.")
 	_, _ = fmt.Fprintln(w)
-	_, _ = fmt.Fprintln(w, "Equivalent to running doctor, inspect, and decode in sequence, with a consolidated report.")
+	_, _ = fmt.Fprintln(w, "Video analysis reports a playability verdict (PLAYABLE / STALLS_IN_MSE / DEGRADED) for any H.264 stream —")
+	_, _ = fmt.Fprintln(w, "useful for catching missing IDR frames that prevent hls.js / MSE playback.")
 }
 
 func (c *DiagnoseCommand) writeError(w io.Writer, err error) {
