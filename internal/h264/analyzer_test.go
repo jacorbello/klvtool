@@ -139,7 +139,7 @@ func TestAnalyzerDetectsFrameDropsAsDegraded(t *testing.T) {
 	// Establish a clean IDR + SPS/PPS so P0 passes.
 	a.Feed(mkPES(t, 0x0100, 0, NALSPS, NALPPS, NALIDR))
 	// 29.97 fps → ~3003 ticks between frames. Seed 20 "clean" frames.
-	// Then inject 5 double-gaps (≈25% frame drops).
+	// Then inject 8 double-gaps (8/28 ≈ 29% multi-frame drops).
 	pts := int64(3003)
 	for i := 0; i < 20; i++ {
 		a.Feed(mkPES(t, 0x0100, pts, NALSlice))
@@ -218,6 +218,34 @@ func TestAnalyzerDuplicatePTSDoesNotInflateDrops(t *testing.T) {
 	if rep.DoubleGapCount != 0 || rep.LargerGapCount != 0 {
 		t.Errorf("zero-delta samples should be filtered, got double=%d larger=%d",
 			rep.DoubleGapCount, rep.LargerGapCount)
+	}
+}
+
+func TestAnalyzerHandlesPTSWraparound(t *testing.T) {
+	// A 26.5h capture will cross the 33-bit PTS wrap boundary.
+	// Samples on either side of the wrap must not be misclassified as
+	// one huge multi-frame gap.
+	const pts33Max = int64(1) << 33
+	const step = int64(3003)
+
+	a := NewAnalyzer(0x0100)
+	a.Feed(mkPES(t, 0x0100, pts33Max-30*step, NALSPS, NALPPS, NALIDR))
+	// 20 samples leading up to the wrap.
+	for i := int64(29); i > 0; i-- {
+		a.Feed(mkPES(t, 0x0100, pts33Max-i*step, NALSlice))
+	}
+	// 20 samples after the wrap (low PTS values).
+	for i := int64(0); i < 20; i++ {
+		a.Feed(mkPES(t, 0x0100, i*step, NALSlice))
+	}
+
+	rep := a.Report()
+	if rep.Verdict != VerdictPlayable {
+		t.Fatalf("wrap flagged as %q (reasons: %v, mode=%d, single=%d double=%d larger=%d)",
+			rep.Verdict, rep.Reasons, rep.DeltaMode, rep.SingleGapCount, rep.DoubleGapCount, rep.LargerGapCount)
+	}
+	if rep.LargerGapCount != 0 {
+		t.Errorf("wrap should not produce a larger-gap classification, got %d", rep.LargerGapCount)
 	}
 }
 

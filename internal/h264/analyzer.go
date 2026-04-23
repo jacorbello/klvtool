@@ -10,6 +10,11 @@ import (
 // Analyzer aggregates H.264 NAL-level statistics for a single PID.
 // It is fed completed PES units via Feed, then queried with Report.
 // The analyzer is stateful; create one per PID per file.
+//
+// Feed is on the hot path (one call per PES unit), so PTS state is
+// stored inline as int64+bool rather than *int64 to avoid a heap
+// allocation per call. Pointer fields on VideoReport are materialized
+// only once, inside Report.
 type Analyzer struct {
 	pid         uint16
 	streamType  uint8
@@ -20,11 +25,17 @@ type Analyzer struct {
 	audCount    int
 	seiCount    int
 	pesUnits    int
-	firstIDRPTS *int64
-	lastIDRPTS  *int64
-	firstPTS    *int64
-	lastPTS     *int64
-	ptsSamples  []int64 // PTS of every PES unit that had one — used for gap analysis.
+
+	firstIDRPTS    int64
+	lastIDRPTS     int64
+	firstPTS       int64
+	lastPTS        int64
+	hasFirstIDRPTS bool
+	hasLastIDRPTS  bool
+	hasFirstPTS    bool
+	hasLastPTS     bool
+
+	ptsSamples []int64 // PTS of every PES unit that had one — used for gap analysis.
 }
 
 // NewAnalyzer returns a fresh Analyzer for the given PID.
@@ -49,10 +60,12 @@ func (a *Analyzer) Feed(unit *ts.PESUnit) {
 	a.pesUnits++
 	if unit.PTS != nil {
 		pts := *unit.PTS
-		if a.firstPTS == nil {
-			a.firstPTS = &pts
+		if !a.hasFirstPTS {
+			a.firstPTS = pts
+			a.hasFirstPTS = true
 		}
-		a.lastPTS = &pts
+		a.lastPTS = pts
+		a.hasLastPTS = true
 		a.ptsSamples = append(a.ptsSamples, pts)
 	}
 
@@ -77,10 +90,12 @@ func (a *Analyzer) Feed(unit *ts.PESUnit) {
 
 	if sawIDR && unit.PTS != nil {
 		pts := *unit.PTS
-		if a.firstIDRPTS == nil {
-			a.firstIDRPTS = &pts
+		if !a.hasFirstIDRPTS {
+			a.firstIDRPTS = pts
+			a.hasFirstIDRPTS = true
 		}
-		a.lastIDRPTS = &pts
+		a.lastIDRPTS = pts
+		a.hasLastIDRPTS = true
 	}
 }
 
@@ -97,10 +112,10 @@ func (a *Analyzer) Report() VideoReport {
 		AUDCount:    a.audCount,
 		SEICount:    a.seiCount,
 		PESUnits:    a.pesUnits,
-		FirstIDRPTS: a.firstIDRPTS,
-		LastIDRPTS:  a.lastIDRPTS,
-		FirstPTS:    a.firstPTS,
-		LastPTS:     a.lastPTS,
+		FirstIDRPTS: ptrIfSet(a.firstIDRPTS, a.hasFirstIDRPTS),
+		LastIDRPTS:  ptrIfSet(a.lastIDRPTS, a.hasLastIDRPTS),
+		FirstPTS:    ptrIfSet(a.firstPTS, a.hasFirstPTS),
+		LastPTS:     ptrIfSet(a.lastPTS, a.hasLastPTS),
 	}
 
 	a.fillGapStats(&rep)
@@ -118,8 +133,8 @@ func (a *Analyzer) Report() VideoReport {
 	}
 
 	// P1: cadence checks, only when IDRs exist.
-	if a.idrCount > 0 && a.firstIDRPTS != nil && a.firstPTS != nil {
-		delayTicks := *a.firstIDRPTS - *a.firstPTS
+	if a.idrCount > 0 && a.hasFirstIDRPTS && a.hasFirstPTS {
+		delayTicks := a.firstIDRPTS - a.firstPTS
 		if delayTicks > 2*ptsClockHz {
 			degraded = append(degraded, fmt.Sprintf("first IDR is %.2fs into the stream; HLS segmenters may stall", float64(delayTicks)/float64(ptsClockHz)))
 		}
@@ -152,18 +167,51 @@ func (a *Analyzer) Report() VideoReport {
 	return rep
 }
 
-const ptsClockHz = 90000 // MPEG-TS 90kHz PTS clock.
+func ptrIfSet(v int64, set bool) *int64 {
+	if !set {
+		return nil
+	}
+	pv := v
+	return &pv
+}
+
+const (
+	ptsClockHz = 90000           // MPEG-TS 90kHz PTS clock.
+	pts33Max   = int64(1) << 33  // PTS wraps at 2^33 (~26.5h).
+	// Gap classification thresholds, as multiples of the mode delta.
+	// Deltas outside both bands (e.g. very-small jitter spikes or
+	// ambiguous middle values) are intentionally not classified so they
+	// do not skew the drop estimate.
+	singleGapMin = 0.75
+	singleGapMax = 1.25
+	doubleGapMin = 1.5
+	doubleGapMax = 2.5
+)
 
 // fillGapStats classifies inter-PES PTS deltas into single / double /
 // larger gaps relative to the mode of the distribution. Results are
 // written into rep. PTS samples are sorted first so B-frame reordering
-// does not produce fake "gaps."
+// does not produce fake "gaps"; 33-bit PTS wrap is normalized first so
+// a single wrap boundary is not misclassified as a huge multi-frame
+// gap.
 func (a *Analyzer) fillGapStats(rep *VideoReport) {
 	if len(a.ptsSamples) < 3 {
 		return
 	}
 	sorted := make([]int64, len(a.ptsSamples))
 	copy(sorted, a.ptsSamples)
+
+	// Detect 33-bit wrap: if samples span nearly the full 2^33 range,
+	// the capture probably crossed the wrap boundary. Shift low samples
+	// up by 2^33 so sorting recovers the true chronological order.
+	if looksLikeWrap(sorted) {
+		threshold := pts33Max / 2
+		for i := range sorted {
+			if sorted[i] < threshold {
+				sorted[i] += pts33Max
+			}
+		}
+	}
 	sort.Slice(sorted, func(i, j int) bool { return sorted[i] < sorted[j] })
 
 	deltas := make([]int64, 0, len(sorted)-1)
@@ -200,12 +248,12 @@ func (a *Analyzer) fillGapStats(rep *VideoReport) {
 	for _, d := range deltas {
 		ratio := float64(d) / float64(modeBucket)
 		switch {
-		case ratio < 1.25:
+		case ratio >= singleGapMin && ratio <= singleGapMax:
 			rep.SingleGapCount++
-		case ratio <= 2.5:
+		case ratio >= doubleGapMin && ratio <= doubleGapMax:
 			rep.DoubleGapCount++
 			dropped++
-		default:
+		case ratio > doubleGapMax:
 			rep.LargerGapCount++
 			extra := int(ratio) - 1
 			if extra < 1 {
@@ -215,4 +263,21 @@ func (a *Analyzer) fillGapStats(rep *VideoReport) {
 		}
 	}
 	rep.DroppedFrameEst = dropped
+}
+
+// looksLikeWrap reports whether the sample set spans nearly the full
+// 2^33 PTS range, which typically means the capture crossed the wrap
+// boundary. The 1-minute safety margin avoids false positives on
+// legitimate near-max captures that never wrapped.
+func looksLikeWrap(samples []int64) bool {
+	var minV, maxV int64 = pts33Max, 0
+	for _, s := range samples {
+		if s < minV {
+			minV = s
+		}
+		if s > maxV {
+			maxV = s
+		}
+	}
+	return maxV-minV > pts33Max-60*ptsClockHz
 }
