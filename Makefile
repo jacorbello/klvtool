@@ -1,4 +1,4 @@
-.PHONY: fmt lint test test-integration test-data build
+.PHONY: fmt lint test test-integration test-data build man man-check
 
 GO ?= go
 GOLANGCI_LINT ?= golangci-lint
@@ -11,6 +11,10 @@ SAMPLE_TS ?= testdata/fixtures/sample.ts
 SAMPLE_SHA256 ?= 8667276b2c2fb36baa089b00e3978f55893cacf6e0d8f6e6d480bb934747cc79
 SAMPLE_URL ?= https://www.arcgis.com/sharing/rest/content/items/55ec6f32d5e342fcbfba376ca2cc409a/data
 SAMPLE_ZIP ?= $(CURDIR)/.cache/FMV_tutorial_data.zip
+MAN_DIR ?= man/man1
+# CI uses a fixed date for deterministic drift detection; local `make man`
+# stamps today's date so released pages show real timestamps.
+MAN_DATE ?= $(shell date -u +%Y-%m-%d)
 
 $(GOCACHE):
 	mkdir -p $(GOCACHE)
@@ -51,3 +55,15 @@ test-data:
 
 build: $(GOCACHE) $(BUILD_DIR)
 	GOCACHE=$(GOCACHE) $(GO) build -ldflags "-X github.com/jacorbello/klvtool/internal/version.version=$(VERSION)" -o $(BUILD_DIR)/$(BINARY) ./cmd/klvtool
+
+# Regenerate man pages from internal/cli CommandDefs. Local builds get a real
+# date; CI overrides with MAN_DATE=1970-01-01 via man-check.
+man: $(GOCACHE)
+	GOCACHE=$(GOCACHE) $(GO) run ./cmd/gen-manpages -out $(MAN_DIR) -date $(MAN_DATE) -version $(VERSION)
+
+# Drift check used in CI: regenerate with a fixed date so timestamps don't
+# pollute the diff, then fail if the working tree differs from what's
+# committed. Run `make man` locally and commit the result to fix.
+man-check: $(GOCACHE)
+	GOCACHE=$(GOCACHE) $(GO) run ./cmd/gen-manpages -out $(MAN_DIR) -date 1970-01-01 -version $(VERSION)
+	@git diff --exit-code -- $(MAN_DIR) || (echo "ERROR: man pages are out of date. Run 'make man' and commit the result." && exit 1)

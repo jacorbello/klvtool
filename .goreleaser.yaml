@@ -1,5 +1,14 @@
 version: 2
 
+# Regenerate man pages with the real release version and build date before
+# bundling, so users see "klvtool 1.2.0" / today's date in the .TH header
+# rather than the 1970-01-01 placeholder used for the deterministic CI drift
+# check. Committed pages stay at the placeholder date; release bundles get
+# fresh stamps.
+before:
+  hooks:
+    - go run ./cmd/gen-manpages -out man/man1 -date {{ .Date | date "2006-01-02" }} -version {{ .Version }}
+
 builds:
   - main: ./cmd/klvtool
     binary: klvtool
@@ -23,6 +32,9 @@ archives:
     files:
       - README.md
       - LICENSE*
+      # Ship man pages alongside the binary. Released archives include
+      # man/man1/klvtool*.1 which users can copy to their MANPATH.
+      - man/man1/*.1
 
 checksum:
   name_template: "checksums.txt"

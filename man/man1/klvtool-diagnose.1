@@ -1,0 +1,93 @@
+.TH KLVTOOL-DIAGNOSE 1 "1970-01-01" "klvtool dev" "User Commands"
+.SH "NAME"
+klvtool\-diagnose \- Run the full diagnostic pipeline: health check, transport inspect, video analysis, and KLV decode.
+.SH "SYNOPSIS"
+klvtool diagnose \-\-input <file.ts> [\-\-view auto|pretty|raw]
+.SH "DESCRIPTION"
+Run a one\-shot diagnostic pipeline against a single MPEG\-TS file: backend health check → transport inspection → H.264 video bitstream analysis (non\-fatal) → KLV decode of every likely metadata PID.
+.PP
+This is the right entry point for triaging a fresh mission file. The output is a single consolidated report ending in either a clean run or a `Stopped at: <stage>` line that names the failing stage. Video analysis reports a playability verdict (PLAYABLE / STALLS_IN_MSE / DEGRADED) for any H.264 stream — useful for catching missing IDR frames that prevent hls.js / MSE playback.
+.SH "OPTIONS"
+.TP
+\fB\-\-input\fR
+MPEG\-TS input path
+.TP
+\fB\-\-view\fR \fI(default auto)\fR
+presentation mode: auto, pretty, or raw
+.SH "EXAMPLES"
+Triage a fresh mission file end to end
+.RS 4
+.nf
+$ klvtool diagnose --input mission.ts
+.fi
+.RE
+.SH "TROUBLESHOOTING"
+.SS `Stopped at: health check`
+\fBLikely cause:\fR
+ffmpeg or ffprobe not found on PATH; the extraction backend cannot start.
+.PP
+\fBAction:\fR
+Install ffmpeg and re\-run. Confirm with `klvtool doctor`. The doctor output prints platform\-specific install steps.
+.SS `Stopped at: inspect`
+\fBLikely cause:\fR
+MPEG\-TS read or parse failure: the file is unreadable, severely truncated, or not actually a TS stream.
+.PP
+\fBAction:\fR
+Re\-pull the file from the source if possible. Otherwise run `klvtool inspect \-\-input <file>` directly to see the underlying error and check whether the file has a valid TS sync byte and program map.
+.SS `Stopped at: decode`
+\fBLikely cause:\fR
+The metadata stream is structurally invalid for the auto\-detected MISB spec, or transport corruption is severe enough to break KLV framing on every recovery attempt.
+.PP
+\fBAction:\fR
+Run `klvtool decode \-\-input <file> \-\-pid <PID> \-\-format text` to see per\-packet diagnostics. If decode fails everywhere, run `klvtool extract` then `klvtool packetize \-\-mode best\-effort` to surface byte offsets where the wire format diverges, and escalate to platform / sensor engineering with that context.
+.SS `No likely metadata streams found.`
+\fBLikely cause:\fR
+The transport is healthy but the program map advertises no KLV / data PIDs. Either the sensor was not configured to emit metadata for this capture, or the metadata is muxed under a stream type klvtool does not yet recognize.
+.PP
+\fBAction:\fR
+Confirm the platform was emitting KLV during this mission (sensor config, mission profile). Run `klvtool inspect \-\-input <file>` to see the full PID inventory and consider running `klvtool decode \-\-input <file>` (no \-\-pid) to attempt decode across every PID.
+.SS Decode succeeds but reports many error diagnostics
+\fBLikely cause:\fR
+Likely a non\-compliant or pre\-1.x sensor: structural validation against ST 0601 fails on individual tags but framing is intact.
+.PP
+\fBAction:\fR
+Inspect the diagnostic codes (`tag_decode_error`, `unknown_tag`, `validation_failed`). If a vendor\-specific spec is in use, try `\-\-schema <urn>` to override auto\-detection. If results are still poor, capture an offending packet's bytes via `\-\-raw` and escalate with the diagnostic context.
+.SS Video verdict `STALLS_IN_MSE`
+\fBLikely cause:\fR
+The H.264 stream is missing IDR frames or SPS/PPS — common with some encoder configurations. The metadata path is unaffected; only browser\-based MSE playback (hls.js, video.js) stalls.
+.PP
+\fBAction:\fR
+If you only need metadata, ignore the verdict — KLV decode is independent. For playback, re\-encode with libx264 forcing an IDR every keyframe; the diagnose output prints a ready\-to\-use `ffmpeg ... libx264 \-g 60 \-keyint_min 60 \-sc_threshold 0` command in the FixHint when applicable.
+.SS Video verdict `DEGRADED`
+\fBLikely cause:\fR
+IDRs present but PES PTS deltas indicate dropped frames in transit.
+.PP
+\fBAction:\fR
+Treat as a transport\-quality signal. If lossy delivery is the norm for this feed, the file is still usable for analysis; if not, re\-pull or investigate the upstream link.
+.SH "EXIT STATUS"
+.TP
+\fB0\fR
+pipeline completed (with or without warnings)
+.TP
+\fB1\fR
+a stage failed (health check, inspect, or decode); see `Stopped at: <stage>` for which
+.TP
+\fB2\fR
+invalid usage
+.SH "ENVIRONMENT"
+.TP
+\fBNO_COLOR\fR
+disable ANSI color in pretty output
+.SH "REQUIRED TOOLS"
+ffmpeg, ffprobe
+.SH "SEE ALSO"
+\fBklvtool\fR(1),
+\fBklvtool\-doctor\fR(1),
+\fBklvtool\-inspect\fR(1),
+\fBklvtool\-decode\fR(1),
+\fBklvtool\-extract\fR(1),
+\fBklvtool\-packetize\fR(1)
+.SH "EXTERNAL REFERENCES"
+.TP
+\fBMISB ST 0601.19 — UAS Datalink Local Set\fR
+https://nsgreg.nga.mil/doc/view?i=5337

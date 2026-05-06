@@ -1,0 +1,37 @@
+.TH KLVTOOL-COMPLETION 1 "1970-01-01" "klvtool dev" "User Commands"
+.SH "NAME"
+klvtool\-completion \- Generate shell completion scripts (bash, zsh, fish).
+.SH "SYNOPSIS"
+klvtool completion <bash|zsh|fish>
+.SH "DESCRIPTION"
+Print a shell completion script for the requested shell on stdout. Source the output to enable tab\-completion of subcommands and flags.
+.SH "EXAMPLES"
+Enable bash completion in the current session
+.RS 4
+.nf
+$ eval "$(klvtool completion bash)"
+.fi
+.RE
+.PP
+Enable zsh completion
+.RS 4
+.nf
+$ eval "$(klvtool completion zsh)"
+.fi
+.RE
+.PP
+Enable fish completion
+.RS 4
+.nf
+$ klvtool completion fish | source
+.fi
+.RE
+.SH "EXIT STATUS"
+.TP
+\fB0\fR
+success
+.TP
+\fB2\fR
+invalid usage (missing or unsupported shell argument)
+.SH "SEE ALSO"
+\fBklvtool\fR(1)

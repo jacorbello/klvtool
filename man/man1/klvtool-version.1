@@ -1,0 +1,35 @@
+.TH KLVTOOL-VERSION 1 "1970-01-01" "klvtool dev" "User Commands"
+.SH "NAME"
+klvtool\-version \- Print the klvtool version, optionally checking GitHub for a newer release.
+.SH "SYNOPSIS"
+klvtool version [\-\-check]
+.SH "DESCRIPTION"
+Print the embedded klvtool version. With \-\-check, query the GitHub API for the latest release tag and report whether the local build is current.
+.SH "OPTIONS"
+.TP
+\fB\-\-check\fR
+check GitHub for a newer release
+.SH "EXAMPLES"
+Print the version
+.RS 4
+.nf
+$ klvtool version
+.fi
+.RE
+.PP
+Check for a newer release
+.RS 4
+.nf
+$ klvtool version --check
+.fi
+.RE
+.SH "EXIT STATUS"
+.TP
+\fB0\fR
+success (always — update\-check failures are reported but do not change exit code)
+.TP
+\fB2\fR
+invalid usage
+.SH "SEE ALSO"
+\fBklvtool\fR(1),
+\fBklvtool\-update\fR(1)
