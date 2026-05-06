@@ -1,0 +1,83 @@
+.TH KLVTOOL-DECODE 1 "2026-05-06" "klvtool 1.2.0" "User Commands"
+.SH "NAME"
+klvtool\-decode \- Decode MISB ST 0601 KLV records.
+.SH "SYNOPSIS"
+klvtool decode \-\-input <file.ts> [\-\-pid N]
+.SH "DESCRIPTION"
+Decode MISB ST 0601 KLV.
+.PP
+Second paragraph for the body.
+.SH "OPTIONS"
+.TP
+\fB\-\-format\fR \fI(default ndjson)\fR
+output format: ndjson, text, csv
+.TP
+\fB\-\-input\fR
+MPEG\-TS input path
+.TP
+\fB\-\-pid\fR
+limit decoding to one PID (0 = all)
+.TP
+\fB\-\-strict\fR
+exit non\-zero if any error diagnostic fires
+.SH "OUTPUT FORMAT"
+NDJSON, one record per packet.
+.SS Fields
+.TP
+\fBschema\fR (string)
+spec URN
+.TP
+\fBitems[].value\fR (polymorphic; varies)
+per\-tag type
+.SS Time semantics
+Tag 2 is RFC 3339 microsecond UTC.
+.SS Schema stability
+Schema is stable within 1.x.
+.SS Common MISB ST 0601 tags
+.TP
+\fBTag 2 \(em Precision Time Stamp\fR
+wall\-clock at sample time (UTC)
+.TP
+\fBTag 13 \(em Sensor Latitude\fR (degrees)
+WGS\-84
+.SH "EXAMPLES"
+decode one PID
+.RS 4
+.nf
+$ klvtool decode --input mission.ts --pid 257
+.fi
+.RE
+.PP
+decode every PID
+.RS 4
+.nf
+$ klvtool decode --input mission.ts
+.fi
+.RE
+.SH "EXIT STATUS"
+.TP
+\fB0\fR
+success
+.TP
+\fB1\fR
+decode failure
+.TP
+\fB2\fR
+invalid usage
+.SH "ENVIRONMENT"
+.TP
+\fBNO_COLOR\fR
+disable ANSI color
+.SH "FILES"
+.TP
+\fB<out>\fR
+output destination
+.SH "REQUIRED TOOLS"
+ffmpeg, ffprobe
+.SH "SEE ALSO"
+\fBklvtool\fR(1),
+\fBklvtool\-inspect\fR(1)
+.SH "EXTERNAL REFERENCES"
+.TP
+\fBMISB ST 0601.19\fR
+https://nsgreg.nga.mil/doc/view?i=5337

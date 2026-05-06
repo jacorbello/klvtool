@@ -15,6 +15,7 @@ import (
 	"strings"
 
 	ffmpegbackend "github.com/jacorbello/klvtool/internal/backends/ffmpeg"
+	"github.com/jacorbello/klvtool/internal/cli/commanddef"
 	"github.com/jacorbello/klvtool/internal/extract"
 	"github.com/jacorbello/klvtool/internal/klv"
 	"github.com/jacorbello/klvtool/internal/klv/record"
@@ -22,6 +23,34 @@ import (
 	"github.com/jacorbello/klvtool/internal/model"
 	"github.com/jacorbello/klvtool/internal/packetize"
 )
+
+// decodeFlags holds parsed --flag values for the decode subcommand.
+type decodeFlags struct {
+	inputPath string
+	format    string
+	raw       bool
+	strict    bool
+	pid       int
+	outPath   string
+	schema    string
+	view      string
+	step      bool
+}
+
+func decodeFlagSet(v *decodeFlags) *flag.FlagSet {
+	fs := flag.NewFlagSet("decode", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	fs.StringVar(&v.inputPath, "input", "", "MPEG-TS input path")
+	fs.StringVar(&v.format, "format", "ndjson", "output format: ndjson, text, or csv")
+	fs.BoolVar(&v.raw, "raw", false, "include raw bytes per item (hex in text/csv, base64 in NDJSON)")
+	fs.BoolVar(&v.strict, "strict", false, "exit non-zero if any error-severity diagnostic is emitted")
+	fs.IntVar(&v.pid, "pid", 0, "limit decoding to a specific KLV stream PID (0 = all)")
+	fs.StringVar(&v.outPath, "out", "", "write output to a file instead of stdout")
+	fs.StringVar(&v.schema, "schema", "", "override auto-detection with a specific spec URN")
+	fs.StringVar(&v.view, "view", string(viewAuto), "presentation mode: auto, pretty, or raw")
+	fs.BoolVar(&v.step, "step", false, "step through decoded packets interactively")
+	return fs
+}
 
 // mpegTSPIDMax is the highest valid MPEG-TS packet identifier (13-bit field).
 const mpegTSPIDMax = 0x1FFF
@@ -154,28 +183,8 @@ func (c *DecodeCommand) Execute(args []string) int {
 		return 0
 	}
 
-	fs := flag.NewFlagSet("decode", flag.ContinueOnError)
-	fs.SetOutput(io.Discard)
-	var (
-		inputPath string
-		format    string
-		raw       bool
-		strict    bool
-		pid       int
-		outPath   string
-		schema    string
-		view      string
-		step      bool
-	)
-	fs.StringVar(&inputPath, "input", "", "path to the MPEG-TS input file")
-	fs.StringVar(&format, "format", "ndjson", "output format: ndjson, text, or csv")
-	fs.BoolVar(&raw, "raw", false, "include raw bytes and units per item")
-	fs.BoolVar(&strict, "strict", false, "exit 1 if any error-severity diagnostic is emitted")
-	fs.IntVar(&pid, "pid", 0, "limit to a specific KLV data stream PID (0 = all)")
-	fs.StringVar(&outPath, "out", "", "write output to a file instead of stdout")
-	fs.StringVar(&schema, "schema", "", "override auto-detection with a specific spec URN")
-	fs.StringVar(&view, "view", string(viewAuto), "presentation mode: auto, pretty, or raw")
-	fs.BoolVar(&step, "step", false, "step through decoded packets interactively")
+	var v decodeFlags
+	fs := decodeFlagSet(&v)
 
 	if err := fs.Parse(args); err != nil {
 		if err == flag.ErrHelp {
@@ -186,6 +195,8 @@ func (c *DecodeCommand) Execute(args []string) int {
 		c.writeError(c.Err, model.InvalidUsage(err))
 		return usageExitCode
 	}
+	inputPath, format, raw, strict, pid, outPath, schema, view, step :=
+		v.inputPath, v.format, v.raw, v.strict, v.pid, v.outPath, v.schema, v.view, v.step
 	if len(fs.Args()) > 0 {
 		c.writeUsage(c.Err)
 		c.writeError(c.Err, model.InvalidUsage(fmt.Errorf("unsupported arguments: %v", fs.Args())))
@@ -403,17 +414,7 @@ func (c *DecodeCommand) Execute(args []string) int {
 }
 
 func (c *DecodeCommand) writeUsage(w io.Writer) {
-	if w == nil {
-		return
-	}
-	fmt.Fprintln(w, "Usage: klvtool decode --input <file.ts> [--format ndjson|text|csv] [--view auto|pretty|raw] [--step] [--raw] [--strict] [--pid N] [--out path] [--schema urn]") //nolint:errcheck
-	fmt.Fprintln(w)                                                                                                                                                                  //nolint:errcheck
-	fmt.Fprintln(w, "Decode MISB ST 0601 KLV metadata from an MPEG-TS file.")                                                                                                        //nolint:errcheck
-	fmt.Fprintln(w)                                                                                                                                                                  //nolint:errcheck
-	fmt.Fprintln(w, "Use this after inspect to validate a likely metadata PID or to review packets in a terminal-friendly view.")                                                    //nolint:errcheck
-	fmt.Fprintln(w)                                                                                                                                                                  //nolint:errcheck
-	fmt.Fprintln(w, "The --raw flag includes raw bytes per item: hex (0x...) in text and csv formats, base64 in NDJSON.")                                                            //nolint:errcheck
-	fmt.Fprintln(w, "Use --step for one-handed packet navigation: r=next, w=previous, d=next diagnostic, e=next error, q=quit.")                                                     //nolint:errcheck
+	commanddef.RenderHelp(decodeDef, decodeFlagSet(&decodeFlags{}), w)
 }
 
 func (c *DecodeCommand) writeError(w io.Writer, err error) {
@@ -749,6 +750,88 @@ func formatDiagnosticContext(d record.Diagnostic) string {
 		return ""
 	}
 	return " [" + strings.Join(parts, ", ") + "]"
+}
+
+// Definition returns the CommandDef driving --help and man-page generation.
+func (c *DecodeCommand) Definition() commanddef.CommandDef { return decodeDef }
+
+// decodeDef captures the documentation for `klvtool decode`.
+//
+// Keep flag descriptions in decodeFlagSet — they are pulled into the rendered
+// output via flag.FlagSet.VisitAll. Anything below describes prose, examples,
+// and the analyst-facing schema reference for downstream pipelines.
+var decodeDef = commanddef.CommandDef{
+	Name:       "klvtool-decode",
+	Subcommand: "decode",
+	Synopsis:   "Decode MISB ST 0601 KLV records from an MPEG-TS file.",
+	UsageLine:  "klvtool decode --input <file.ts> [--format ndjson|text|csv] [--pid N] [--out <path>] [--strict] [--raw] [--step] [--view auto|pretty|raw] [--schema <urn>]",
+	Description: "Decode MISB ST 0601 KLV metadata from an MPEG-TS file into typed records.\n" +
+		"\n" +
+		"Use this after `klvtool inspect` to validate a likely metadata PID or to review packets in a terminal-friendly view. The --raw flag includes raw bytes per item: hex (0x...) in text and csv formats, base64 in NDJSON. The --step flag enables one-handed packet navigation in pretty text view: r=next, w=previous, d=next diagnostic, e=next error, q=quit.",
+	Examples: []commanddef.Example{
+		{
+			Comment: "Decode every metadata record as NDJSON for downstream pipelines",
+			Command: "klvtool decode --input mission.ts --format ndjson --out frames.ndjson",
+		},
+		{
+			Comment: "Decode just one PID after `klvtool inspect` identifies it",
+			Command: "klvtool decode --input mission.ts --pid 257 --format text",
+		},
+		{
+			Comment: "Step through packets with diagnostics highlighted",
+			Command: "klvtool decode --input mission.ts --pid 257 --step",
+		},
+	},
+	OutputFormat: &commanddef.OutputDoc{
+		Format: "NDJSON, one JSON object per decoded KLV packet (default --format=ndjson). The --format=text and --format=csv variants are for human review and are not contractual.",
+		Fields: []commanddef.FieldDef{
+			{Name: "schema", Type: "string", Notes: "spec URN of the registered MISB Local Set used to decode this packet (e.g. \"urn:misb:KLV:bin:0601.19\")"},
+			{Name: "packetIndex", Type: "integer", Notes: "0-based index of this packet within the decoded run"},
+			{Name: "lsVersion", Type: "integer", Notes: "MISB ST 0601 Local Set version reported by tag 65, or 0 if absent"},
+			{Name: "valueLength", Type: "integer", Units: "bytes", Notes: "BER-encoded value length of the outer Local Set"},
+			{Name: "checksum", Type: "object", Notes: "{expected, computed, valid}; tag 1 must match the engine's recomputation"},
+			{Name: "items", Type: "array", Notes: "decoded tags: {tag, name, value, units?, raw?}"},
+			{Name: "items[].value", Type: "polymorphic", Notes: "type follows the spec: int/uint/float/string/bool/enum/time. ST 0601 \"error indicator\" sentinels marshal to JSON null."},
+			{Name: "items[].raw", Type: "string", Notes: "present only with --raw; base64-encoded value bytes"},
+			{Name: "diagnostics", Type: "array", Notes: "structural and per-tag findings: {severity, code, message, tag?, tagName?, actual?, expected?, raw?}"},
+		},
+		TimeSemantics: "ST 0601 tag 2 (Precision Time Stamp) decodes to a TimeValue and serializes as RFC 3339 with microsecond precision in UTC, e.g. \"2024-01-15T14:23:45.123456Z\". When correlating frames against a wall-clock event, prefer tag 2 over MPEG-TS PES PTS — PTS is transport-relative and resets on stream restarts.",
+		Stability:     "Schema is stable within klvtool 1.x: new fields are additive; existing field names and types do not change in minor releases. Diagnostic codes may be added but existing codes will not be repurposed.",
+	},
+	MISBTagSummary: []commanddef.MISBTag{
+		{Number: 1, Name: "Checksum", Notes: "16-bit BCC over the packet; klvtool recomputes and reports valid/mismatch/malformed/N/A"},
+		{Number: 2, Name: "Precision Time Stamp", Notes: "wall-clock at sample time (UTC); preferred timestamp for cross-correlation"},
+		{Number: 5, Name: "Platform Heading Angle", Units: "degrees", Notes: "0 = north, clockwise"},
+		{Number: 6, Name: "Platform Pitch Angle", Units: "degrees"},
+		{Number: 7, Name: "Platform Roll Angle", Units: "degrees"},
+		{Number: 13, Name: "Sensor Latitude", Units: "degrees", Notes: "WGS-84"},
+		{Number: 14, Name: "Sensor Longitude", Units: "degrees", Notes: "WGS-84"},
+		{Number: 15, Name: "Sensor True Altitude", Units: "meters"},
+		{Number: 23, Name: "Frame Center Latitude", Units: "degrees", Notes: "WGS-84; the geo-anchor most GIS workflows want"},
+		{Number: 24, Name: "Frame Center Longitude", Units: "degrees", Notes: "WGS-84; pair with tag 23"},
+		{Number: 25, Name: "Frame Center Elevation", Units: "meters"},
+		{Number: 65, Name: "UAS LDS Version Number", Notes: "spec revision the producer claims to comply with"},
+		{Number: 94, Name: "MISB Tag (deprecated key list)", Notes: "rarely emitted by modern producers; surfaced for completeness"},
+	},
+	ExitCodes: []commanddef.ExitCode{
+		{Code: 0, Meaning: "success — decoded zero or more packets without errors"},
+		{Code: 1, Meaning: "decode failure (TS read error, ffmpeg failure, output write failure, or --strict and any error-severity diagnostic fired)"},
+		{Code: 2, Meaning: "invalid usage (missing or malformed flags, unknown schema URN, --step requested without an interactive terminal)"},
+	},
+	EnvVars: []commanddef.EnvVar{
+		{Name: "NO_COLOR", Description: "disable ANSI color in pretty output, regardless of TTY detection"},
+	},
+	RequiredTools: []string{"ffmpeg", "ffprobe"},
+	SeeAlso: []commanddef.SeeAlsoRef{
+		{Name: "klvtool", Section: 1},
+		{Name: "klvtool-inspect", Section: 1},
+		{Name: "klvtool-extract", Section: 1},
+		{Name: "klvtool-diagnose", Section: 1},
+	},
+	ExternalRefs: []commanddef.ExternalRef{
+		{Title: "MISB ST 0601.19 — UAS Datalink Local Set", URL: "https://nsgreg.nga.mil/doc/view?i=5337"},
+		{Title: "MISB ST 1402 — MPEG-2 Transport of Compressed Video Metadata", URL: "https://nsgreg.nga.mil/doc/view?i=5135"},
+	},
 }
 
 // liftPacketizeDiagnostics converts packetize.Diagnostic entries into

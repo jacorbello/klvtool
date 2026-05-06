@@ -11,11 +11,27 @@ import (
 	"strings"
 
 	ffmpegbackend "github.com/jacorbello/klvtool/internal/backends/ffmpeg"
+	"github.com/jacorbello/klvtool/internal/cli/commanddef"
 	"github.com/jacorbello/klvtool/internal/envcheck"
 	"github.com/jacorbello/klvtool/internal/extract"
 	"github.com/jacorbello/klvtool/internal/model"
 	"github.com/jacorbello/klvtool/internal/output"
 )
+
+type extractFlags struct {
+	inputPath string
+	outDir    string
+	view      string
+}
+
+func extractFlagSet(v *extractFlags) *flag.FlagSet {
+	fs := flag.NewFlagSet("extract", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	fs.StringVar(&v.inputPath, "input", "", "MPEG-TS input path")
+	fs.StringVar(&v.outDir, "out", "", "output directory for extracted payloads and manifest.ndjson")
+	fs.StringVar(&v.view, "view", string(viewAuto), "presentation mode: auto, pretty, or raw")
+	return fs
+}
 
 type extractRunner interface {
 	Run(context.Context, extract.RunRequest) (extract.RunResult, error)
@@ -66,16 +82,8 @@ func (c *ExtractCommand) Execute(args []string) int {
 		return 0
 	}
 
-	fs := flag.NewFlagSet("extract", flag.ContinueOnError)
-	fs.SetOutput(io.Discard)
-
-	var inputPath string
-	var outDir string
-	var view string
-
-	fs.StringVar(&inputPath, "input", "", "path to the MPEG-TS input file")
-	fs.StringVar(&outDir, "out", "", "directory for extracted payloads and manifest")
-	fs.StringVar(&view, "view", string(viewAuto), "presentation mode: auto, pretty, or raw")
+	var v extractFlags
+	fs := extractFlagSet(&v)
 
 	if err := fs.Parse(args); err != nil {
 		if err == flag.ErrHelp {
@@ -91,6 +99,7 @@ func (c *ExtractCommand) Execute(args []string) int {
 		c.writeError(c.Err, model.InvalidUsage(fmt.Errorf("unsupported arguments: %v", fs.Args())))
 		return usageExitCode
 	}
+	inputPath, outDir, view := v.inputPath, v.outDir, v.view
 
 	if strings.TrimSpace(inputPath) == "" {
 		c.writeUsage(c.Err)
@@ -283,17 +292,65 @@ func (c *ExtractCommand) manifestWriter(w io.Writer) manifestWriter {
 }
 
 func (c *ExtractCommand) writeUsage(w io.Writer) {
-	if w == nil {
-		return
-	}
-	_, _ = fmt.Fprintln(w, "Usage: klvtool extract --input <file.ts> --out <dir>")
-	_, _ = fmt.Fprintln(w)
-	_, _ = fmt.Fprintln(w, "Validate backend availability, extract KLV/data payloads, and write manifest output.")
-	_, _ = fmt.Fprintln(w)
-	_, _ = fmt.Fprintln(w, "Use this when you want raw checkpoint artifacts for packetize or bug reports.")
-	_, _ = fmt.Fprintln(w)
-	_, _ = fmt.Fprintln(w, "Required tools:")
-	_, _ = fmt.Fprintln(w, "  ffmpeg:  ffmpeg, ffprobe")
+	commanddef.RenderHelp(extractDef, extractFlagSet(&extractFlags{}), w)
+}
+
+// Definition returns the CommandDef driving --help and man-page generation.
+func (c *ExtractCommand) Definition() commanddef.CommandDef { return extractDef }
+
+var extractDef = commanddef.CommandDef{
+	Name:       "klvtool-extract",
+	Subcommand: "extract",
+	Synopsis:   "Extract raw KLV/data payloads from an MPEG-TS file and write a manifest.",
+	UsageLine:  "klvtool extract --input <file.ts> --out <dir> [--view auto|pretty|raw]",
+	Description: "Validate backend availability and extract raw KLV/data PES payloads from an MPEG-TS file. Each payload is written as a separate file under <out>, with one NDJSON line per record appended to <out>/manifest.ndjson capturing transport metadata (PID, packet offset, PTS/DTS), payload location, and a SHA-256 hash for chain-of-custody. Use this when you need preserved raw artifacts for `klvtool packetize`, downstream forensics, or bug reports.",
+	Examples: []commanddef.Example{
+		{
+			Comment: "Extract all data-stream payloads to a directory",
+			Command: "klvtool extract --input mission.ts --out ./mission-extract",
+		},
+	},
+	OutputFormat: &commanddef.OutputDoc{
+		Format: "Each invocation writes payload files under <out>/ plus a manifest.ndjson file with one Record per line.",
+		Fields: []commanddef.FieldDef{
+			{Name: "schemaVersion", Type: "string", Notes: "manifest envelope version"},
+			{Name: "sourceInputPath", Type: "string", Notes: "the --input path as provided, captured for chain of custody"},
+			{Name: "backendName", Type: "string", Notes: "extraction backend name (e.g. \"ffmpeg\")"},
+			{Name: "backendVersion", Type: "string", Notes: "detected backend version"},
+			{Name: "records[].recordId", Type: "string", Notes: "stable identifier; matches the payload filename stem"},
+			{Name: "records[].pid", Type: "integer", Notes: "MPEG-TS PID this payload came from"},
+			{Name: "records[].transportStreamId", Type: "integer", Notes: "TS ID if the program map carried one"},
+			{Name: "records[].packetOffset", Type: "integer", Units: "bytes", Notes: "byte offset of the originating TS packet"},
+			{Name: "records[].packetIndex", Type: "integer", Notes: "0-based index of the originating TS packet"},
+			{Name: "records[].continuityCounter", Type: "integer", Notes: "TS continuity counter value at extraction"},
+			{Name: "records[].pts", Type: "integer", Units: "90 kHz ticks", Notes: "PES PTS if present (transport-relative; not wall-clock)"},
+			{Name: "records[].dts", Type: "integer", Units: "90 kHz ticks", Notes: "PES DTS if present"},
+			{Name: "records[].payloadPath", Type: "string", Notes: "relative path to the extracted payload file under <out>"},
+			{Name: "records[].payloadSize", Type: "integer", Units: "bytes"},
+			{Name: "records[].payloadHash", Type: "string", Notes: "SHA-256 hex digest of the payload bytes"},
+			{Name: "records[].warnings", Type: "array", Notes: "extraction-time warnings (empty array if clean)"},
+		},
+		TimeSemantics: "PTS/DTS are MPEG-TS transport timestamps in 90 kHz ticks, relative to an unspecified clock origin. They are not wall-clock; use them to order payloads, not to correlate against a real-world event. For wall-clock, decode the metadata stream and read MISB ST 0601 tag 2.",
+		Stability:     "Manifest schema is stable within klvtool 1.x: new fields are additive.",
+	},
+	Files: []commanddef.FileRef{
+		{Path: "<out>/manifest.ndjson", Description: "extraction manifest (one Record per line)"},
+		{Path: "<out>/<recordId>.bin", Description: "raw payload files, one per extracted PES unit"},
+	},
+	ExitCodes: []commanddef.ExitCode{
+		{Code: 0, Meaning: "success"},
+		{Code: 1, Meaning: "transport read failure, output write failure, or backend unavailable"},
+		{Code: 2, Meaning: "invalid usage"},
+	},
+	EnvVars: []commanddef.EnvVar{
+		{Name: "NO_COLOR", Description: "disable ANSI color in pretty output"},
+	},
+	RequiredTools: []string{"ffmpeg", "ffprobe"},
+	SeeAlso: []commanddef.SeeAlsoRef{
+		{Name: "klvtool", Section: 1},
+		{Name: "klvtool-packetize", Section: 1},
+		{Name: "klvtool-decode", Section: 1},
+	},
 }
 
 func (c *ExtractCommand) writeError(w io.Writer, err error) {
