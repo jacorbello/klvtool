@@ -165,7 +165,13 @@ func (a *Analyzer) Report() VideoReport {
 	case len(p0) > 0:
 		rep.Verdict = VerdictStallsInMSE
 		rep.Reasons = p0
-		rep.FixHint = libx264FixHint
+		// FixHint is the libx264 IDR-synthesis recipe; only attach it
+		// when the stall is actually caused by a missing IDR. SPS/PPS
+		// gaps point to a different fix (parameter-set repair) and the
+		// IDR recipe would mislead users.
+		if a.idrCount == 0 {
+			rep.FixHint = libx264FixHint
+		}
 	case len(degraded) > 0:
 		rep.Verdict = VerdictDegraded
 		rep.Reasons = degraded

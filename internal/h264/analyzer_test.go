@@ -297,11 +297,24 @@ func TestAnalyzerFixHintOnlyForStalls(t *testing.T) {
 		t.Errorf("playable FixHint should be empty, got %q", rep.FixHint)
 	}
 
-	// Stalls: hint must mention libx264.
+	// Stalls due to missing IDR: hint must mention libx264.
 	a = NewAnalyzer(0x0100)
 	a.Feed(mkPES(t, 0x0100, 0, NALSPS, NALPPS, NALSlice))
 	rep = a.Report()
 	if rep.FixHint == "" {
 		t.Errorf("stalls FixHint should be populated")
+	}
+
+	// Stalls due to missing SPS only (IDR present): FixHint must be
+	// empty — the libx264 recipe is framed as IDR synthesis, which
+	// would mislead users when the actual gap is a parameter set.
+	a = NewAnalyzer(0x0100)
+	a.Feed(mkPES(t, 0x0100, 0, NALPPS, NALIDR))
+	rep = a.Report()
+	if rep.Verdict != VerdictStallsInMSE {
+		t.Fatalf("verdict = %q, want STALLS_IN_MSE (reasons: %v)", rep.Verdict, rep.Reasons)
+	}
+	if rep.FixHint != "" {
+		t.Errorf("FixHint should be empty when IDR is present, got %q", rep.FixHint)
 	}
 }
