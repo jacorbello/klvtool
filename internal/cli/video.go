@@ -66,8 +66,8 @@ func videoPIDs(table ts.StreamTable) map[uint16]uint8 {
 // defaultVideoAnalyze is the production VideoAnalyze implementation.
 // It opens path, re-scans the file with video PIDs selected, feeds
 // each completed PES unit into a per-PID h264.Analyzer, and returns
-// one VideoReport per video PID (empty slice if there are no video
-// streams).
+// one VideoReport per video PID. Returns (nil, nil) when the table
+// has no video streams to analyze.
 func defaultVideoAnalyze(path string, table ts.StreamTable) ([]h264.VideoReport, error) {
 	pids := videoPIDs(table)
 	if len(pids) == 0 {
