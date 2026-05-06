@@ -106,7 +106,7 @@ func (c *RootCommand) writeUsage(w io.Writer) {
 	}
 	commanddef.RenderHelp(c.rootDef(), nil, w)
 	if c != nil && c.Version != "" {
-		fmt.Fprintf(w, "\nVersion: %s\n", c.Version)
+		_, _ = fmt.Fprintf(w, "\nVersion: %s\n", c.Version)
 	}
 }
 

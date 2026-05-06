@@ -70,7 +70,6 @@ func writePage(path string, def commanddef.CommandDef, fs *flag.FlagSet, opts co
 	if err != nil {
 		return err
 	}
-	defer f.Close()
 	commanddef.RenderMan(def, fs, opts, f)
-	return nil
+	return f.Close()
 }

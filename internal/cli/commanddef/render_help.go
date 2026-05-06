@@ -8,6 +8,25 @@ import (
 	"strings"
 )
 
+// rendW absorbs write errors. Renderers don't return errors, and there is
+// nothing meaningful to do if the underlying writer fails mid-stream — the
+// caller's io.Writer.Close (or its absence) is the failure surface.
+type rendW struct{ w io.Writer }
+
+func (r *rendW) printf(format string, args ...any) {
+	if r == nil || r.w == nil {
+		return
+	}
+	_, _ = fmt.Fprintf(r.w, format, args...)
+}
+
+func (r *rendW) println(args ...any) {
+	if r == nil || r.w == nil {
+		return
+	}
+	_, _ = fmt.Fprintln(r.w, args...)
+}
+
 // RenderHelp writes a terse --help block for one command. It is intentionally
 // less verbose than the man page: the full prose, workflows, glossary, and
 // troubleshooting tables live there. Here we want what an operator typing
@@ -19,75 +38,76 @@ func RenderHelp(def CommandDef, fs *flag.FlagSet, w io.Writer) {
 	if w == nil {
 		return
 	}
+	rw := &rendW{w: w}
 
 	if def.UsageLine != "" {
-		fmt.Fprintf(w, "Usage: %s\n", def.UsageLine)
+		rw.printf("Usage: %s\n", def.UsageLine)
 	}
 
 	if def.Description != "" {
-		fmt.Fprintln(w)
-		writeWrapped(w, def.Description, "")
+		rw.println()
+		writeWrapped(rw, def.Description, "")
 	}
 
 	if fs != nil && hasFlags(fs) {
-		fmt.Fprintln(w)
-		fmt.Fprintln(w, "Flags:")
-		writeFlags(w, fs)
+		rw.println()
+		rw.println("Flags:")
+		writeFlags(rw, fs)
 	}
 
 	if len(def.Subcommands) > 0 {
-		fmt.Fprintln(w)
-		fmt.Fprintln(w, "Commands:")
+		rw.println()
+		rw.println("Commands:")
 		width := subcommandColumnWidth(def.Subcommands)
 		for _, sc := range def.Subcommands {
-			fmt.Fprintf(w, "  %-*s  %s\n", width, sc.Name, sc.Synopsis)
+			rw.printf("  %-*s  %s\n", width, sc.Name, sc.Synopsis)
 		}
 	}
 
 	if len(def.Workflows) > 0 {
-		fmt.Fprintln(w)
-		fmt.Fprintln(w, "Common workflows:")
+		rw.println()
+		rw.println("Common workflows:")
 		for _, wf := range def.Workflows {
-			fmt.Fprintf(w, "  %s\n", wf.Title)
+			rw.printf("  %s\n", wf.Title)
 			steps := commandChain(wf.Steps)
 			if steps != "" {
-				fmt.Fprintf(w, "    %s\n", steps)
+				rw.printf("    %s\n", steps)
 			}
 		}
-		fmt.Fprintln(w)
-		fmt.Fprintln(w, "  See klvtool(1) for the full step-by-step walkthrough of each workflow.")
+		rw.println()
+		rw.println("  See klvtool(1) for the full step-by-step walkthrough of each workflow.")
 	}
 
 	if len(def.Examples) > 0 {
-		fmt.Fprintln(w)
-		fmt.Fprintln(w, "Examples:")
+		rw.println()
+		rw.println("Examples:")
 		for i, ex := range def.Examples {
 			if i > 0 {
-				fmt.Fprintln(w)
+				rw.println()
 			}
 			if ex.Comment != "" {
-				fmt.Fprintf(w, "  # %s\n", ex.Comment)
+				rw.printf("  # %s\n", ex.Comment)
 			}
-			fmt.Fprintf(w, "  %s\n", ex.Command)
+			rw.printf("  %s\n", ex.Command)
 		}
 	}
 
 	if len(def.RequiredTools) > 0 {
-		fmt.Fprintln(w)
-		fmt.Fprintf(w, "Required tools: %s\n", strings.Join(def.RequiredTools, ", "))
+		rw.println()
+		rw.printf("Required tools: %s\n", strings.Join(def.RequiredTools, ", "))
 	}
 
 	if len(def.ExitCodes) > 0 {
-		fmt.Fprintln(w)
-		fmt.Fprintln(w, "Exit status:")
+		rw.println()
+		rw.println("Exit status:")
 		for _, ec := range def.ExitCodes {
-			fmt.Fprintf(w, "  %d  %s\n", ec.Code, ec.Meaning)
+			rw.printf("  %d  %s\n", ec.Code, ec.Meaning)
 		}
 	}
 
 	if len(def.SeeAlso) > 0 {
-		fmt.Fprintln(w)
-		fmt.Fprintf(w, "See also: %s\n", joinSeeAlso(def.SeeAlso))
+		rw.println()
+		rw.printf("See also: %s\n", joinSeeAlso(def.SeeAlso))
 	}
 }
 
@@ -100,7 +120,7 @@ func hasFlags(fs *flag.FlagSet) bool {
 // writeFlags emits one line per flag, alphabetically. Default values are
 // elided when they are empty/false/zero — an operator scanning help should
 // see meaningful defaults, not visual noise.
-func writeFlags(w io.Writer, fs *flag.FlagSet) {
+func writeFlags(rw *rendW, fs *flag.FlagSet) {
 	type row struct{ name, usage, def string }
 	var rows []row
 	fs.VisitAll(func(f *flag.Flag) {
@@ -119,7 +139,7 @@ func writeFlags(w io.Writer, fs *flag.FlagSet) {
 		if r.def != "" {
 			line += fmt.Sprintf(" (default %s)", r.def)
 		}
-		fmt.Fprintln(w, line)
+		rw.println(line)
 	}
 }
 
@@ -168,12 +188,12 @@ func commandChain(steps []WorkflowStep) string {
 
 // writeWrapped emits text without rewrapping. Paragraph breaks (blank lines)
 // are preserved. Indentation prefix is added to every non-blank line.
-func writeWrapped(w io.Writer, text, indent string) {
+func writeWrapped(rw *rendW, text, indent string) {
 	for _, line := range strings.Split(text, "\n") {
 		if line == "" {
-			fmt.Fprintln(w)
+			rw.println()
 			continue
 		}
-		fmt.Fprintln(w, indent+line)
+		rw.println(indent + line)
 	}
 }
