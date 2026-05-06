@@ -249,6 +249,45 @@ func TestAnalyzerHandlesPTSWraparound(t *testing.T) {
 	}
 }
 
+func TestAnalyzerIDRDelayUsesMinPTSNotFirstObserved(t *testing.T) {
+	// When the first observed PES is not the chronologically earliest
+	// (e.g. mid-GOP capture starting just before a P-frame, with
+	// following B-frames carrying earlier PTS), the IDR-delay check
+	// must measure against the minimum observed PTS, not the
+	// first-observed one. Otherwise a real >2s startup delay is
+	// under-reported and yields a false PLAYABLE verdict.
+	const step int64 = 30000 // ~3.33fps frame interval at 90kHz; chosen so a 7-frame delay is >2s.
+	a := NewAnalyzer(0x0100)
+	// First four PES units are reordered to simulate B-frame /
+	// mid-GOP arrival: first observed PTS is 3*step (1.0s) but
+	// earlier presentation times follow.
+	a.Feed(mkPES(t, 0x0100, 3*step, NALSPS, NALPPS, NALSlice))
+	a.Feed(mkPES(t, 0x0100, 2*step, NALSlice))
+	a.Feed(mkPES(t, 0x0100, 1*step, NALSlice))
+	a.Feed(mkPES(t, 0x0100, 0, NALSlice))
+	// IDR at 7*step (~2.33s) with the rest of the stream around it.
+	// Old code measured delay = 7*step - 3*step = 4*step (~1.33s,
+	// below the 2s threshold). New code measures from PTS 0 →
+	// 7*step (~2.33s, above threshold).
+	for i := int64(4); i < 30; i++ {
+		if i == 7 {
+			a.Feed(mkPES(t, 0x0100, i*step, NALSPS, NALPPS, NALIDR))
+			continue
+		}
+		a.Feed(mkPES(t, 0x0100, i*step, NALSlice))
+	}
+
+	rep := a.Report()
+
+	if rep.Verdict != VerdictDegraded {
+		t.Fatalf("expected DEGRADED (IDR delay >2s vs. minimum PTS), got %q (reasons: %v)", rep.Verdict, rep.Reasons)
+	}
+	joined := strings.Join(rep.Reasons, " ")
+	if !strings.Contains(joined, "first IDR is") {
+		t.Errorf("expected 'first IDR is X.XXs' delay reason, got %v", rep.Reasons)
+	}
+}
+
 func TestAnalyzerFixHintOnlyForStalls(t *testing.T) {
 	// Playable: no hint.
 	a := NewAnalyzer(0x0100)

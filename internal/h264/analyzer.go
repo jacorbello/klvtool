@@ -35,7 +35,8 @@ type Analyzer struct {
 	hasFirstPTS    bool
 	hasLastPTS     bool
 
-	ptsSamples []int64 // PTS of every PES unit that had one — used for gap analysis.
+	ptsSamples    []int64 // PTS of every PES unit that had one — used for gap analysis.
+	idrPTSSamples []int64 // PTS of every IDR-bearing PES unit; subset of ptsSamples.
 }
 
 // NewAnalyzer returns a fresh Analyzer for the given PID.
@@ -96,6 +97,7 @@ func (a *Analyzer) Feed(unit *ts.PESUnit) {
 		}
 		a.lastIDRPTS = pts
 		a.hasLastIDRPTS = true
+		a.idrPTSSamples = append(a.idrPTSSamples, pts)
 	}
 }
 
@@ -132,11 +134,18 @@ func (a *Analyzer) Report() VideoReport {
 		p0 = append(p0, "no PPS (picture parameter set) NAL units — decoder cannot initialize")
 	}
 
-	// P1: cadence checks, only when IDRs exist.
+	// P1: cadence checks, only when IDRs exist. The delay is measured
+	// against the chronologically earliest PTS observed (not the
+	// first-arriving one), so B-frame reordering and mid-GOP captures
+	// don't under-report the delay and yield a false PLAYABLE verdict.
 	if a.idrCount > 0 && a.hasFirstIDRPTS && a.hasFirstPTS {
-		delayTicks := a.firstIDRPTS - a.firstPTS
-		if delayTicks > 2*ptsClockHz {
-			degraded = append(degraded, fmt.Sprintf("first IDR is %.2fs into the stream; HLS segmenters may stall", float64(delayTicks)/float64(ptsClockHz)))
+		streamStart, okStart := a.normalizedMinPTS(a.ptsSamples)
+		idrStart, okIDR := a.normalizedMinPTS(a.idrPTSSamples)
+		if okStart && okIDR {
+			delayTicks := idrStart - streamStart
+			if delayTicks > 2*ptsClockHz {
+				degraded = append(degraded, fmt.Sprintf("first IDR is %.2fs into the stream; HLS segmenters may stall", float64(delayTicks)/float64(ptsClockHz)))
+			}
 		}
 	}
 
@@ -263,6 +272,32 @@ func (a *Analyzer) fillGapStats(rep *VideoReport) {
 		}
 	}
 	rep.DroppedFrameEst = dropped
+}
+
+// normalizedMinPTS returns the chronologically earliest PTS in samples,
+// applying the same 33-bit wrap normalization fillGapStats uses so a
+// capture crossing the wrap boundary still returns the true minimum.
+// Wrap detection runs against the full PTS sample set (a.ptsSamples)
+// so an IDR-only subset inherits the same normalization decision.
+func (a *Analyzer) normalizedMinPTS(samples []int64) (int64, bool) {
+	if len(samples) == 0 {
+		return 0, false
+	}
+	wrap := looksLikeWrap(a.ptsSamples)
+	threshold := pts33Max / 2
+	var minV int64
+	set := false
+	for _, s := range samples {
+		v := s
+		if wrap && v < threshold {
+			v += pts33Max
+		}
+		if !set || v < minV {
+			minV = v
+			set = true
+		}
+	}
+	return minV, set
 }
 
 // looksLikeWrap reports whether the sample set spans nearly the full
