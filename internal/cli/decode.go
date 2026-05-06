@@ -790,7 +790,7 @@ var decodeDef = commanddef.CommandDef{
 			{Name: "lsVersion", Type: "integer", Notes: "MISB ST 0601 Local Set version reported by tag 65, or 0 if absent"},
 			{Name: "valueLength", Type: "integer", Units: "bytes", Notes: "BER-encoded value length of the outer Local Set"},
 			{Name: "checksum", Type: "object", Notes: "{expected, computed, valid}; tag 1 must match the engine's recomputation"},
-			{Name: "items", Type: "array", Notes: "decoded tags: {tag, name, value, units?, raw?}"},
+			{Name: "items", Type: "array", Notes: "decoded tags: {tag, name, value, units, raw?}; units is always present (empty string for tags without a unit)"},
 			{Name: "items[].value", Type: "polymorphic", Notes: "type follows the spec: int/uint/float/string/bool/enum/time. ST 0601 \"error indicator\" sentinels marshal to JSON null."},
 			{Name: "items[].raw", Type: "string", Notes: "present only with --raw; base64-encoded value bytes"},
 			{Name: "diagnostics", Type: "array", Notes: "structural and per-tag findings: {severity, code, message, tag?, tagName?, actual?, expected?, raw?}"},

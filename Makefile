@@ -61,9 +61,11 @@ build: $(GOCACHE) $(BUILD_DIR)
 man: $(GOCACHE)
 	GOCACHE=$(GOCACHE) $(GO) run ./cmd/gen-manpages -out $(MAN_DIR) -date $(MAN_DATE) -version $(VERSION)
 
-# Drift check used in CI: regenerate with a fixed date so timestamps don't
-# pollute the diff, then fail if the working tree differs from what's
-# committed. Run `make man` locally and commit the result to fix.
+# Drift check used in CI: regenerate with a fixed date AND a fixed version so
+# the diff is deterministic regardless of how a developer invoked `make man`
+# locally (e.g. with VERSION=1.2.0). Committed pages are always the
+# placeholder values; GoReleaser stamps the real version + date at release
+# time. Run `make man` locally and commit the result to fix drift.
 man-check: $(GOCACHE)
-	GOCACHE=$(GOCACHE) $(GO) run ./cmd/gen-manpages -out $(MAN_DIR) -date 1970-01-01 -version $(VERSION)
+	GOCACHE=$(GOCACHE) $(GO) run ./cmd/gen-manpages -out $(MAN_DIR) -date 1970-01-01 -version dev
 	@git diff --exit-code -- $(MAN_DIR) || (echo "ERROR: man pages are out of date. Run 'make man' and commit the result." && exit 1)

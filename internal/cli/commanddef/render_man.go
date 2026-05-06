@@ -44,7 +44,7 @@ func RenderMan(def CommandDef, fs *flag.FlagSet, opts ManOpts, w io.Writer) {
 
 	if def.UsageLine != "" {
 		writeSection(rw, "SYNOPSIS")
-		rw.println(roffEscape(def.UsageLine))
+		rw.println(safeLine(def.UsageLine))
 	}
 
 	if def.Description != "" {
@@ -57,7 +57,7 @@ func RenderMan(def CommandDef, fs *flag.FlagSet, opts ManOpts, w io.Writer) {
 		for _, sc := range def.Subcommands {
 			rw.println(".TP")
 			rw.printf("\\fBklvtool\\-%s\\fR(1)\n", roffEscape(sc.Name))
-			rw.println(roffEscape(sc.Synopsis))
+			rw.println(safeLine(sc.Synopsis))
 		}
 	}
 
@@ -83,7 +83,7 @@ func RenderMan(def CommandDef, fs *flag.FlagSet, opts ManOpts, w io.Writer) {
 				rw.println(".fi")
 				rw.println(".RE")
 				if st.Explain != "" {
-					rw.println(roffEscape(st.Explain))
+					rw.println(safeLine(st.Explain))
 				}
 			}
 		}
@@ -109,7 +109,7 @@ func RenderMan(def CommandDef, fs *flag.FlagSet, opts ManOpts, w io.Writer) {
 				}
 				rw.println(header)
 				if f.Notes != "" {
-					rw.println(roffEscape(f.Notes))
+					rw.println(safeLine(f.Notes))
 				}
 			}
 		}
@@ -133,7 +133,7 @@ func RenderMan(def CommandDef, fs *flag.FlagSet, opts ManOpts, w io.Writer) {
 			}
 			rw.println(header)
 			if t.Notes != "" {
-				rw.println(roffEscape(t.Notes))
+				rw.println(safeLine(t.Notes))
 			}
 		}
 	}
@@ -145,7 +145,7 @@ func RenderMan(def CommandDef, fs *flag.FlagSet, opts ManOpts, w io.Writer) {
 				rw.println(".PP")
 			}
 			if ex.Comment != "" {
-				rw.println(roffEscape(ex.Comment))
+				rw.println(safeLine(ex.Comment))
 			}
 			rw.println(".RS 4")
 			rw.println(".nf")
@@ -161,12 +161,12 @@ func RenderMan(def CommandDef, fs *flag.FlagSet, opts ManOpts, w io.Writer) {
 			rw.printf(".SS %s\n", roffEscape(t.Symptom))
 			if t.LikelyCause != "" {
 				rw.println("\\fBLikely cause:\\fR")
-				rw.println(roffEscape(t.LikelyCause))
+				rw.println(safeLine(t.LikelyCause))
 				rw.println(".PP")
 			}
 			if t.Action != "" {
 				rw.println("\\fBAction:\\fR")
-				rw.println(roffEscape(t.Action))
+				rw.println(safeLine(t.Action))
 			}
 		}
 	}
@@ -176,7 +176,7 @@ func RenderMan(def CommandDef, fs *flag.FlagSet, opts ManOpts, w io.Writer) {
 		for _, g := range def.Glossary {
 			rw.println(".TP")
 			rw.printf("\\fB%s\\fR\n", roffEscape(g.Term))
-			rw.println(roffEscape(g.Definition))
+			rw.println(safeLine(g.Definition))
 		}
 	}
 
@@ -185,7 +185,7 @@ func RenderMan(def CommandDef, fs *flag.FlagSet, opts ManOpts, w io.Writer) {
 		for _, ec := range def.ExitCodes {
 			rw.println(".TP")
 			rw.printf("\\fB%d\\fR\n", ec.Code)
-			rw.println(roffEscape(ec.Meaning))
+			rw.println(safeLine(ec.Meaning))
 		}
 	}
 
@@ -194,7 +194,7 @@ func RenderMan(def CommandDef, fs *flag.FlagSet, opts ManOpts, w io.Writer) {
 		for _, ev := range def.EnvVars {
 			rw.println(".TP")
 			rw.printf("\\fB%s\\fR\n", roffEscape(ev.Name))
-			rw.println(roffEscape(ev.Description))
+			rw.println(safeLine(ev.Description))
 		}
 	}
 
@@ -203,13 +203,13 @@ func RenderMan(def CommandDef, fs *flag.FlagSet, opts ManOpts, w io.Writer) {
 		for _, f := range def.Files {
 			rw.println(".TP")
 			rw.printf("\\fB%s\\fR\n", roffEscape(f.Path))
-			rw.println(roffEscape(f.Description))
+			rw.println(safeLine(f.Description))
 		}
 	}
 
 	if len(def.RequiredTools) > 0 {
 		writeSection(rw, "REQUIRED TOOLS")
-		rw.println(roffEscape(strings.Join(def.RequiredTools, ", ")))
+		rw.println(safeLine(strings.Join(def.RequiredTools, ", ")))
 	}
 
 	if len(def.SeeAlso) > 0 {
@@ -238,7 +238,9 @@ func writeSection(rw *rendW, name string) {
 // writeParagraphs splits on blank lines and emits each paragraph separated by
 // .PP. Single line breaks within a paragraph are preserved as soft breaks
 // (.br) so analyst-written prose with intentional line endings doesn't get
-// mangled.
+// mangled. Each line goes through safeLine so a paragraph containing a
+// line that starts with `.` or `'` doesn't accidentally invoke a roff
+// macro.
 func writeParagraphs(rw *rendW, text string) {
 	paras := strings.Split(text, "\n\n")
 	for i, p := range paras {
@@ -250,7 +252,7 @@ func writeParagraphs(rw *rendW, text string) {
 			if j > 0 {
 				rw.println(".br")
 			}
-			rw.println(roffEscape(line))
+			rw.println(safeLine(line))
 		}
 	}
 }
@@ -269,7 +271,7 @@ func writeOptions(rw *rendW, fs *flag.FlagSet) {
 			header += fmt.Sprintf(" \\fI(default %s)\\fR", roffEscape(r.def))
 		}
 		rw.println(header)
-		rw.println(roffEscape(r.usage))
+		rw.println(safeLine(r.usage))
 	}
 }
 
@@ -277,9 +279,28 @@ func writeOptions(rw *rendW, fs *flag.FlagSet) {
 // The order matters: backslashes first to avoid double-escaping our own
 // emitted control sequences. Hyphens become \- so they render as ASCII
 // hyphens rather than soft-hyphens.
+//
+// Note: this does NOT guard against leading-dot macro injection. Use
+// safeLine() instead when emitting escaped text at the start of a roff
+// line (i.e., not embedded inside a header that begins with .B/.TP/etc.).
 func roffEscape(s string) string {
 	s = strings.ReplaceAll(s, "\\", "\\\\")
 	s = strings.ReplaceAll(s, "-", "\\-")
+	return s
+}
+
+// safeLine wraps roffEscape with a leading-dot guard. roff (and mandoc)
+// interpret any line beginning with `.` or `'` as a macro call, so a
+// future Description/Notes/Action string with a sentence-fragment line
+// like ".bin files are written under <out>" would silently become a
+// malformed macro and corrupt the rendered page. Prefixing the no-op
+// `\&` zero-width escape neutralizes the interpretation; for lines that
+// don't start with one of those characters, no prefix is added.
+func safeLine(s string) string {
+	s = roffEscape(s)
+	if strings.HasPrefix(s, ".") || strings.HasPrefix(s, "'") {
+		return `\&` + s
+	}
 	return s
 }
 

@@ -55,7 +55,7 @@ BER\-encoded value length of the outer Local Set
 {expected, computed, valid}; tag 1 must match the engine's recomputation
 .TP
 \fBitems\fR (array)
-decoded tags: {tag, name, value, units?, raw?}
+decoded tags: {tag, name, value, units, raw?}; units is always present (empty string for tags without a unit)
 .TP
 \fBitems[].value\fR (polymorphic)
 type follows the spec: int/uint/float/string/bool/enum/time. ST 0601 "error indicator" sentinels marshal to JSON null.
