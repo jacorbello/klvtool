@@ -17,7 +17,9 @@ import (
 )
 
 // DiagnoseCommand runs the full diagnostic pipeline on an MPEG-TS file:
-// health check, transport inspection, and KLV decode.
+// health check, transport inspection, video bitstream analysis, and
+// KLV decode. Video analysis is non-fatal — failures are reported and
+// the pipeline continues into KLV decode.
 type DiagnoseCommand struct {
 	Out io.Writer
 	Err io.Writer
