@@ -632,8 +632,11 @@ func TestDiagnoseH265StreamShowsNotSupportedNotice(t *testing.T) {
 		t.Fatalf("exit code = %d, want 0; stderr: %s", code, errBuf.String())
 	}
 	text := out.String()
-	if !strings.Contains(text, "H.265") && !strings.Contains(text, "0x0100") {
-		t.Errorf("expected H.265 stream mentioned in output, got %q", text)
+	if !strings.Contains(text, "H.265") {
+		t.Errorf("expected H.265 codec label in output, got %q", text)
+	}
+	if !strings.Contains(text, "0x0100") {
+		t.Errorf("expected H.265 PID 0x0100 in output, got %q", text)
 	}
 	if !strings.Contains(text, "not yet analyzed") {
 		t.Errorf("expected 'not yet analyzed' notice for H.265, got %q", text)
