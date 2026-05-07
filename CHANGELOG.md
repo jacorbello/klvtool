@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.0](https://github.com/jacorbello/klvtool/compare/v1.2.0...v1.3.0) (2026-05-07)
+
+
+### Features
+
+* add H.264 playability diagnostics to diagnose command ([#65](https://github.com/jacorbello/klvtool/issues/65)) ([b586406](https://github.com/jacorbello/klvtool/commit/b586406a494504f52a251571e76636a76c42bc3d))
+
 ## [1.2.0](https://github.com/jacorbello/klvtool/compare/v1.1.2...v1.2.0) (2026-04-15)
 
 
