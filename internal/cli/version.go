@@ -10,9 +10,21 @@ import (
 	"os"
 	"time"
 
+	"github.com/jacorbello/klvtool/internal/cli/commanddef"
 	"github.com/jacorbello/klvtool/internal/model"
 	"github.com/jacorbello/klvtool/internal/version"
 )
+
+type versionFlags struct {
+	check bool
+}
+
+func versionFlagSet(v *versionFlags) *flag.FlagSet {
+	fs := flag.NewFlagSet("version", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	fs.BoolVar(&v.check, "check", false, "check GitHub for a newer release")
+	return fs
+}
 
 const defaultReleaseURL = "https://api.github.com/repos/jacorbello/klvtool/releases/latest"
 
@@ -34,9 +46,8 @@ func NewVersionCommand() *VersionCommand {
 }
 
 func (c *VersionCommand) Execute(args []string) int {
-	fs := flag.NewFlagSet("version", flag.ContinueOnError)
-	fs.SetOutput(io.Discard)
-	check := fs.Bool("check", false, "check for updates")
+	var v versionFlags
+	fs := versionFlagSet(&v)
 
 	if err := fs.Parse(args); err != nil {
 		if err == flag.ErrHelp {
@@ -54,7 +65,7 @@ func (c *VersionCommand) Execute(args []string) int {
 		return usageExitCode
 	}
 
-	if *check {
+	if v.check {
 		return c.executeCheck()
 	}
 
@@ -131,13 +142,28 @@ func (c *VersionCommand) writeError(w io.Writer, err error) {
 }
 
 func (c *VersionCommand) writeUsage(w io.Writer) {
-	if w == nil {
-		return
-	}
-	_, _ = fmt.Fprintln(w, "Usage: klvtool version [--check]")
-	_, _ = fmt.Fprintln(w)
-	_, _ = fmt.Fprintln(w, "Print the klvtool version.")
-	_, _ = fmt.Fprintln(w)
-	_, _ = fmt.Fprintln(w, "Flags:")
-	_, _ = fmt.Fprintln(w, "  --check  Check for a newer release on GitHub")
+	commanddef.RenderHelp(versionDef, versionFlagSet(&versionFlags{}), w)
+}
+
+// Definition returns the CommandDef driving --help and man-page generation.
+func (c *VersionCommand) Definition() commanddef.CommandDef { return versionDef }
+
+var versionDef = commanddef.CommandDef{
+	Name:        "klvtool-version",
+	Subcommand:  "version",
+	Synopsis:    "Print the klvtool version, optionally checking GitHub for a newer release.",
+	UsageLine:   "klvtool version [--check]",
+	Description: "Print the embedded klvtool version. With --check, query the GitHub API for the latest release tag and report whether the local build is current.",
+	Examples: []commanddef.Example{
+		{Comment: "Print the version", Command: "klvtool version"},
+		{Comment: "Check for a newer release", Command: "klvtool version --check"},
+	},
+	ExitCodes: []commanddef.ExitCode{
+		{Code: 0, Meaning: "success (always — update-check failures are reported but do not change exit code)"},
+		{Code: 2, Meaning: "invalid usage"},
+	},
+	SeeAlso: []commanddef.SeeAlsoRef{
+		{Name: "klvtool", Section: 1},
+		{Name: "klvtool-update", Section: 1},
+	},
 }

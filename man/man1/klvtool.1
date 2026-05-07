@@ -1,0 +1,158 @@
+.TH KLVTOOL 1 "1970-01-01" "klvtool dev" "User Commands"
+.SH "NAME"
+klvtool \- CLI for inspecting MPEG\-TS streams, extracting KLV payloads, packetizing raw checkpoints, and decoding MISB metadata.
+.SH "SYNOPSIS"
+klvtool <command> [flags]
+.SH "DESCRIPTION"
+klvtool is a Go CLI for working with MPEG\-TS video assets and the KLV metadata streams carried inside them. The primary audience is intelligence analysts triaging full\-motion video from sensor platforms (UAS, manned ISR) and engineers integrating KLV pipelines.
+.PP
+The canonical entry point for triaging an unknown file is `klvtool diagnose \-\-input <file.ts>` — it runs the full health check, transport inspection, video bitstream analysis, and KLV decode in one pass and points to a remediation when something fails.
+.SH "COMMANDS"
+.TP
+\fBklvtool\-version\fR(1)
+Print the klvtool version, optionally checking GitHub for a newer release.
+.TP
+\fBklvtool\-update\fR(1)
+Update klvtool to the latest GitHub release.
+.TP
+\fBklvtool\-doctor\fR(1)
+Check backend availability, detected versions, and install guidance.
+.TP
+\fBklvtool\-extract\fR(1)
+Extract raw KLV/data payloads from an MPEG\-TS file and write a manifest.
+.TP
+\fBklvtool\-inspect\fR(1)
+Inspect an MPEG\-TS stream inventory, packet counts, and continuity diagnostics.
+.TP
+\fBklvtool\-decode\fR(1)
+Decode MISB ST 0601 KLV records from an MPEG\-TS file.
+.TP
+\fBklvtool\-packetize\fR(1)
+Replay raw extraction checkpoints into KLV packet checkpoints with framing diagnostics.
+.TP
+\fBklvtool\-diagnose\fR(1)
+Run the full diagnostic pipeline: health check, transport inspect, video analysis, and KLV decode.
+.TP
+\fBklvtool\-completion\fR(1)
+Generate shell completion scripts (bash, zsh, fish).
+.SH "WORKFLOWS"
+.SS Triage an unknown mission file
+You just received a TS file and need to know whether it is usable, whether the metadata is intact, and what to do if something looks wrong.
+.PP
+.RS 4
+.nf
+$ klvtool diagnose --input mission.ts
+.fi
+.RE
+runs health check, transport inspect, video analysis, and KLV decode; produces a single consolidated report with remediation guidance for any failed stage
+.PP
+.RS 4
+.nf
+$ klvtool decode --input mission.ts --pid <PID> --format text
+.fi
+.RE
+if diagnose surfaces decode errors on a specific PID, this shows the per\-packet diagnostics in pretty text view
+.SS Geo\-locate a frame at a known timestamp
+You need sensor latitude/longitude (or frame\-center geo) for a specific moment in the stream and intend to hand the result off to GIS or a downstream pipeline.
+.PP
+.RS 4
+.nf
+$ klvtool inspect --input mission.ts
+.fi
+.RE
+find the metadata PID — the row labeled "Likely metadata" in pretty view
+.PP
+.RS 4
+.nf
+$ klvtool decode --input mission.ts --pid <PID> --format ndjson --out frames.ndjson
+.fi
+.RE
+decode only that PID into stable NDJSON; one record per KLV packet, with tag 2 carrying the wall\-clock timestamp
+.PP
+.RS 4
+.nf
+$ jq 'select(.items[] | .tag == 2 and .value >= "2024-01-15T14:23:45.000000Z")' frames.ndjson
+.fi
+.RE
+filter to your timestamp; the surrounding record carries tags 13/14 (sensor lat/lon) and 23/24 (frame\-center lat/lon)
+.SS Forensic recovery from corrupt transport
+Diagnose reports KLV decode errors or framing problems and re\-pulling the file is not an option.
+.PP
+.RS 4
+.nf
+$ klvtool extract --input mission.ts --out ./mission-extract
+.fi
+.RE
+capture raw KLV payloads and a manifest with SHA\-256 hashes and packet\-level transport metadata for chain of custody
+.PP
+.RS 4
+.nf
+$ klvtool packetize --input ./mission-extract --out ./mission-packets --mode best-effort
+.fi
+.RE
+scan past malformed packets; per\-record diagnostics include byte offsets where the wire format diverged
+.PP
+.RS 4
+.nf
+$ klvtool decode --input mission.ts --pid <PID> --raw --strict
+.fi
+.RE
+with \-\-raw, NDJSON includes base64 of the offending bytes — useful when escalating to platform / sensor engineering
+.SH "GLOSSARY"
+.TP
+\fBRaw checkpoint\fR
+the per\-record artifact written by `klvtool extract`: the full PES payload bytes plus transport metadata. Input format for `klvtool packetize`.
+.TP
+\fBPacket checkpoint\fR
+the parsed\-KLV\-packet artifact written by `klvtool packetize`: per\-packet key/length/value byte ranges plus parser diagnostics. One JSON file per source raw checkpoint.
+.TP
+\fBStrict vs best\-effort packetize\fR
+strict aborts the record on the first malformed KLV packet; best\-effort scans forward, recovers what it can, and surfaces diagnostics with byte offsets. Use best\-effort for forensic recovery on suspect input.
+.TP
+\fBStructural validation\fR
+klvtool's per\-tag checks (length, range, encoding) against the registered MISB Local Set spec. Failures appear as error\-severity diagnostics on the relevant packet.
+.TP
+\fBView modes (auto/pretty/raw)\fR
+auto picks pretty when stdout is a TTY and the format is human\-oriented, raw otherwise. Pretty is for humans (color, multi\-line); raw is for piping (single\-line, no escapes).
+.TP
+\fBLikely metadata stream\fR
+a PID whose stream type is one of the data/private types commonly used to carry KLV. `klvtool inspect` highlights these in pretty view; `klvtool diagnose` decodes them automatically.
+.SH "EXIT STATUS"
+.TP
+\fB0\fR
+success
+.TP
+\fB1\fR
+command\-specific failure (see the per\-command page)
+.TP
+\fB2\fR
+invalid usage
+.SH "ENVIRONMENT"
+.TP
+\fBNO_COLOR\fR
+disable ANSI color in pretty output across every subcommand
+.SH "REQUIRED TOOLS"
+ffmpeg, ffprobe
+.SH "SEE ALSO"
+\fBklvtool\-doctor\fR(1),
+\fBklvtool\-diagnose\fR(1),
+\fBklvtool\-inspect\fR(1),
+\fBklvtool\-decode\fR(1),
+\fBklvtool\-extract\fR(1),
+\fBklvtool\-packetize\fR(1),
+\fBklvtool\-version\fR(1),
+\fBklvtool\-update\fR(1),
+\fBklvtool\-completion\fR(1)
+.SH "EXTERNAL REFERENCES"
+.TP
+\fBklvtool source and releases\fR
+https://github.com/jacorbello/klvtool
+.TP
+\fBMISB ST 0601.19 — UAS Datalink Local Set\fR
+https://nsgreg.nga.mil/doc/view?i=5337
+.TP
+\fBMISB ST 1402 — MPEG\-2 Transport of Compressed Video Metadata\fR
+https://nsgreg.nga.mil/doc/view?i=5135
+.TP
+\fBITU\-T H.222.0 / ISO/IEC 13818\-1 — MPEG\-TS systems layer\fR
+https://www.itu.int/rec/T-REC-H.222.0

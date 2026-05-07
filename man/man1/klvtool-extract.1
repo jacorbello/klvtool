@@ -1,0 +1,105 @@
+.TH KLVTOOL-EXTRACT 1 "1970-01-01" "klvtool dev" "User Commands"
+.SH "NAME"
+klvtool\-extract \- Extract raw KLV/data payloads from an MPEG\-TS file and write a manifest.
+.SH "SYNOPSIS"
+klvtool extract \-\-input <file.ts> \-\-out <dir> [\-\-view auto|pretty|raw]
+.SH "DESCRIPTION"
+Validate backend availability and extract raw KLV/data PES payloads from an MPEG\-TS file. Each payload is written as a separate file under <out>, with one NDJSON line per record appended to <out>/manifest.ndjson capturing transport metadata (PID, packet offset, PTS/DTS), payload location, and a SHA\-256 hash for chain\-of\-custody. Use this when you need preserved raw artifacts for `klvtool packetize`, downstream forensics, or bug reports.
+.SH "OPTIONS"
+.TP
+\fB\-\-input\fR
+MPEG\-TS input path
+.TP
+\fB\-\-out\fR
+output directory for extracted payloads and manifest.ndjson
+.TP
+\fB\-\-view\fR \fI(default auto)\fR
+presentation mode: auto, pretty, or raw
+.SH "OUTPUT FORMAT"
+Each invocation writes payload files under <out>/ plus a manifest.ndjson file with one Record per line.
+.SS Fields
+.TP
+\fBschemaVersion\fR (string)
+manifest envelope version
+.TP
+\fBsourceInputPath\fR (string)
+the \-\-input path as provided, captured for chain of custody
+.TP
+\fBbackendName\fR (string)
+extraction backend name (e.g. "ffmpeg")
+.TP
+\fBbackendVersion\fR (string)
+detected backend version
+.TP
+\fBrecords[].recordId\fR (string)
+stable identifier; matches the payload filename stem
+.TP
+\fBrecords[].pid\fR (integer)
+MPEG\-TS PID this payload came from
+.TP
+\fBrecords[].transportStreamId\fR (integer)
+TS ID if the program map carried one
+.TP
+\fBrecords[].packetOffset\fR (integer; bytes)
+byte offset of the originating TS packet
+.TP
+\fBrecords[].packetIndex\fR (integer)
+0\-based index of the originating TS packet
+.TP
+\fBrecords[].continuityCounter\fR (integer)
+TS continuity counter value at extraction
+.TP
+\fBrecords[].pts\fR (integer; 90 kHz ticks)
+PES PTS if present (transport\-relative; not wall\-clock)
+.TP
+\fBrecords[].dts\fR (integer; 90 kHz ticks)
+PES DTS if present
+.TP
+\fBrecords[].payloadPath\fR (string)
+relative path to the extracted payload file under <out>
+.TP
+\fBrecords[].payloadSize\fR (integer; bytes)
+.TP
+\fBrecords[].payloadHash\fR (string)
+SHA\-256 hex digest of the payload bytes
+.TP
+\fBrecords[].warnings\fR (array)
+extraction\-time warnings (empty array if clean)
+.SS Time semantics
+PTS/DTS are MPEG\-TS transport timestamps in 90 kHz ticks, relative to an unspecified clock origin. They are not wall\-clock; use them to order payloads, not to correlate against a real\-world event. For wall\-clock, decode the metadata stream and read MISB ST 0601 tag 2.
+.SS Schema stability
+Manifest schema is stable within klvtool 1.x: new fields are additive.
+.SH "EXAMPLES"
+Extract all data\-stream payloads to a directory
+.RS 4
+.nf
+$ klvtool extract --input mission.ts --out ./mission-extract
+.fi
+.RE
+.SH "EXIT STATUS"
+.TP
+\fB0\fR
+success
+.TP
+\fB1\fR
+transport read failure, output write failure, or backend unavailable
+.TP
+\fB2\fR
+invalid usage
+.SH "ENVIRONMENT"
+.TP
+\fBNO_COLOR\fR
+disable ANSI color in pretty output
+.SH "FILES"
+.TP
+\fB<out>/manifest.ndjson\fR
+extraction manifest (one Record per line)
+.TP
+\fB<out>/<recordId>.bin\fR
+raw payload files, one per extracted PES unit
+.SH "REQUIRED TOOLS"
+ffmpeg, ffprobe
+.SH "SEE ALSO"
+\fBklvtool\fR(1),
+\fBklvtool\-packetize\fR(1),
+\fBklvtool\-decode\fR(1)

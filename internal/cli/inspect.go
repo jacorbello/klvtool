@@ -8,9 +8,23 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/jacorbello/klvtool/internal/cli/commanddef"
 	"github.com/jacorbello/klvtool/internal/model"
 	ts "github.com/jacorbello/klvtool/internal/mpeg/ts"
 )
+
+type inspectFlags struct {
+	inputPath string
+	view      string
+}
+
+func inspectFlagSet(v *inspectFlags) *flag.FlagSet {
+	fs := flag.NewFlagSet("inspect", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	fs.StringVar(&v.inputPath, "input", "", "MPEG-TS input path")
+	fs.StringVar(&v.view, "view", string(viewAuto), "presentation mode: auto, pretty, or raw")
+	return fs
+}
 
 // InspectStats holds aggregated statistics from a transport stream scan.
 type InspectStats struct {
@@ -48,13 +62,8 @@ func (c *InspectCommand) Execute(args []string) int {
 		return 0
 	}
 
-	fs := flag.NewFlagSet("inspect", flag.ContinueOnError)
-	fs.SetOutput(io.Discard)
-
-	var inputPath string
-	var view string
-	fs.StringVar(&inputPath, "input", "", "path to the MPEG-TS input file")
-	fs.StringVar(&view, "view", string(viewAuto), "presentation mode: auto, pretty, or raw")
+	var v inspectFlags
+	fs := inspectFlagSet(&v)
 
 	if err := fs.Parse(args); err != nil {
 		if err == flag.ErrHelp {
@@ -70,6 +79,7 @@ func (c *InspectCommand) Execute(args []string) int {
 		c.writeError(c.Err, model.InvalidUsage(fmt.Errorf("unsupported arguments: %v", fs.Args())))
 		return usageExitCode
 	}
+	inputPath, view := v.inputPath, v.view
 	if strings.TrimSpace(inputPath) == "" {
 		c.writeUsage(c.Err)
 		c.writeError(c.Err, model.InvalidUsage(fmt.Errorf("input path is required")))
@@ -214,14 +224,43 @@ func streamTypeName(st uint8) string {
 }
 
 func (c *InspectCommand) writeUsage(w io.Writer) {
-	if w == nil {
-		return
-	}
-	_, _ = fmt.Fprintln(w, "Usage: klvtool inspect --input <file.ts>")
-	_, _ = fmt.Fprintln(w)
-	_, _ = fmt.Fprintln(w, "Inspect an MPEG-TS file: stream inventory, packet counts, PES timing, and continuity diagnostics.")
-	_, _ = fmt.Fprintln(w)
-	_, _ = fmt.Fprintln(w, "Use this first to find likely metadata streams before decode.")
+	commanddef.RenderHelp(inspectDef, inspectFlagSet(&inspectFlags{}), w)
+}
+
+// Definition returns the CommandDef driving --help and man-page generation.
+func (c *InspectCommand) Definition() commanddef.CommandDef { return inspectDef }
+
+var inspectDef = commanddef.CommandDef{
+	Name:       "klvtool-inspect",
+	Subcommand: "inspect",
+	Synopsis:   "Inspect an MPEG-TS stream inventory, packet counts, and continuity diagnostics.",
+	UsageLine:  "klvtool inspect --input <file.ts> [--view auto|pretty|raw]",
+	Description: "Inspect an MPEG-TS file and report its program / stream inventory, per-PID packet counts, PES PTS bounds, and transport-layer continuity diagnostics.\n" +
+		"\n" +
+		"This is the entry point when triaging an unknown file: it surfaces likely metadata PIDs (KLV / data streams) so a follow-up `klvtool decode --pid <PID>` can target the right stream without scanning everything.",
+	Examples: []commanddef.Example{
+		{
+			Comment: "List streams and find likely KLV metadata PIDs",
+			Command: "klvtool inspect --input mission.ts",
+		},
+	},
+	ExitCodes: []commanddef.ExitCode{
+		{Code: 0, Meaning: "success"},
+		{Code: 1, Meaning: "transport read failure (file unreadable, malformed, or truncated beyond recovery)"},
+		{Code: 2, Meaning: "invalid usage"},
+	},
+	EnvVars: []commanddef.EnvVar{
+		{Name: "NO_COLOR", Description: "disable ANSI color in pretty output"},
+	},
+	RequiredTools: []string{"ffmpeg", "ffprobe"},
+	SeeAlso: []commanddef.SeeAlsoRef{
+		{Name: "klvtool", Section: 1},
+		{Name: "klvtool-decode", Section: 1},
+		{Name: "klvtool-diagnose", Section: 1},
+	},
+	ExternalRefs: []commanddef.ExternalRef{
+		{Title: "ITU-T H.222.0 / ISO/IEC 13818-1 — MPEG-TS systems layer", URL: "https://www.itu.int/rec/T-REC-H.222.0"},
+	},
 }
 
 func (c *InspectCommand) writeError(w io.Writer, err error) {

@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/jacorbello/klvtool/internal/backends/ffmpeg"
+	"github.com/jacorbello/klvtool/internal/cli/commanddef"
 	"github.com/jacorbello/klvtool/internal/envcheck"
 )
 
@@ -84,17 +85,34 @@ func (c *DoctorCommand) env() map[string]string {
 }
 
 func (c *DoctorCommand) writeUsage(w io.Writer) {
-	if w == nil {
-		return
-	}
-	_, _ = fmt.Fprintln(w, "Usage: klvtool doctor [--help|-h]")
-	_, _ = fmt.Fprintln(w)
-	_, _ = fmt.Fprintln(w, "Check backend availability, detected versions, and install guidance.")
-	_, _ = fmt.Fprintln(w)
-	_, _ = fmt.Fprintln(w, "Exits 0 when all backends are healthy, 1 when any backend is unhealthy or missing, and 2 for invalid usage.")
-	_, _ = fmt.Fprintln(w)
-	_, _ = fmt.Fprintln(w, "Required tools:")
-	_, _ = fmt.Fprintln(w, "  ffmpeg:  ffmpeg, ffprobe")
+	commanddef.RenderHelp(doctorDef, nil, w)
+}
+
+// Definition returns the CommandDef driving --help and man-page generation.
+func (c *DoctorCommand) Definition() commanddef.CommandDef { return doctorDef }
+
+var doctorDef = commanddef.CommandDef{
+	Name:        "klvtool-doctor",
+	Subcommand:  "doctor",
+	Synopsis:    "Check backend availability, detected versions, and install guidance.",
+	UsageLine:   "klvtool doctor",
+	Description: "Probe for required external backends (currently ffmpeg/ffprobe), report detected versions, and print platform-specific install guidance when something is missing or unhealthy. Run this after installing klvtool to confirm the environment is ready.",
+	Examples: []commanddef.Example{
+		{Comment: "Verify the environment is ready", Command: "klvtool doctor"},
+	},
+	ExitCodes: []commanddef.ExitCode{
+		{Code: 0, Meaning: "all backends healthy"},
+		{Code: 1, Meaning: "one or more backends unhealthy or missing"},
+		{Code: 2, Meaning: "invalid usage"},
+	},
+	EnvVars: []commanddef.EnvVar{
+		{Name: "NO_COLOR", Description: "disable ANSI color in pretty output"},
+	},
+	RequiredTools: []string{"ffmpeg", "ffprobe"},
+	SeeAlso: []commanddef.SeeAlsoRef{
+		{Name: "klvtool", Section: 1},
+		{Name: "klvtool-diagnose", Section: 1},
+	},
 }
 
 func defaultIsTerminal() bool {

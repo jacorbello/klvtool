@@ -44,6 +44,18 @@ Install a **release build** (no Go toolchain required) or use **`go install`** i
    klvtool doctor
    ```
 
+6. (Optional) install man pages. Each release archive ships `man/man1/klvtool*.1`. To enable `man klvtool`:
+
+   ```bash
+   # macOS / Linux (system-wide; requires sudo)
+   sudo cp man/man1/klvtool*.1 /usr/local/share/man/man1/
+   # If your system uses `mandb`, refresh the index after copying:
+   command -v mandb >/dev/null && sudo mandb -q
+   man klvtool
+   ```
+
+   For a per-user install, copy them under `~/.local/share/man/man1/` and ensure `~/.local/share/man` is on `MANPATH`. The pages cover the root command plus one page per subcommand (`man klvtool-decode`, `man klvtool-diagnose`, etc.) including analyst-facing workflow walkthroughs, NDJSON output schemas, and a `klvtool diagnose` troubleshooting reference.
+
 ### With Go
 
 If Go is installed and `GOBIN` (or `GOPATH/bin`) is on your `PATH`:

@@ -1,0 +1,47 @@
+.TH KLVTOOL-INSPECT 1 "1970-01-01" "klvtool dev" "User Commands"
+.SH "NAME"
+klvtool\-inspect \- Inspect an MPEG\-TS stream inventory, packet counts, and continuity diagnostics.
+.SH "SYNOPSIS"
+klvtool inspect \-\-input <file.ts> [\-\-view auto|pretty|raw]
+.SH "DESCRIPTION"
+Inspect an MPEG\-TS file and report its program / stream inventory, per\-PID packet counts, PES PTS bounds, and transport\-layer continuity diagnostics.
+.PP
+This is the entry point when triaging an unknown file: it surfaces likely metadata PIDs (KLV / data streams) so a follow\-up `klvtool decode \-\-pid <PID>` can target the right stream without scanning everything.
+.SH "OPTIONS"
+.TP
+\fB\-\-input\fR
+MPEG\-TS input path
+.TP
+\fB\-\-view\fR \fI(default auto)\fR
+presentation mode: auto, pretty, or raw
+.SH "EXAMPLES"
+List streams and find likely KLV metadata PIDs
+.RS 4
+.nf
+$ klvtool inspect --input mission.ts
+.fi
+.RE
+.SH "EXIT STATUS"
+.TP
+\fB0\fR
+success
+.TP
+\fB1\fR
+transport read failure (file unreadable, malformed, or truncated beyond recovery)
+.TP
+\fB2\fR
+invalid usage
+.SH "ENVIRONMENT"
+.TP
+\fBNO_COLOR\fR
+disable ANSI color in pretty output
+.SH "REQUIRED TOOLS"
+ffmpeg, ffprobe
+.SH "SEE ALSO"
+\fBklvtool\fR(1),
+\fBklvtool\-decode\fR(1),
+\fBklvtool\-diagnose\fR(1)
+.SH "EXTERNAL REFERENCES"
+.TP
+\fBITU\-T H.222.0 / ISO/IEC 13818\-1 — MPEG\-TS systems layer\fR
+https://www.itu.int/rec/T-REC-H.222.0

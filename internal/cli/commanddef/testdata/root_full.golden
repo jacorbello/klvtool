@@ -1,0 +1,34 @@
+.TH KLVTOOL 1 "2026-05-06" "klvtool 1.2.0" "User Commands"
+.SH "NAME"
+klvtool \- CLI for MPEG\-TS and KLV.
+.SH "SYNOPSIS"
+klvtool <command> [flags]
+.SH "DESCRIPTION"
+klvtool overview paragraph.
+.SH "COMMANDS"
+.TP
+\fBklvtool\-decode\fR(1)
+Decode KLV.
+.TP
+\fBklvtool\-inspect\fR(1)
+Inspect MPEG\-TS.
+.SH "WORKFLOWS"
+.SS Triage a file
+You just received a TS file.
+.PP
+.RS 4
+.nf
+$ klvtool diagnose --input mission.ts
+.fi
+.RE
+runs every stage
+.SH "GLOSSARY"
+.TP
+\fBRaw checkpoint\fR
+the per\-record artifact
+.SH "EXIT STATUS"
+.TP
+\fB0\fR
+success
+.SH "SEE ALSO"
+\fBklvtool\-decode\fR(1)

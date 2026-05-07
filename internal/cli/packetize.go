@@ -10,11 +10,29 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/jacorbello/klvtool/internal/cli/commanddef"
 	"github.com/jacorbello/klvtool/internal/extract"
 	"github.com/jacorbello/klvtool/internal/model"
 	"github.com/jacorbello/klvtool/internal/output"
 	"github.com/jacorbello/klvtool/internal/packetize"
 )
+
+type packetizeFlags struct {
+	inputDir string
+	outDir   string
+	mode     string
+	view     string
+}
+
+func packetizeFlagSet(v *packetizeFlags) *flag.FlagSet {
+	fs := flag.NewFlagSet("packetize", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	fs.StringVar(&v.inputDir, "input", "", "raw checkpoint directory produced by `klvtool extract`")
+	fs.StringVar(&v.outDir, "out", "", "output directory for packet checkpoints")
+	fs.StringVar(&v.mode, "mode", string(packetize.ModeStrict), "parser mode: strict or best-effort")
+	fs.StringVar(&v.view, "view", string(viewAuto), "presentation mode: auto, pretty, or raw")
+	return fs
+}
 
 type packetParser interface {
 	Parse(packetize.Request) (packetize.PacketizedStream, error)
@@ -58,18 +76,8 @@ func (c *PacketizeCommand) Execute(args []string) int {
 		return 0
 	}
 
-	fs := flag.NewFlagSet("packetize", flag.ContinueOnError)
-	fs.SetOutput(io.Discard)
-
-	var inputDir string
-	var outDir string
-	var mode string
-	var view string
-
-	fs.StringVar(&inputDir, "input", "", "directory containing raw payload checkpoint output")
-	fs.StringVar(&outDir, "out", "", "directory for packet checkpoint output")
-	fs.StringVar(&mode, "mode", string(packetize.ModeStrict), "parser mode: strict or best-effort")
-	fs.StringVar(&view, "view", string(viewAuto), "presentation mode: auto, pretty, or raw")
+	var v packetizeFlags
+	fs := packetizeFlagSet(&v)
 
 	if err := fs.Parse(args); err != nil {
 		if err == flag.ErrHelp {
@@ -85,6 +93,7 @@ func (c *PacketizeCommand) Execute(args []string) int {
 		c.writeError(c.Err, model.InvalidUsage(fmt.Errorf("unsupported arguments: %v", fs.Args())))
 		return usageExitCode
 	}
+	inputDir, outDir, mode, view := v.inputDir, v.outDir, v.mode, v.view
 	if strings.TrimSpace(inputDir) == "" {
 		c.writeUsage(c.Err)
 		c.writeError(c.Err, model.InvalidUsage(fmt.Errorf("input directory is required")))
@@ -233,14 +242,64 @@ func (c *PacketizeCommand) writeOutputs(outDir, sourcePath string, streams []pac
 }
 
 func (c *PacketizeCommand) writeUsage(w io.Writer) {
-	if w == nil {
-		return
-	}
-	_, _ = fmt.Fprintln(w, "Usage: klvtool packetize --input <raw-checkpoint-dir> --out <dir> [--mode strict|best-effort]")
-	_, _ = fmt.Fprintln(w)
-	_, _ = fmt.Fprintln(w, "Replay raw extraction checkpoints, parse KLV packets, and write packet checkpoint output.")
-	_, _ = fmt.Fprintln(w)
-	_, _ = fmt.Fprintln(w, "Use this after extract when you need KLV framing diagnostics or packet checkpoint artifacts.")
+	commanddef.RenderHelp(packetizeDef, packetizeFlagSet(&packetizeFlags{}), w)
+}
+
+// Definition returns the CommandDef driving --help and man-page generation.
+func (c *PacketizeCommand) Definition() commanddef.CommandDef { return packetizeDef }
+
+var packetizeDef = commanddef.CommandDef{
+	Name:       "klvtool-packetize",
+	Subcommand: "packetize",
+	Synopsis:   "Replay raw extraction checkpoints into KLV packet checkpoints with framing diagnostics.",
+	UsageLine:  "klvtool packetize --input <raw-checkpoint-dir> --out <dir> [--mode strict|best-effort] [--view auto|pretty|raw]",
+	Description: "Replay the raw extraction checkpoints produced by `klvtool extract`, parse them into individual KLV packets (key, BER length, value), and write per-record packet checkpoints under <out> plus a packet manifest summarizing parser counts and diagnostics.\n" +
+		"\n" +
+		"Use --mode=strict (default) when input is expected to be well-formed: a malformed packet aborts the record. Use --mode=best-effort for forensic recovery on suspect or corrupt input — the parser scans forward past malformed packets, recovers what it can, and surfaces diagnostics with byte offsets so an analyst can see exactly where the wire format diverged.",
+	Examples: []commanddef.Example{
+		{
+			Comment: "Strict packetize after a clean extract",
+			Command: "klvtool packetize --input ./mission-extract --out ./mission-packets",
+		},
+		{
+			Comment: "Best-effort packetize for forensic recovery on corrupt input",
+			Command: "klvtool packetize --input ./mission-extract --out ./mission-packets --mode best-effort",
+		},
+	},
+	OutputFormat: &commanddef.OutputDoc{
+		Format: "Each invocation writes per-record JSON checkpoints under <out>/ plus <out>/packet-manifest.ndjson with one PacketManifest line per replay.",
+		Fields: []commanddef.FieldDef{
+			{Name: "schemaVersion", Type: "string", Notes: "manifest envelope version"},
+			{Name: "sourcePath", Type: "string", Notes: "the --input directory as provided"},
+			{Name: "records[].recordId", Type: "string", Notes: "matches the recordId from the extract manifest"},
+			{Name: "records[].mode", Type: "string", Notes: "\"strict\" or \"best-effort\""},
+			{Name: "records[].parserVersion", Type: "string", Notes: "klvtool packetizer version that produced the output"},
+			{Name: "records[].parsedCount", Type: "integer", Notes: "number of well-formed KLV packets recovered"},
+			{Name: "records[].warningCount", Type: "integer"},
+			{Name: "records[].errorCount", Type: "integer"},
+			{Name: "records[].recovered", Type: "boolean", Notes: "true if best-effort recovery skipped past at least one malformed region"},
+			{Name: "records[].packetPath", Type: "string", Notes: "relative path to the per-record PacketCheckpoint file"},
+			{Name: "records[].diagnostics", Type: "array", Notes: "{severity, code, message, stage, packetIndex?, byteOffset?}"},
+		},
+		Stability: "Schema is stable within klvtool 1.x: new fields are additive.",
+	},
+	Files: []commanddef.FileRef{
+		{Path: "<out>/packet-manifest.ndjson", Description: "summary manifest, one record per source raw checkpoint"},
+		{Path: "<out>/<recordId>.json", Description: "PacketCheckpoint JSON with parsed packets and diagnostics"},
+	},
+	ExitCodes: []commanddef.ExitCode{
+		{Code: 0, Meaning: "success"},
+		{Code: 1, Meaning: "input read failure, output write failure, or strict-mode parse error"},
+		{Code: 2, Meaning: "invalid usage (including --input and --out pointing at the same directory)"},
+	},
+	EnvVars: []commanddef.EnvVar{
+		{Name: "NO_COLOR", Description: "disable ANSI color in pretty output"},
+	},
+	SeeAlso: []commanddef.SeeAlsoRef{
+		{Name: "klvtool", Section: 1},
+		{Name: "klvtool-extract", Section: 1},
+		{Name: "klvtool-decode", Section: 1},
+	},
 }
 
 func (c *PacketizeCommand) writeError(w io.Writer, err error) {

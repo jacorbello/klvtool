@@ -13,10 +13,24 @@ import (
 	"runtime"
 	"time"
 
+	"github.com/jacorbello/klvtool/internal/cli/commanddef"
 	"github.com/jacorbello/klvtool/internal/model"
 	"github.com/jacorbello/klvtool/internal/updater"
 	"github.com/jacorbello/klvtool/internal/version"
 )
+
+type updateFlags struct {
+	dryRun       bool
+	preferBinary bool
+}
+
+func updateFlagSet(v *updateFlags) *flag.FlagSet {
+	fs := flag.NewFlagSet("update", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	fs.BoolVar(&v.dryRun, "dry-run", false, "print the chosen install strategy without acting")
+	fs.BoolVar(&v.preferBinary, "prefer-binary", false, "download the release archive even if go is on PATH")
+	return fs
+}
 
 const goInstallModule = "github.com/jacorbello/klvtool/cmd/klvtool"
 
@@ -66,10 +80,8 @@ func (c *UpdateCommand) Execute(args []string) int {
 	if c == nil {
 		return 1
 	}
-	fs := flag.NewFlagSet("update", flag.ContinueOnError)
-	fs.SetOutput(io.Discard)
-	dryRun := fs.Bool("dry-run", false, "print actions without installing")
-	preferBinary := fs.Bool("prefer-binary", false, "download the release archive even if go is available")
+	var v updateFlags
+	fs := updateFlagSet(&v)
 
 	if err := fs.Parse(args); err != nil {
 		if err == flag.ErrHelp {
@@ -105,12 +117,12 @@ func (c *UpdateCommand) Execute(args []string) int {
 		return 0
 	}
 
-	if *dryRun {
-		c.printDryRun(c.Out, rel, *preferBinary)
+	if v.dryRun {
+		c.printDryRun(c.Out, rel, v.preferBinary)
 		return 0
 	}
 
-	useGo := !*preferBinary
+	useGo := !v.preferBinary
 	if useGo {
 		if goBin, err := c.lookPath()("go"); err == nil {
 			return c.runGoInstall(ctx, goBin, rel.TagName)
@@ -301,14 +313,30 @@ func (c *UpdateCommand) writeError(w io.Writer, err error) {
 }
 
 func (c *UpdateCommand) writeUsage(w io.Writer) {
-	if w == nil {
-		return
-	}
-	_, _ = fmt.Fprintln(w, "Usage: klvtool update [--dry-run] [--prefer-binary]")
-	_, _ = fmt.Fprintln(w)
-	_, _ = fmt.Fprintln(w, "Update klvtool to the latest GitHub release.")
-	_, _ = fmt.Fprintln(w)
-	_, _ = fmt.Fprintln(w, "Flags:")
-	_, _ = fmt.Fprintln(w, "  --dry-run        Print the chosen strategy without installing")
-	_, _ = fmt.Fprintln(w, "  --prefer-binary  Download the release archive even if go is on PATH")
+	commanddef.RenderHelp(updateDef, updateFlagSet(&updateFlags{}), w)
+}
+
+// Definition returns the CommandDef driving --help and man-page generation.
+func (c *UpdateCommand) Definition() commanddef.CommandDef { return updateDef }
+
+var updateDef = commanddef.CommandDef{
+	Name:        "klvtool-update",
+	Subcommand:  "update",
+	Synopsis:    "Update klvtool to the latest GitHub release.",
+	UsageLine:   "klvtool update [--dry-run] [--prefer-binary]",
+	Description: "Update the running klvtool binary to the latest release tagged on GitHub. By default, prefer `go install` when go is on PATH (faster, no archive extraction). Use --prefer-binary to force the release-archive path. Update is skipped on dev builds.",
+	Examples: []commanddef.Example{
+		{Comment: "Update in place", Command: "klvtool update"},
+		{Comment: "Show what would happen without acting", Command: "klvtool update --dry-run"},
+		{Comment: "Force the release-archive path", Command: "klvtool update --prefer-binary"},
+	},
+	ExitCodes: []commanddef.ExitCode{
+		{Code: 0, Meaning: "success or already up to date"},
+		{Code: 1, Meaning: "release lookup failed, install failed, or write to install path failed"},
+		{Code: 2, Meaning: "invalid usage"},
+	},
+	SeeAlso: []commanddef.SeeAlsoRef{
+		{Name: "klvtool", Section: 1},
+		{Name: "klvtool-version", Section: 1},
+	},
 }

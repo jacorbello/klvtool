@@ -1,0 +1,156 @@
+.TH KLVTOOL-DECODE 1 "1970-01-01" "klvtool dev" "User Commands"
+.SH "NAME"
+klvtool\-decode \- Decode MISB ST 0601 KLV records from an MPEG\-TS file.
+.SH "SYNOPSIS"
+klvtool decode \-\-input <file.ts> [\-\-format ndjson|text|csv] [\-\-pid N] [\-\-out <path>] [\-\-strict] [\-\-raw] [\-\-step] [\-\-view auto|pretty|raw] [\-\-schema <urn>]
+.SH "DESCRIPTION"
+Decode MISB ST 0601 KLV metadata from an MPEG\-TS file into typed records.
+.PP
+Use this after `klvtool inspect` to validate a likely metadata PID or to review packets in a terminal\-friendly view. The \-\-raw flag includes raw bytes per item: hex (0x...) in text and csv formats, base64 in NDJSON. The \-\-step flag enables one\-handed packet navigation in pretty text view: r=next, w=previous, d=next diagnostic, e=next error, q=quit.
+.SH "OPTIONS"
+.TP
+\fB\-\-format\fR \fI(default ndjson)\fR
+output format: ndjson, text, or csv
+.TP
+\fB\-\-input\fR
+MPEG\-TS input path
+.TP
+\fB\-\-out\fR
+write output to a file instead of stdout
+.TP
+\fB\-\-pid\fR
+limit decoding to a specific KLV stream PID (0 = all)
+.TP
+\fB\-\-raw\fR
+include raw bytes per item (hex in text/csv, base64 in NDJSON)
+.TP
+\fB\-\-schema\fR
+override auto\-detection with a specific spec URN
+.TP
+\fB\-\-step\fR
+step through decoded packets interactively
+.TP
+\fB\-\-strict\fR
+exit non\-zero if any error\-severity diagnostic is emitted
+.TP
+\fB\-\-view\fR \fI(default auto)\fR
+presentation mode: auto, pretty, or raw
+.SH "OUTPUT FORMAT"
+NDJSON, one JSON object per decoded KLV packet (default \-\-format=ndjson). The \-\-format=text and \-\-format=csv variants are for human review and are not contractual.
+.SS Fields
+.TP
+\fBschema\fR (string)
+spec URN of the registered MISB Local Set used to decode this packet (e.g. "urn:misb:KLV:bin:0601.19")
+.TP
+\fBpacketIndex\fR (integer)
+0\-based index of this packet within the decoded run
+.TP
+\fBlsVersion\fR (integer)
+MISB ST 0601 Local Set version reported by tag 65, or 0 if absent
+.TP
+\fBvalueLength\fR (integer; bytes)
+BER\-encoded value length of the outer Local Set
+.TP
+\fBchecksum\fR (object)
+{expected, computed, valid}; tag 1 must match the engine's recomputation
+.TP
+\fBitems\fR (array)
+decoded tags: {tag, name, value, units, raw?}; units is always present (empty string for tags without a unit)
+.TP
+\fBitems[].value\fR (polymorphic)
+type follows the spec: int/uint/float/string/bool/enum/time. ST 0601 "error indicator" sentinels marshal to JSON null.
+.TP
+\fBitems[].raw\fR (string)
+present only with \-\-raw; base64\-encoded value bytes
+.TP
+\fBdiagnostics\fR (array)
+structural and per\-tag findings: {severity, code, message, tag?, tagName?, actual?, expected?, raw?}
+.SS Time semantics
+ST 0601 tag 2 (Precision Time Stamp) decodes to a TimeValue and serializes as RFC 3339 with microsecond precision in UTC, e.g. "2024\-01\-15T14:23:45.123456Z". When correlating frames against a wall\-clock event, prefer tag 2 over MPEG\-TS PES PTS — PTS is transport\-relative and resets on stream restarts.
+.SS Schema stability
+Schema is stable within klvtool 1.x: new fields are additive; existing field names and types do not change in minor releases. Diagnostic codes may be added but existing codes will not be repurposed.
+.SS Common MISB ST 0601 tags
+.TP
+\fBTag 1 \(em Checksum\fR
+16\-bit BCC over the packet; klvtool recomputes and reports valid/mismatch/malformed/N/A
+.TP
+\fBTag 2 \(em Precision Time Stamp\fR
+wall\-clock at sample time (UTC); preferred timestamp for cross\-correlation
+.TP
+\fBTag 5 \(em Platform Heading Angle\fR (degrees)
+0 = north, clockwise
+.TP
+\fBTag 6 \(em Platform Pitch Angle\fR (degrees)
+.TP
+\fBTag 7 \(em Platform Roll Angle\fR (degrees)
+.TP
+\fBTag 13 \(em Sensor Latitude\fR (degrees)
+WGS\-84
+.TP
+\fBTag 14 \(em Sensor Longitude\fR (degrees)
+WGS\-84
+.TP
+\fBTag 15 \(em Sensor True Altitude\fR (meters)
+.TP
+\fBTag 23 \(em Frame Center Latitude\fR (degrees)
+WGS\-84; the geo\-anchor most GIS workflows want
+.TP
+\fBTag 24 \(em Frame Center Longitude\fR (degrees)
+WGS\-84; pair with tag 23
+.TP
+\fBTag 25 \(em Frame Center Elevation\fR (meters)
+.TP
+\fBTag 65 \(em UAS LDS Version Number\fR
+spec revision the producer claims to comply with
+.TP
+\fBTag 94 \(em MISB Tag (deprecated key list)\fR
+rarely emitted by modern producers; surfaced for completeness
+.SH "EXAMPLES"
+Decode every metadata record as NDJSON for downstream pipelines
+.RS 4
+.nf
+$ klvtool decode --input mission.ts --format ndjson --out frames.ndjson
+.fi
+.RE
+.PP
+Decode just one PID after `klvtool inspect` identifies it
+.RS 4
+.nf
+$ klvtool decode --input mission.ts --pid 257 --format text
+.fi
+.RE
+.PP
+Step through packets with diagnostics highlighted
+.RS 4
+.nf
+$ klvtool decode --input mission.ts --pid 257 --step
+.fi
+.RE
+.SH "EXIT STATUS"
+.TP
+\fB0\fR
+success — decoded zero or more packets without errors
+.TP
+\fB1\fR
+decode failure (TS read error, ffmpeg failure, output write failure, or \-\-strict and any error\-severity diagnostic fired)
+.TP
+\fB2\fR
+invalid usage (missing or malformed flags, unknown schema URN, \-\-step requested without an interactive terminal)
+.SH "ENVIRONMENT"
+.TP
+\fBNO_COLOR\fR
+disable ANSI color in pretty output, regardless of TTY detection
+.SH "REQUIRED TOOLS"
+ffmpeg, ffprobe
+.SH "SEE ALSO"
+\fBklvtool\fR(1),
+\fBklvtool\-inspect\fR(1),
+\fBklvtool\-extract\fR(1),
+\fBklvtool\-diagnose\fR(1)
+.SH "EXTERNAL REFERENCES"
+.TP
+\fBMISB ST 0601.19 — UAS Datalink Local Set\fR
+https://nsgreg.nga.mil/doc/view?i=5337
+.TP
+\fBMISB ST 1402 — MPEG\-2 Transport of Compressed Video Metadata\fR
+https://nsgreg.nga.mil/doc/view?i=5135

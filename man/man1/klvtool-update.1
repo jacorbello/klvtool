@@ -1,0 +1,48 @@
+.TH KLVTOOL-UPDATE 1 "1970-01-01" "klvtool dev" "User Commands"
+.SH "NAME"
+klvtool\-update \- Update klvtool to the latest GitHub release.
+.SH "SYNOPSIS"
+klvtool update [\-\-dry\-run] [\-\-prefer\-binary]
+.SH "DESCRIPTION"
+Update the running klvtool binary to the latest release tagged on GitHub. By default, prefer `go install` when go is on PATH (faster, no archive extraction). Use \-\-prefer\-binary to force the release\-archive path. Update is skipped on dev builds.
+.SH "OPTIONS"
+.TP
+\fB\-\-dry\-run\fR
+print the chosen install strategy without acting
+.TP
+\fB\-\-prefer\-binary\fR
+download the release archive even if go is on PATH
+.SH "EXAMPLES"
+Update in place
+.RS 4
+.nf
+$ klvtool update
+.fi
+.RE
+.PP
+Show what would happen without acting
+.RS 4
+.nf
+$ klvtool update --dry-run
+.fi
+.RE
+.PP
+Force the release\-archive path
+.RS 4
+.nf
+$ klvtool update --prefer-binary
+.fi
+.RE
+.SH "EXIT STATUS"
+.TP
+\fB0\fR
+success or already up to date
+.TP
+\fB1\fR
+release lookup failed, install failed, or write to install path failed
+.TP
+\fB2\fR
+invalid usage
+.SH "SEE ALSO"
+\fBklvtool\fR(1),
+\fBklvtool\-version\fR(1)

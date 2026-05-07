@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+
+	"github.com/jacorbello/klvtool/internal/cli/commanddef"
 )
 
 // CompletionCommand generates shell completion scripts.
@@ -55,17 +57,30 @@ func (c *CompletionCommand) Execute(args []string) int {
 }
 
 func (c *CompletionCommand) writeUsage(w io.Writer) {
-	if w == nil {
-		return
-	}
-	_, _ = fmt.Fprintln(w, "Usage: klvtool completion <bash|zsh|fish>")
-	_, _ = fmt.Fprintln(w)
-	_, _ = fmt.Fprintln(w, "Generate shell completion scripts.")
-	_, _ = fmt.Fprintln(w)
-	_, _ = fmt.Fprintln(w, "Examples:")
-	_, _ = fmt.Fprintln(w, `  eval "$(klvtool completion bash)"`)
-	_, _ = fmt.Fprintln(w, `  eval "$(klvtool completion zsh)"`)
-	_, _ = fmt.Fprintln(w, "  klvtool completion fish | source")
+	commanddef.RenderHelp(completionDef, nil, w)
+}
+
+// Definition returns the CommandDef driving --help and man-page generation.
+func (c *CompletionCommand) Definition() commanddef.CommandDef { return completionDef }
+
+var completionDef = commanddef.CommandDef{
+	Name:        "klvtool-completion",
+	Subcommand:  "completion",
+	Synopsis:    "Generate shell completion scripts (bash, zsh, fish).",
+	UsageLine:   "klvtool completion <bash|zsh|fish>",
+	Description: "Print a shell completion script for the requested shell on stdout. Source the output to enable tab-completion of subcommands and flags.",
+	Examples: []commanddef.Example{
+		{Comment: "Enable bash completion in the current session", Command: `eval "$(klvtool completion bash)"`},
+		{Comment: "Enable zsh completion", Command: `eval "$(klvtool completion zsh)"`},
+		{Comment: "Enable fish completion", Command: "klvtool completion fish | source"},
+	},
+	ExitCodes: []commanddef.ExitCode{
+		{Code: 0, Meaning: "success"},
+		{Code: 2, Meaning: "invalid usage (missing or unsupported shell argument)"},
+	},
+	SeeAlso: []commanddef.SeeAlsoRef{
+		{Name: "klvtool", Section: 1},
+	},
 }
 
 func (c *CompletionCommand) writeError(w io.Writer, msg string) {

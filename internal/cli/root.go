@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 
+	"github.com/jacorbello/klvtool/internal/cli/commanddef"
 	"github.com/jacorbello/klvtool/internal/version"
 )
 
@@ -103,34 +104,114 @@ func (c *RootCommand) writeUsage(w io.Writer) {
 	if w == nil {
 		return
 	}
-	_, _ = fmt.Fprintf(w, "Usage: %s [command] [--help|-h]\n", c.Use)
-	_, _ = fmt.Fprintln(w)
-	_, _ = fmt.Fprintf(w, "Version: %s\n", c.Version)
-	_, _ = fmt.Fprintln(w)
-	_, _ = fmt.Fprintln(w, "CLI for inspecting MPEG-TS streams, extracting KLV payloads, packetizing raw checkpoints, and decoding MISB metadata.")
-	_, _ = fmt.Fprintln(w)
-	_, _ = fmt.Fprintln(w, "Commands:")
-	_, _ = fmt.Fprintln(w, "  version     Print version information.")
-	_, _ = fmt.Fprintln(w, "  update      Update to the latest GitHub release.")
-	_, _ = fmt.Fprintln(w, "  doctor      Check backend availability and environment health.")
-	_, _ = fmt.Fprintln(w, "  extract     Extract payloads and write manifest output.")
-	_, _ = fmt.Fprintln(w, "  inspect     Inspect MPEG-TS stream inventory and diagnostics.")
-	_, _ = fmt.Fprintln(w, "  decode      Decode MISB ST 0601 KLV records to NDJSON, text, or CSV.")
-	_, _ = fmt.Fprintln(w, "  packetize   Replay raw checkpoints and write packet output.")
-	_, _ = fmt.Fprintln(w, "  diagnose    Run the full diagnostic pipeline on an input file.")
-	_, _ = fmt.Fprintln(w, "  completion  Generate shell completion scripts.")
-	_, _ = fmt.Fprintln(w)
-	_, _ = fmt.Fprintln(w, "Common workflows:")
-	_, _ = fmt.Fprintln(w, "  inspect -> decode")
-	_, _ = fmt.Fprintln(w, "    Find likely metadata PIDs, then decode only that stream.")
-	_, _ = fmt.Fprintln(w, "  extract -> packetize")
-	_, _ = fmt.Fprintln(w, "    Capture raw payload artifacts, then inspect KLV packet framing.")
-	_, _ = fmt.Fprintln(w)
-	_, _ = fmt.Fprintln(w, "Required tools:")
-	_, _ = fmt.Fprintln(w, "  ffmpeg:  ffmpeg, ffprobe")
-	_, _ = fmt.Fprintln(w)
-	_, _ = fmt.Fprintln(w, "Install:")
-	_, _ = fmt.Fprintln(w, "  go install github.com/jacorbello/klvtool/cmd/klvtool@latest")
+	commanddef.RenderHelp(c.rootDef(), nil, w)
+	if c != nil && c.Version != "" {
+		_, _ = fmt.Fprintf(w, "\nVersion: %s\n", c.Version)
+	}
+}
+
+// Definition returns the root CommandDef. The man-page generator calls this
+// then walks each subcommand's Definition() to emit per-command pages.
+func (c *RootCommand) Definition() commanddef.CommandDef { return c.rootDef() }
+
+// SubcommandDefs returns each subcommand's CommandDef in stable order.
+// Used by the man-page generator.
+func (c *RootCommand) SubcommandDefs() []commanddef.CommandDef {
+	return []commanddef.CommandDef{
+		c.versionCommand().Definition(),
+		c.updateCommand().Definition(),
+		c.doctorCommand().Definition(),
+		c.extractCommand().Definition(),
+		c.inspectCommand().Definition(),
+		c.decodeCommand().Definition(),
+		c.packetizeCommand().Definition(),
+		c.diagnoseCommand().Definition(),
+		c.completionCommand().Definition(),
+	}
+}
+
+// rootDef assembles the top-level CommandDef. The COMMANDS list is built from
+// each subcommand's Synopsis at render time so the root page never disagrees
+// with the per-command page about what a command does.
+func (c *RootCommand) rootDef() commanddef.CommandDef {
+	subs := []commanddef.SubcommandRef{}
+	for _, def := range c.SubcommandDefs() {
+		subs = append(subs, commanddef.SubcommandRef{Name: def.Subcommand, Synopsis: def.Synopsis})
+	}
+	def := rootDef
+	def.Subcommands = subs
+	return def
+}
+
+// rootDef holds the static documentation for `klvtool` without a subcommand.
+// COMMANDS is populated at render time from the live subcommand Defs.
+var rootDef = commanddef.CommandDef{
+	Name:        "klvtool",
+	UsageLine:   "klvtool <command> [flags]",
+	Synopsis:    "CLI for inspecting MPEG-TS streams, extracting KLV payloads, packetizing raw checkpoints, and decoding MISB metadata.",
+	Description: "klvtool is a Go CLI for working with MPEG-TS video assets and the KLV metadata streams carried inside them. The primary audience is intelligence analysts triaging full-motion video from sensor platforms (UAS, manned ISR) and engineers integrating KLV pipelines.\n\nThe canonical entry point for triaging an unknown file is `klvtool diagnose --input <file.ts>` — it runs the full health check, transport inspection, video bitstream analysis, and KLV decode in one pass and points to a remediation when something fails.",
+	Workflows: []commanddef.Workflow{
+		{
+			Title: "Triage an unknown mission file",
+			When:  "You just received a TS file and need to know whether it is usable, whether the metadata is intact, and what to do if something looks wrong.",
+			Steps: []commanddef.WorkflowStep{
+				{Command: "klvtool diagnose --input mission.ts", Explain: "runs health check, transport inspect, video analysis, and KLV decode; produces a single consolidated report with remediation guidance for any failed stage"},
+				{Command: "klvtool decode --input mission.ts --pid <PID> --format text", Explain: "if diagnose surfaces decode errors on a specific PID, this shows the per-packet diagnostics in pretty text view"},
+			},
+		},
+		{
+			Title: "Geo-locate a frame at a known timestamp",
+			When:  "You need sensor latitude/longitude (or frame-center geo) for a specific moment in the stream and intend to hand the result off to GIS or a downstream pipeline.",
+			Steps: []commanddef.WorkflowStep{
+				{Command: "klvtool inspect --input mission.ts", Explain: "find the metadata PID — the row labeled \"Likely metadata\" in pretty view"},
+				{Command: "klvtool decode --input mission.ts --pid <PID> --format ndjson --out frames.ndjson", Explain: "decode only that PID into stable NDJSON; one record per KLV packet, with tag 2 carrying the wall-clock timestamp"},
+				{Command: "jq 'select(.items[] | .tag == 2 and .value >= \"2024-01-15T14:23:45.000000Z\")' frames.ndjson", Explain: "filter to your timestamp; the surrounding record carries tags 13/14 (sensor lat/lon) and 23/24 (frame-center lat/lon)"},
+			},
+		},
+		{
+			Title: "Forensic recovery from corrupt transport",
+			When:  "Diagnose reports KLV decode errors or framing problems and re-pulling the file is not an option.",
+			Steps: []commanddef.WorkflowStep{
+				{Command: "klvtool extract --input mission.ts --out ./mission-extract", Explain: "capture raw KLV payloads and a manifest with SHA-256 hashes and packet-level transport metadata for chain of custody"},
+				{Command: "klvtool packetize --input ./mission-extract --out ./mission-packets --mode best-effort", Explain: "scan past malformed packets; per-record diagnostics include byte offsets where the wire format diverged"},
+				{Command: "klvtool decode --input mission.ts --pid <PID> --raw --strict", Explain: "with --raw, NDJSON includes base64 of the offending bytes — useful when escalating to platform / sensor engineering"},
+			},
+		},
+	},
+	Glossary: []commanddef.GlossaryEntry{
+		{Term: "Raw checkpoint", Definition: "the per-record artifact written by `klvtool extract`: the full PES payload bytes plus transport metadata. Input format for `klvtool packetize`."},
+		{Term: "Packet checkpoint", Definition: "the parsed-KLV-packet artifact written by `klvtool packetize`: per-packet key/length/value byte ranges plus parser diagnostics. One JSON file per source raw checkpoint."},
+		{Term: "Strict vs best-effort packetize", Definition: "strict aborts the record on the first malformed KLV packet; best-effort scans forward, recovers what it can, and surfaces diagnostics with byte offsets. Use best-effort for forensic recovery on suspect input."},
+		{Term: "Structural validation", Definition: "klvtool's per-tag checks (length, range, encoding) against the registered MISB Local Set spec. Failures appear as error-severity diagnostics on the relevant packet."},
+		{Term: "View modes (auto/pretty/raw)", Definition: "auto picks pretty when stdout is a TTY and the format is human-oriented, raw otherwise. Pretty is for humans (color, multi-line); raw is for piping (single-line, no escapes)."},
+		{Term: "Likely metadata stream", Definition: "a PID whose stream type is one of the data/private types commonly used to carry KLV. `klvtool inspect` highlights these in pretty view; `klvtool diagnose` decodes them automatically."},
+	},
+	ExitCodes: []commanddef.ExitCode{
+		{Code: 0, Meaning: "success"},
+		{Code: 1, Meaning: "command-specific failure (see the per-command page)"},
+		{Code: 2, Meaning: "invalid usage"},
+	},
+	EnvVars: []commanddef.EnvVar{
+		{Name: "NO_COLOR", Description: "disable ANSI color in pretty output across every subcommand"},
+	},
+	RequiredTools: []string{"ffmpeg", "ffprobe"},
+	SeeAlso: []commanddef.SeeAlsoRef{
+		{Name: "klvtool-doctor", Section: 1},
+		{Name: "klvtool-diagnose", Section: 1},
+		{Name: "klvtool-inspect", Section: 1},
+		{Name: "klvtool-decode", Section: 1},
+		{Name: "klvtool-extract", Section: 1},
+		{Name: "klvtool-packetize", Section: 1},
+		{Name: "klvtool-version", Section: 1},
+		{Name: "klvtool-update", Section: 1},
+		{Name: "klvtool-completion", Section: 1},
+	},
+	ExternalRefs: []commanddef.ExternalRef{
+		{Title: "klvtool source and releases", URL: "https://github.com/jacorbello/klvtool"},
+		{Title: "MISB ST 0601.19 — UAS Datalink Local Set", URL: "https://nsgreg.nga.mil/doc/view?i=5337"},
+		{Title: "MISB ST 1402 — MPEG-2 Transport of Compressed Video Metadata", URL: "https://nsgreg.nga.mil/doc/view?i=5135"},
+		{Title: "ITU-T H.222.0 / ISO/IEC 13818-1 — MPEG-TS systems layer", URL: "https://www.itu.int/rec/T-REC-H.222.0"},
+	},
 }
 
 func (c *RootCommand) writeUnsupportedArgs(args []string) {

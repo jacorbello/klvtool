@@ -1,0 +1,33 @@
+.TH KLVTOOL-DOCTOR 1 "1970-01-01" "klvtool dev" "User Commands"
+.SH "NAME"
+klvtool\-doctor \- Check backend availability, detected versions, and install guidance.
+.SH "SYNOPSIS"
+klvtool doctor
+.SH "DESCRIPTION"
+Probe for required external backends (currently ffmpeg/ffprobe), report detected versions, and print platform\-specific install guidance when something is missing or unhealthy. Run this after installing klvtool to confirm the environment is ready.
+.SH "EXAMPLES"
+Verify the environment is ready
+.RS 4
+.nf
+$ klvtool doctor
+.fi
+.RE
+.SH "EXIT STATUS"
+.TP
+\fB0\fR
+all backends healthy
+.TP
+\fB1\fR
+one or more backends unhealthy or missing
+.TP
+\fB2\fR
+invalid usage
+.SH "ENVIRONMENT"
+.TP
+\fBNO_COLOR\fR
+disable ANSI color in pretty output
+.SH "REQUIRED TOOLS"
+ffmpeg, ffprobe
+.SH "SEE ALSO"
+\fBklvtool\fR(1),
+\fBklvtool\-diagnose\fR(1)

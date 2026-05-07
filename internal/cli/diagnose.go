@@ -10,11 +10,25 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/jacorbello/klvtool/internal/cli/commanddef"
 	"github.com/jacorbello/klvtool/internal/envcheck"
 	"github.com/jacorbello/klvtool/internal/h264"
 	"github.com/jacorbello/klvtool/internal/model"
 	ts "github.com/jacorbello/klvtool/internal/mpeg/ts"
 )
+
+type diagnoseFlags struct {
+	inputPath string
+	view      string
+}
+
+func diagnoseFlagSet(v *diagnoseFlags) *flag.FlagSet {
+	fs := flag.NewFlagSet("diagnose", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	fs.StringVar(&v.inputPath, "input", "", "MPEG-TS input path")
+	fs.StringVar(&v.view, "view", string(viewAuto), "presentation mode: auto, pretty, or raw")
+	return fs
+}
 
 // DiagnoseCommand runs the full diagnostic pipeline on an MPEG-TS file:
 // health check, transport inspection, video bitstream analysis, and
@@ -61,12 +75,8 @@ func (c *DiagnoseCommand) Execute(args []string) int {
 		return 0
 	}
 
-	fs := flag.NewFlagSet("diagnose", flag.ContinueOnError)
-	fs.SetOutput(io.Discard)
-
-	var inputPath, view string
-	fs.StringVar(&inputPath, "input", "", "path to the MPEG-TS input file")
-	fs.StringVar(&view, "view", string(viewAuto), "presentation mode: auto, pretty, or raw")
+	var v diagnoseFlags
+	fs := diagnoseFlagSet(&v)
 
 	if err := fs.Parse(args); err != nil {
 		if err == flag.ErrHelp {
@@ -82,6 +92,7 @@ func (c *DiagnoseCommand) Execute(args []string) int {
 		c.writeError(c.Err, model.InvalidUsage(fmt.Errorf("unsupported arguments: %v", fs.Args())))
 		return usageExitCode
 	}
+	inputPath, view := v.inputPath, v.view
 	if strings.TrimSpace(inputPath) == "" {
 		c.writeUsage(c.Err)
 		c.writeError(c.Err, model.InvalidUsage(fmt.Errorf("input path is required")))
@@ -466,15 +477,83 @@ func (c *DiagnoseCommand) env() map[string]string {
 }
 
 func (c *DiagnoseCommand) writeUsage(w io.Writer) {
-	if w == nil {
-		return
-	}
-	_, _ = fmt.Fprintln(w, "Usage: klvtool diagnose --input <file.ts>")
-	_, _ = fmt.Fprintln(w)
-	_, _ = fmt.Fprintln(w, "Run the full diagnostic pipeline: health check, transport inspection, video bitstream analysis, and KLV decode.")
-	_, _ = fmt.Fprintln(w)
-	_, _ = fmt.Fprintln(w, "Video analysis reports a playability verdict (PLAYABLE / STALLS_IN_MSE / DEGRADED) for any H.264 stream —")
-	_, _ = fmt.Fprintln(w, "useful for catching missing IDR frames that prevent hls.js / MSE playback.")
+	commanddef.RenderHelp(diagnoseDef, diagnoseFlagSet(&diagnoseFlags{}), w)
+}
+
+// Definition returns the CommandDef driving --help and man-page generation.
+func (c *DiagnoseCommand) Definition() commanddef.CommandDef { return diagnoseDef }
+
+var diagnoseDef = commanddef.CommandDef{
+	Name:       "klvtool-diagnose",
+	Subcommand: "diagnose",
+	Synopsis:   "Run the full diagnostic pipeline: health check, transport inspect, video analysis, and KLV decode.",
+	UsageLine:  "klvtool diagnose --input <file.ts> [--view auto|pretty|raw]",
+	Description: "Run a one-shot diagnostic pipeline against a single MPEG-TS file: backend health check → transport inspection → H.264 video bitstream analysis (non-fatal) → KLV decode of every likely metadata PID.\n" +
+		"\n" +
+		"This is the right entry point for triaging a fresh mission file. The output is a single consolidated report ending in either a clean run or a `Stopped at: <stage>` line that names the failing stage. Video analysis reports a playability verdict (PLAYABLE / STALLS_IN_MSE / DEGRADED) for any H.264 stream — useful for catching missing IDR frames that prevent hls.js / MSE playback.",
+	Examples: []commanddef.Example{
+		{
+			Comment: "Triage a fresh mission file end to end",
+			Command: "klvtool diagnose --input mission.ts",
+		},
+	},
+	Troubleshooting: []commanddef.TroubleshootingEntry{
+		{
+			Symptom:     "`Stopped at: health check`",
+			LikelyCause: "ffmpeg or ffprobe not found on PATH; the extraction backend cannot start.",
+			Action:      "Install ffmpeg and re-run. Confirm with `klvtool doctor`. The doctor output prints platform-specific install steps.",
+		},
+		{
+			Symptom:     "`Stopped at: inspect`",
+			LikelyCause: "MPEG-TS read or parse failure: the file is unreadable, severely truncated, or not actually a TS stream.",
+			Action:      "Re-pull the file from the source if possible. Otherwise run `klvtool inspect --input <file>` directly to see the underlying error and check whether the file has a valid TS sync byte and program map.",
+		},
+		{
+			Symptom:     "`Stopped at: decode`",
+			LikelyCause: "The metadata stream is structurally invalid for the auto-detected MISB spec, or transport corruption is severe enough to break KLV framing on every recovery attempt.",
+			Action:      "Run `klvtool decode --input <file> --pid <PID> --format text` to see per-packet diagnostics. If decode fails everywhere, run `klvtool extract` then `klvtool packetize --mode best-effort` to surface byte offsets where the wire format diverges, and escalate to platform / sensor engineering with that context.",
+		},
+		{
+			Symptom:     "`No likely metadata streams found.`",
+			LikelyCause: "The transport is healthy but the program map advertises no KLV / data PIDs. Either the sensor was not configured to emit metadata for this capture, or the metadata is muxed under a stream type klvtool does not yet recognize.",
+			Action:      "Confirm the platform was emitting KLV during this mission (sensor config, mission profile). Run `klvtool inspect --input <file>` to see the full PID inventory and consider running `klvtool decode --input <file>` (no --pid) to attempt decode across every PID.",
+		},
+		{
+			Symptom:     "Decode succeeds but reports many error diagnostics",
+			LikelyCause: "Likely a non-compliant or pre-1.x sensor: structural validation against ST 0601 fails on individual tags but framing is intact.",
+			Action:      "Inspect the diagnostic codes (`tag_decode_error`, `unknown_tag`, `validation_failed`). If a vendor-specific spec is in use, try `--schema <urn>` to override auto-detection. If results are still poor, capture an offending packet's bytes via `--raw` and escalate with the diagnostic context.",
+		},
+		{
+			Symptom:     "Video verdict `STALLS_IN_MSE`",
+			LikelyCause: "The H.264 stream is missing IDR frames or SPS/PPS — common with some encoder configurations. The metadata path is unaffected; only browser-based MSE playback (hls.js, video.js) stalls.",
+			Action:      "If you only need metadata, ignore the verdict — KLV decode is independent. For playback, re-encode with libx264 forcing an IDR every keyframe; the diagnose output prints a ready-to-use `ffmpeg ... libx264 -g 60 -keyint_min 60 -sc_threshold 0` command in the FixHint when applicable.",
+		},
+		{
+			Symptom:     "Video verdict `DEGRADED`",
+			LikelyCause: "IDRs present but PES PTS deltas indicate dropped frames in transit.",
+			Action:      "Treat as a transport-quality signal. If lossy delivery is the norm for this feed, the file is still usable for analysis; if not, re-pull or investigate the upstream link.",
+		},
+	},
+	ExitCodes: []commanddef.ExitCode{
+		{Code: 0, Meaning: "pipeline completed (with or without warnings)"},
+		{Code: 1, Meaning: "a stage failed (health check, inspect, or decode); see `Stopped at: <stage>` for which"},
+		{Code: 2, Meaning: "invalid usage"},
+	},
+	EnvVars: []commanddef.EnvVar{
+		{Name: "NO_COLOR", Description: "disable ANSI color in pretty output"},
+	},
+	RequiredTools: []string{"ffmpeg", "ffprobe"},
+	SeeAlso: []commanddef.SeeAlsoRef{
+		{Name: "klvtool", Section: 1},
+		{Name: "klvtool-doctor", Section: 1},
+		{Name: "klvtool-inspect", Section: 1},
+		{Name: "klvtool-decode", Section: 1},
+		{Name: "klvtool-extract", Section: 1},
+		{Name: "klvtool-packetize", Section: 1},
+	},
+	ExternalRefs: []commanddef.ExternalRef{
+		{Title: "MISB ST 0601.19 — UAS Datalink Local Set", URL: "https://nsgreg.nga.mil/doc/view?i=5337"},
+	},
 }
 
 func (c *DiagnoseCommand) writeError(w io.Writer, err error) {
