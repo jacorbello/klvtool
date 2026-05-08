@@ -21,7 +21,7 @@ func DetectTruncatedUASDatalink(payload []byte) bool {
 	if bytes.HasPrefix(payload, universalKeyPrefix) {
 		return false
 	}
-	j := bytes.Index(payload, suf)
+	j := findTruncatedUASDatalinkSuffix(payload, 0)
 	if j < 0 {
 		return false
 	}
@@ -63,7 +63,7 @@ func ParseTruncatedUASDatalinkStream(req Request) (PacketizedStream, error) {
 
 	offset := 0
 	if !bytes.HasPrefix(payload, suf) {
-		j := bytes.Index(payload, suf)
+		j := findTruncatedUASDatalinkSuffix(payload, 0)
 		if j < 0 {
 			d := malformedPacketDiagnostic("trunc0601_sync_missing", "truncated ST 0601 UL suffix not found", 0, 0)
 			stream.Diagnostics = append(stream.Diagnostics, d)
@@ -94,8 +94,8 @@ func ParseTruncatedUASDatalinkStream(req Request) (PacketizedStream, error) {
 			break
 		}
 		if !bytes.HasPrefix(payload[offset:], suf) {
-			i := bytes.Index(payload[offset:], suf)
-			if i < 0 {
+			j := findTruncatedUASDatalinkSuffix(payload, offset)
+			if j < 0 {
 				recoveryFrom := offset
 				d := malformedPacketDiagnostic(
 					"trunc0601_resync_fail",
@@ -121,13 +121,12 @@ func ParseTruncatedUASDatalinkStream(req Request) (PacketizedStream, error) {
 				stream.WarningCount++
 				break
 			}
-			skipLen := i
+			skipLen := j - offset
 			if skipLen > 0 {
 				gapEvents++
 				gapBytesTotal += skipLen
-				stream.WarningCount++
 			}
-			offset += i
+			offset = j
 			stream.Recovered = true
 			continue
 		}
@@ -144,15 +143,40 @@ func ParseTruncatedUASDatalinkStream(req Request) (PacketizedStream, error) {
 				return stream, err
 			}
 			stream.Recovered = true
-			next := bytes.Index(payload[offset+1:], suf)
+			next := findTruncatedUASDatalinkSuffix(payload, offset+1)
 			if next < 0 {
 				break
 			}
-			offset += 1 + next
+			offset = next
 			continue
 		}
-		valueStart := lengthStart + lengthRead
-		end := valueStart + length
+		valueStart, ok := safeAddInt(lengthStart, lengthRead)
+		if !ok {
+			d := malformedPacketDiagnostic("packet_bounds_overflow", "packet length exceeds supported bounds", offset, packetIndex)
+			stream.Diagnostics = append(stream.Diagnostics, d)
+			stream.ErrorCount++
+			if mode == ModeStrict {
+				return stream, fmt.Errorf(d.Message)
+			}
+			stream.Recovered = true
+			break
+		}
+		end, ok := safeAddInt(valueStart, length)
+		if !ok {
+			d := malformedPacketDiagnostic("packet_bounds_overflow", "declared value length exceeds supported bounds", offset, packetIndex)
+			stream.Diagnostics = append(stream.Diagnostics, d)
+			stream.ErrorCount++
+			if mode == ModeStrict {
+				return stream, fmt.Errorf(d.Message)
+			}
+			stream.Recovered = true
+			next := findTruncatedUASDatalinkSuffix(payload, offset+1)
+			if next < 0 {
+				break
+			}
+			offset = next
+			continue
+		}
 		if end > len(payload) {
 			d := malformedPacketDiagnostic(
 				"value_out_of_range",
@@ -198,6 +222,7 @@ func ParseTruncatedUASDatalinkStream(req Request) (PacketizedStream, error) {
 			),
 			Stage: "packetize",
 		})
+		stream.WarningCount++
 	}
 
 	return stream, nil
@@ -210,4 +235,33 @@ func (p *Parser) ParseAuto(req Request) (PacketizedStream, error) {
 		return ParseTruncatedUASDatalinkStream(req)
 	}
 	return p.Parse(req)
+}
+
+func findTruncatedUASDatalinkSuffix(payload []byte, start int) int {
+	suf := st0601.TruncatedUASDatalinkKeySuffix
+	if start < 0 {
+		start = 0
+	}
+	for start <= len(payload)-len(suf) {
+		i := bytes.Index(payload[start:], suf)
+		if i < 0 {
+			return -1
+		}
+		j := start + i
+		if !isFullUASDatalinkSuffix(payload, j) {
+			return j
+		}
+		start = j + 1
+	}
+	return -1
+}
+
+func isFullUASDatalinkSuffix(payload []byte, suffixStart int) bool {
+	sufLen := len(st0601.TruncatedUASDatalinkKeySuffix)
+	prefixLen := len(st0601.UASDatalinkUL) - sufLen
+	fullStart := suffixStart - prefixLen
+	if fullStart < 0 || fullStart+len(st0601.UASDatalinkUL) > len(payload) {
+		return false
+	}
+	return bytes.Equal(payload[fullStart:fullStart+len(st0601.UASDatalinkUL)], st0601.UASDatalinkUL)
 }

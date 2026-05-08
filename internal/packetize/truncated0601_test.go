@@ -2,6 +2,7 @@ package packetize
 
 import (
 	"bytes"
+	"strings"
 	"testing"
 
 	"github.com/jacorbello/klvtool/internal/extract"
@@ -35,6 +36,21 @@ func TestDetectTruncatedUASDatalink(t *testing.T) {
 	full = append(full, val...)
 	if DetectTruncatedUASDatalink(full) {
 		t.Fatal("did not expect detection when wire uses full 16-byte key")
+	}
+}
+
+func TestDetectTruncatedUASDatalinkIgnoresFullULAfterPreamble(t *testing.T) {
+	val := []byte{1, 2, 3}
+	payload := []byte{0xaa}
+	payload = append(payload, st0601.UASDatalinkUL...)
+	payload = append(payload, berWireLen(len(val))...)
+	payload = append(payload, val...)
+
+	if DetectTruncatedUASDatalink(payload) {
+		t.Fatal("did not expect detection for full UL packet after preamble")
+	}
+	if got := findTruncatedUASDatalinkSuffix(payload, 0); got != -1 {
+		t.Fatalf("expected no truncated suffix boundary, got %d", got)
 	}
 }
 
@@ -76,6 +92,81 @@ func TestParseTruncatedUASDatalinkStream(t *testing.T) {
 	}
 	if stream.WarningCount == 0 {
 		t.Fatal("expected gap warning")
+	}
+}
+
+func TestParseTruncatedUASDatalinkStreamAggregatesGapWarningCount(t *testing.T) {
+	suf := st0601.TruncatedUASDatalinkKeySuffix
+	packet := func(value byte) []byte {
+		p := append([]byte{}, suf...)
+		p = append(p, berWireLen(1)...)
+		return append(p, value)
+	}
+
+	payload := packet(1)
+	payload = append(payload, 0xaa)
+	payload = append(payload, packet(2)...)
+	payload = append(payload, 0xbb, 0xcc)
+	payload = append(payload, packet(3)...)
+
+	stream, err := ParseTruncatedUASDatalinkStream(Request{
+		Mode: ModeBestEffort,
+		Record: extract.RawPayloadRecord{
+			Payload: payload,
+		},
+	})
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if stream.WarningCount != 1 {
+		t.Fatalf("expected 1 aggregate warning, got %d", stream.WarningCount)
+	}
+	warnings := 0
+	for _, diag := range stream.Diagnostics {
+		if diag.Severity == "warning" {
+			warnings++
+			if diag.Code == "trunc0601_inter_record_gaps" && !strings.Contains(diag.Message, "2 inter-record gaps") {
+				t.Fatalf("expected diagnostic to report 2 gaps, got %q", diag.Message)
+			}
+		}
+	}
+	if warnings != 1 {
+		t.Fatalf("expected 1 warning diagnostic, got %d: %#v", warnings, stream.Diagnostics)
+	}
+}
+
+func TestParseTruncatedUASDatalinkStreamRejectsOverflowingLengthWithoutPanic(t *testing.T) {
+	suf := st0601.TruncatedUASDatalinkKeySuffix
+	maxInt := int(^uint(0) >> 1)
+	payload := append([]byte{}, suf...)
+	payload = append(payload, berWireLen(maxInt)...)
+
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("parse panicked: %v", r)
+		}
+	}()
+
+	stream, err := ParseTruncatedUASDatalinkStream(Request{
+		Mode: ModeBestEffort,
+		Record: extract.RawPayloadRecord{
+			Payload: payload,
+		},
+	})
+	if err != nil {
+		t.Fatalf("best-effort parse returned error: %v", err)
+	}
+	if stream.ErrorCount != 1 {
+		t.Fatalf("expected 1 error, got %d", stream.ErrorCount)
+	}
+	if len(stream.Diagnostics) != 1 {
+		t.Fatalf("expected 1 diagnostic, got %d", len(stream.Diagnostics))
+	}
+	if stream.Diagnostics[0].Code != "packet_bounds_overflow" {
+		t.Fatalf("expected packet_bounds_overflow, got %q", stream.Diagnostics[0].Code)
+	}
+	if !stream.Recovered {
+		t.Fatal("expected recovered=true")
 	}
 }
 
