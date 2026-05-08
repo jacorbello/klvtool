@@ -147,6 +147,23 @@ func TestExtractPreservesMalformedPIDWarning(t *testing.T) {
 	}
 }
 
+func TestParseProbeStreamsSkipsLeadingNoise(t *testing.T) {
+	raw := []byte("[hevc @ 0x0] PPS id out of range: 0\n{\"streams\":[{\"index\":1,\"id\":\"0x42\"}]}")
+	streams, err := parseProbeStreams(raw)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if len(streams) != 1 {
+		t.Fatalf("expected 1 stream, got %d", len(streams))
+	}
+	if streams[0].PID != 0x42 {
+		t.Fatalf("expected pid 0x42, got %#x", streams[0].PID)
+	}
+	if streams[0].Index != 1 {
+		t.Fatalf("expected stream index 1, got %d", streams[0].Index)
+	}
+}
+
 func TestExtractWrapsProbeParseErrors(t *testing.T) {
 	backend := &Backend{
 		Run: func(ctx context.Context, path string, args ...string) ([]byte, error) {

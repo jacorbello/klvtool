@@ -1,8 +1,10 @@
 package ffmpeg
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -169,7 +171,16 @@ type normalizedStream struct {
 func parseProbeStreams(data []byte) ([]normalizedStream, error) {
 	var response probeResponse
 	if err := json.Unmarshal(data, &response); err != nil {
-		return nil, model.BackendParse(fmt.Errorf("parse ffprobe json: %w", err))
+		// Some ffmpeg builds print libavcodec messages to stdout before JSON
+		// even with -v error; skip any leading non-JSON noise.
+		idx := bytes.IndexByte(data, '{')
+		if idx < 0 {
+			return nil, model.BackendParse(fmt.Errorf("parse ffprobe json: %w", err))
+		}
+		suffix := data[idx:]
+		if err2 := json.Unmarshal(suffix, &response); err2 != nil {
+			return nil, model.BackendParse(fmt.Errorf("parse ffprobe json: %w", err2))
+		}
 	}
 
 	streams := make([]normalizedStream, 0, len(response.Streams))
@@ -212,9 +223,32 @@ func normalizeWarning(warning string) string {
 
 func defaultRunner(ctx context.Context, path string, args ...string) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, path, args...)
+	// ffprobe writes JSON on stdout and libav messages on stderr. Combining
+	// streams breaks json.Unmarshal when stderr appears first or dominates
+	// the buffer; read stdout only for probe runs.
+	if isFFprobeExecutable(path) {
+		out, err := cmd.Output()
+		if err != nil {
+			var exitErr *exec.ExitError
+			if errors.As(err, &exitErr) && len(exitErr.Stderr) > 0 {
+				return nil, fmt.Errorf("%w: %s", err, strings.TrimSpace(string(exitErr.Stderr)))
+			}
+			return nil, fmt.Errorf("%w: %s", err, strings.TrimSpace(string(out)))
+		}
+		return out, nil
+	}
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return nil, fmt.Errorf("%w: %s", err, strings.TrimSpace(string(output)))
 	}
 	return output, nil
+}
+
+func isFFprobeExecutable(path string) bool {
+	switch filepath.Base(path) {
+	case "ffprobe", "ffprobe.exe":
+		return true
+	default:
+		return false
+	}
 }
