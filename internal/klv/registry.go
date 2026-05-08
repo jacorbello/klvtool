@@ -74,7 +74,7 @@ func (r *Registry) Resolve(ul []byte, value []byte) (specs.SpecVersion, error) {
 	candidates := r.byUL[string(ul)]
 	switch len(candidates) {
 	case 0:
-		return nil, fmt.Errorf("%w: no spec registered for UL", ErrUnknownSpec)
+		return nil, fmt.Errorf("%w: no spec registered for UL %x", ErrUnknownSpec, ul)
 	case 1:
 		return candidates[0], nil
 	}
