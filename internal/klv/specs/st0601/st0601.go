@@ -7,3 +7,8 @@ var UASDatalinkUL = []byte{
 	0x06, 0x0e, 0x2b, 0x34, 0x02, 0x0b, 0x01, 0x01,
 	0x0e, 0x01, 0x03, 0x01, 0x01, 0x00, 0x00, 0x00,
 }
+
+// TruncatedUASDatalinkKeySuffix is the final 11 bytes of UASDatalinkUL. Some
+// encoders transmit metadata as suffix-without-OID-prefix immediately followed
+// by BER packet length and the local set value (common on PID 0x42 private PES).
+var TruncatedUASDatalinkKeySuffix = UASDatalinkUL[len(UASDatalinkUL)-11:]

@@ -15,6 +15,7 @@ vendor/
 __debug_bin*
 
 # Local test and fixture outputs
+exports/
 testdata/output/
 testdata/tmp/
 testdata/fixtures/sample.ts

@@ -130,7 +130,7 @@ func NewDecodeCommand() *DecodeCommand {
 			if pid != 0 && int(raw.PID) != pid {
 				continue
 			}
-			stream, err := parser.Parse(packetize.Request{
+			stream, err := parser.ParseAuto(packetize.Request{
 				Mode:   packetize.ModeBestEffort,
 				Record: raw,
 			})

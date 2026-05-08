@@ -27,6 +27,13 @@ func TestV19Metadata(t *testing.T) {
 	}
 }
 
+func TestTruncatedUASDatalinkKeySuffix(t *testing.T) {
+	want := UASDatalinkUL[len(UASDatalinkUL)-11:]
+	if !bytes.Equal(TruncatedUASDatalinkKeySuffix, want) {
+		t.Fatalf("TruncatedUASDatalinkKeySuffix = %x, want %x", TruncatedUASDatalinkKeySuffix, want)
+	}
+}
+
 func TestV19MandatoryTags(t *testing.T) {
 	sv := V19()
 	for _, tag := range []int{1, 2, 65} {

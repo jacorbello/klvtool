@@ -36,6 +36,7 @@ func packetizeFlagSet(v *packetizeFlags) *flag.FlagSet {
 
 type packetParser interface {
 	Parse(packetize.Request) (packetize.PacketizedStream, error)
+	ParseAuto(packetize.Request) (packetize.PacketizedStream, error)
 }
 
 type packetManifestWriter interface {
@@ -161,7 +162,7 @@ func (c *PacketizeCommand) Execute(args []string) int {
 
 	streams := make([]packetize.PacketizedStream, 0, len(records))
 	for _, record := range records {
-		result, err := c.parser().Parse(packetize.Request{Mode: packetMode, Record: record})
+		result, err := c.parser().ParseAuto(packetize.Request{Mode: packetMode, Record: record})
 		if err != nil {
 			c.writeError(c.Err, err)
 			return exitCodeForError(err)
