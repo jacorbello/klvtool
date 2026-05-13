@@ -137,8 +137,8 @@ func (c *InspectCommand) Execute(args []string) int {
 		if streamFn == nil {
 			streamFn = defaultInspectStream
 		}
-		ctx, _, finalize := stream.Spawn(context.Background(), v.streamFlags.stopOptions())
-		src, err := open(ctx, inputPath, v.streamFlags.streamOptions())
+		ctx, _, finalize := stream.Spawn(context.Background(), v.stopOptions())
+		src, err := open(ctx, inputPath, v.streamOptions())
 		if err != nil {
 			c.writeError(c.Err, err)
 			_ = finalize()

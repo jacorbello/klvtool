@@ -107,7 +107,7 @@ func (c *RecordCommand) Execute(args []string) int {
 		open = stream.Open
 	}
 
-	ctx, counters, finalize := stream.Spawn(context.Background(), v.streamFlags.stopOptions())
+	ctx, counters, finalize := stream.Spawn(context.Background(), v.stopOptions())
 	defer func() {
 		summary := finalize()
 		if c.Err != nil {
@@ -115,7 +115,7 @@ func (c *RecordCommand) Execute(args []string) int {
 		}
 	}()
 
-	src, err := open(ctx, v.inputPath, v.streamFlags.streamOptions())
+	src, err := open(ctx, v.inputPath, v.streamOptions())
 	if err != nil {
 		c.writeError(c.Err, err)
 		return exitCodeForError(err)

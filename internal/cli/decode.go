@@ -482,7 +482,7 @@ func (c *DecodeCommand) Execute(args []string) int {
 		// --duration, --idle-timeout, and --max-* limits all cancel
 		// the demux loop through one context.
 		var finalize func() stream.Summary
-		streamCtx, counters, finalize = stream.Spawn(context.Background(), v.streamFlags.stopOptions())
+		streamCtx, counters, finalize = stream.Spawn(context.Background(), v.stopOptions())
 		finalizeSummary = finalize
 		// Wrap emitter callbacks to update lifecycle counters. Wrapping
 		// here (rather than threading counters into newStreamingDecode)
