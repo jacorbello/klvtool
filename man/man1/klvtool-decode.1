@@ -2,7 +2,7 @@
 .SH "NAME"
 klvtool\-decode \- Decode MISB ST 0601 KLV records from an MPEG\-TS file.
 .SH "SYNOPSIS"
-klvtool decode \-\-input <file.ts> [\-\-format ndjson|text|csv] [\-\-pid N] [\-\-out <path>] [\-\-strict] [\-\-raw] [\-\-step] [\-\-view auto|pretty|raw] [\-\-schema <urn>]
+klvtool decode \-\-input <file.ts> [\-\-format ndjson|text|csv] [\-\-pid N] [\-\-out <path>] [\-\-strict] [\-\-raw] [\-\-step] [\-\-view auto|pretty|raw] [\-\-schema <urn>] [\-\-repair\-stripped\-ul]
 .SH "DESCRIPTION"
 Decode MISB ST 0601 KLV metadata from an MPEG\-TS file into typed records.
 .PP
@@ -23,6 +23,9 @@ limit decoding to a specific KLV stream PID (0 = all)
 .TP
 \fB\-\-raw\fR
 include raw bytes per item (hex in text/csv, base64 in NDJSON)
+.TP
+\fB\-\-repair\-stripped\-ul\fR
+re\-attach the 5\-byte SMPTE category prefix that some ffmpeg builds strip from KLV data streams
 .TP
 \fB\-\-schema\fR
 override auto\-detection with a specific spec URN
