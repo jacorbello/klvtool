@@ -88,7 +88,7 @@ func (r *Registry) Resolve(ul []byte, value []byte) (specs.SpecVersion, error) {
 	candidates := r.byUL[string(ul)]
 	switch len(candidates) {
 	case 0:
-		return nil, fmt.Errorf("%w: no spec registered for UL", ErrUnknownSpec)
+		return nil, fmt.Errorf("%w: no spec registered for UL %x", ErrUnknownSpec, ul)
 	case 1:
 		return candidates[0], nil
 	}
@@ -96,14 +96,14 @@ func (r *Registry) Resolve(ul []byte, value []byte) (specs.SpecVersion, error) {
 	versionTag := candidates[0].VersionTag()
 	peeked, ok := peekTag(value, versionTag)
 	if !ok {
-		return nil, fmt.Errorf("%w: cannot peek version tag %d", ErrUnknownSpec, versionTag)
+		return nil, fmt.Errorf("%w: cannot peek version tag %d for UL %x", ErrUnknownSpec, versionTag, ul)
 	}
 	for _, c := range candidates {
 		if c.ExpectedVersion() == peeked {
 			return c, nil
 		}
 	}
-	return nil, fmt.Errorf("%w: version %d not registered", ErrUnknownSpec, peeked)
+	return nil, fmt.Errorf("%w: version %d not registered for UL %x", ErrUnknownSpec, peeked, ul)
 }
 
 // peekTag walks the TLV stream in value looking for the given tag number,
