@@ -61,6 +61,20 @@ func (r *Registry) Lookup(urn string) (specs.SpecVersion, bool) {
 	return sv, ok
 }
 
+// KnownULs returns a deduplicated copy of every UL registered with this
+// Registry. Order is unspecified. Callers may use this to discover the
+// universe of valid SMPTE keys without depending on the spec packages
+// directly.
+func (r *Registry) KnownULs() [][]byte {
+	out := make([][]byte, 0, len(r.byUL))
+	for key := range r.byUL {
+		ul := make([]byte, len(key))
+		copy(ul, key)
+		out = append(out, ul)
+	}
+	return out
+}
+
 // Resolve picks the right SpecVersion for a packet.
 //
 // Algorithm:

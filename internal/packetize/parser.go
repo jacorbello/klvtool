@@ -15,6 +15,16 @@ const parserVersion = "1"
 type Request struct {
 	Mode   Mode
 	Record extract.RawPayloadRecord
+	// KnownULs lists the 16-byte SMPTE Universal Labels the caller knows
+	// about (typically derived from a klv.Registry). Used for the stripped-UL
+	// detection probe; safe to leave nil to disable that detection.
+	KnownULs [][]byte
+	// RepairStrippedUL controls whether the parser rebuilds the payload to
+	// re-attach the 5-byte SMPTE category prefix that some ffmpeg builds
+	// strip when extracting KLV data streams via `-c copy -f data`. Has no
+	// effect unless KnownULs is non-empty and the stripped pattern is
+	// detected.
+	RepairStrippedUL bool
 }
 
 type Parser struct{}
@@ -41,6 +51,25 @@ func (p *Parser) Parse(req Request) (PacketizedStream, error) {
 
 	if len(req.Record.Payload) == 0 {
 		return stream, nil
+	}
+
+	// Detection probe: some ffmpeg builds strip the first 5 bytes of the
+	// 16-byte SMPTE UL when emitting KLV data streams via `-c copy -f data`.
+	// We compare the payload's count of full ULs (any starting with
+	// 06 0e 2b 34) against the count of known-UL tails. If there are zero
+	// full ULs and at least one tail, the stream is almost certainly the
+	// stripped variant; emit a stream-level diagnostic and (if requested)
+	// repair the payload in-flight before the normal parse loop runs.
+	if detected, hit := detectStrippedULPrefix(req.Record.Payload, req.KnownULs); detected {
+		stream.Diagnostics = append(stream.Diagnostics, strippedULPrefixDiagnostic(hit))
+		stream.WarningCount++
+		if req.RepairStrippedUL {
+			repaired, count := repairStrippedULPrefix(req.Record.Payload, req.KnownULs)
+			req.Record.Payload = repaired
+			stream.Source.Payload = repaired
+			stream.Diagnostics = append(stream.Diagnostics, strippedULRepairedDiagnostic(count, hit))
+			stream.Recovered = true
+		}
 	}
 
 	for offset, attempt := 0, 0; offset < len(req.Record.Payload); attempt++ {
@@ -193,4 +222,95 @@ func safeAddInt(a, b int) (int, bool) {
 		return 0, false
 	}
 	return a + b, true
+}
+
+// strippedULMatch records which registered UL appears to have been stripped
+// in the payload, plus the number of stub occurrences observed.
+type strippedULMatch struct {
+	UL    []byte
+	Count int
+}
+
+// detectStrippedULPrefix probes a payload for the ffmpeg-strip pattern: the
+// payload contains zero full SMPTE ULs (4-byte prefix 06 0e 2b 34) but at
+// least one 11-byte tail of a registered UL. Returns (true, match) only when
+// exactly that combination holds. Abstains when any full UL is present —
+// mixing the two would suggest a payload whose framing we don't understand,
+// and silent repair could corrupt valid packets.
+func detectStrippedULPrefix(payload []byte, knownULs [][]byte) (bool, strippedULMatch) {
+	if len(payload) == 0 || len(knownULs) == 0 {
+		return false, strippedULMatch{}
+	}
+	if bytes.Contains(payload, universalKeyPrefix) {
+		return false, strippedULMatch{}
+	}
+	best := strippedULMatch{}
+	for _, ul := range knownULs {
+		if len(ul) != 16 {
+			continue
+		}
+		tail := ul[5:]
+		count := bytes.Count(payload, tail)
+		if count > best.Count {
+			best = strippedULMatch{UL: ul, Count: count}
+		}
+	}
+	if best.Count == 0 {
+		return false, strippedULMatch{}
+	}
+	return true, best
+}
+
+// repairStrippedULPrefix rebuilds the payload by re-attaching the first
+// 5 bytes (the SMPTE category prefix) of the best-matching known UL at every
+// occurrence of that UL's 11-byte tail. Returns the rebuilt payload and the
+// number of packets repaired. If detection abstains, returns the input
+// unchanged.
+func repairStrippedULPrefix(payload []byte, knownULs [][]byte) ([]byte, int) {
+	ok, hit := detectStrippedULPrefix(payload, knownULs)
+	if !ok {
+		return payload, 0
+	}
+	prefix := hit.UL[:5]
+	tail := hit.UL[5:]
+	out := make([]byte, 0, len(payload)+5*hit.Count)
+	cursor := 0
+	repaired := 0
+	for cursor < len(payload) {
+		idx := bytes.Index(payload[cursor:], tail)
+		if idx < 0 {
+			out = append(out, payload[cursor:]...)
+			break
+		}
+		out = append(out, payload[cursor:cursor+idx]...)
+		out = append(out, prefix...)
+		out = append(out, tail...)
+		repaired++
+		cursor += idx + len(tail)
+	}
+	return out, repaired
+}
+
+func strippedULPrefixDiagnostic(hit strippedULMatch) Diagnostic {
+	return Diagnostic{
+		Severity: "warning",
+		Code:     DiagnosticStrippedULPrefix,
+		Message: fmt.Sprintf(
+			"payload appears to have the 5-byte SMPTE category prefix removed from every UL (matched %d stubs of %x); re-run with --repair-stripped-ul to recover, or use an ffmpeg build that preserves the full UL",
+			hit.Count, hit.UL,
+		),
+		Stage: "packetize",
+	}
+}
+
+func strippedULRepairedDiagnostic(count int, hit strippedULMatch) Diagnostic {
+	return Diagnostic{
+		Severity: "info",
+		Code:     DiagnosticStrippedULRepaired,
+		Message: fmt.Sprintf(
+			"re-attached the 5-byte SMPTE category prefix to %d packet(s) against UL %x",
+			count, hit.UL,
+		),
+		Stage: "packetize",
+	}
 }

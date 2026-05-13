@@ -10,6 +10,18 @@ const (
 	ModeBestEffort Mode = "best-effort"
 )
 
+// Diagnostic codes emitted by the parser. New codes should be added here so
+// downstream consumers (decode, diagnose, tests) can match on stable strings.
+const (
+	DiagnosticPacketTruncated      = "packet_truncated"
+	DiagnosticInvalidBERLength     = "invalid_ber_length"
+	DiagnosticPacketBoundsOverflow = "packet_bounds_overflow"
+	DiagnosticValueOutOfRange      = "value_out_of_range"
+	DiagnosticRecoverySkip         = "recovery_skip"
+	DiagnosticStrippedULPrefix     = "stripped_ul_prefix"
+	DiagnosticStrippedULRepaired   = "stripped_ul_repaired"
+)
+
 // Classification identifies the broad shape of a parsed KLV packet.
 type Classification string
 

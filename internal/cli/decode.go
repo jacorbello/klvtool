@@ -26,15 +26,16 @@ import (
 
 // decodeFlags holds parsed --flag values for the decode subcommand.
 type decodeFlags struct {
-	inputPath string
-	format    string
-	raw       bool
-	strict    bool
-	pid       int
-	outPath   string
-	schema    string
-	view      string
-	step      bool
+	inputPath        string
+	format           string
+	raw              bool
+	strict           bool
+	pid              int
+	outPath          string
+	schema           string
+	view             string
+	step             bool
+	repairStrippedUL bool
 }
 
 func decodeFlagSet(v *decodeFlags) *flag.FlagSet {
@@ -49,11 +50,22 @@ func decodeFlagSet(v *decodeFlags) *flag.FlagSet {
 	fs.StringVar(&v.schema, "schema", "", "override auto-detection with a specific spec URN")
 	fs.StringVar(&v.view, "view", string(viewAuto), "presentation mode: auto, pretty, or raw")
 	fs.BoolVar(&v.step, "step", false, "step through decoded packets interactively")
+	fs.BoolVar(&v.repairStrippedUL, "repair-stripped-ul", false, "re-attach the 5-byte SMPTE category prefix that some ffmpeg builds strip from KLV data streams")
 	return fs
 }
 
 // mpegTSPIDMax is the highest valid MPEG-TS packet identifier (13-bit field).
 const mpegTSPIDMax = 0x1FFF
+
+// DecodeRequest carries the per-invocation options the Decode callback acts
+// on. New options should be added as struct fields so existing tests don't
+// need to re-thread positional arguments.
+type DecodeRequest struct {
+	Path             string
+	PID              int
+	Schema           string
+	RepairStrippedUL bool
+}
 
 // DecodeCommand decodes MISB ST 0601 KLV from an MPEG-TS file into
 // typed records.
@@ -61,10 +73,10 @@ type DecodeCommand struct {
 	In  io.Reader
 	Out io.Writer
 	Err io.Writer
-	// Decode runs the decode pipeline. When schema is non-empty, the
+	// Decode runs the decode pipeline. When req.Schema is non-empty, the
 	// implementation must restrict decoding to the SpecVersion registered
 	// under that URN (bypassing UL-based auto-detection).
-	Decode   func(path string, pid int, schema string) (DecodeResult, error)
+	Decode   func(req DecodeRequest) (DecodeResult, error)
 	Registry func() *klv.Registry
 	// openOut creates the output file for --out. Defaults to os.Create.
 	// Exposed for testing close-error propagation.
@@ -96,7 +108,7 @@ func NewDecodeCommand() *DecodeCommand {
 			return r
 		},
 	}
-	c.Decode = func(path string, pid int, schema string) (DecodeResult, error) {
+	c.Decode = func(req DecodeRequest) (DecodeResult, error) {
 		report := defaultDoctorDetect(context.Background(), "", currentEnvMap())
 		desc := ffmpegDescriptor(report)
 		if !desc.Healthy {
@@ -105,7 +117,7 @@ func NewDecodeCommand() *DecodeCommand {
 
 		extractor := extract.NewExtractor(ffmpegbackend.NewBackend())
 		result, err := extractor.Run(context.Background(), extract.RunRequest{
-			InputPath: path,
+			InputPath: req.Path,
 			Backend:   desc,
 		})
 		if err != nil {
@@ -116,23 +128,26 @@ func NewDecodeCommand() *DecodeCommand {
 		// When --schema is set, restrict decoding to just the requested
 		// SpecVersion by building a single-entry registry. This makes the
 		// flag a genuine override rather than a no-op gate.
-		if schema != "" {
-			sv, ok := reg.Lookup(schema)
+		if req.Schema != "" {
+			sv, ok := reg.Lookup(req.Schema)
 			if !ok {
-				return DecodeResult{}, model.InvalidUsage(fmt.Errorf("schema %q not registered", schema))
+				return DecodeResult{}, model.InvalidUsage(fmt.Errorf("schema %q not registered", req.Schema))
 			}
 			reg = klv.NewRegistry()
 			reg.Register(sv)
 		}
+		knownULs := reg.KnownULs()
 		parser := packetize.NewParser()
 		var res DecodeResult
 		for _, raw := range result.Records {
-			if pid != 0 && int(raw.PID) != pid {
+			if req.PID != 0 && int(raw.PID) != req.PID {
 				continue
 			}
 			stream, err := parser.Parse(packetize.Request{
-				Mode:   packetize.ModeBestEffort,
-				Record: raw,
+				Mode:             packetize.ModeBestEffort,
+				Record:           raw,
+				KnownULs:         knownULs,
+				RepairStrippedUL: req.RepairStrippedUL,
 			})
 			if err != nil {
 				return DecodeResult{}, err
@@ -149,12 +164,17 @@ func NewDecodeCommand() *DecodeCommand {
 				res.StreamDiagnostics = append(res.StreamDiagnostics, sourceDiags...)
 				continue
 			}
+			// When the parser repaired a stripped-UL payload, packet
+			// offsets refer to the rebuilt buffer in stream.Source.Payload
+			// rather than the original raw.Payload — slice from the source
+			// the parser actually used.
+			parsedPayload := stream.Source.Payload
 			for i, pkt := range stream.Packets {
 				// Preserve the exact wire BER length bytes — the checksum
 				// covers them and may use a non-canonical encoding.
 				var lengthBytes []byte
-				if pkt.LengthStart >= 0 && pkt.ValueStart >= pkt.LengthStart && pkt.ValueStart <= len(raw.Payload) {
-					lengthBytes = raw.Payload[pkt.LengthStart:pkt.ValueStart]
+				if pkt.LengthStart >= 0 && pkt.ValueStart >= pkt.LengthStart && pkt.ValueStart <= len(parsedPayload) {
+					lengthBytes = parsedPayload[pkt.LengthStart:pkt.ValueStart]
 				}
 				rec, err := klv.DecodeLocalSet(reg, pkt.Key, lengthBytes, pkt.Value)
 				if err != nil {
@@ -261,7 +281,12 @@ func (c *DecodeCommand) Execute(args []string) int {
 		decode = NewDecodeCommand().Decode
 	}
 
-	result, err := decode(inputPath, pid, schema)
+	result, err := decode(DecodeRequest{
+		Path:             inputPath,
+		PID:              pid,
+		Schema:           schema,
+		RepairStrippedUL: v.repairStrippedUL,
+	})
 	if err != nil {
 		c.writeError(c.Err, err)
 		return exitCodeForError(err)
@@ -764,7 +789,7 @@ var decodeDef = commanddef.CommandDef{
 	Name:       "klvtool-decode",
 	Subcommand: "decode",
 	Synopsis:   "Decode MISB ST 0601 KLV records from an MPEG-TS file.",
-	UsageLine:  "klvtool decode --input <file.ts> [--format ndjson|text|csv] [--pid N] [--out <path>] [--strict] [--raw] [--step] [--view auto|pretty|raw] [--schema <urn>]",
+	UsageLine:  "klvtool decode --input <file.ts> [--format ndjson|text|csv] [--pid N] [--out <path>] [--strict] [--raw] [--step] [--view auto|pretty|raw] [--schema <urn>] [--repair-stripped-ul]",
 	Description: "Decode MISB ST 0601 KLV metadata from an MPEG-TS file into typed records.\n" +
 		"\n" +
 		"Use this after `klvtool inspect` to validate a likely metadata PID or to review packets in a terminal-friendly view. The --raw flag includes raw bytes per item: hex (0x...) in text and csv formats, base64 in NDJSON. The --step flag enables one-handed packet navigation in pretty text view: r=next, w=previous, d=next diagnostic, e=next error, q=quit.",
