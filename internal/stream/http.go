@@ -30,8 +30,8 @@ func (h *httpSource) Close() error {
 	})
 	return err
 }
-func (h *httpSource) Scheme() string             { return h.scheme }
-func (h *httpSource) RemoteAddr() string         { return h.remoteAddr }
+func (h *httpSource) Scheme() string     { return h.scheme }
+func (h *httpSource) RemoteAddr() string { return h.remoteAddr }
 
 func openHTTP(ctx context.Context, u *url.URL, opts Options) (Source, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
