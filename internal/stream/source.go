@@ -80,7 +80,11 @@ func Open(ctx context.Context, raw string, opts Options) (Source, error) {
 	}
 	switch strings.ToLower(u.Scheme) {
 	case "file":
-		return openFile(ctx, u.Path)
+		local, err := fileURLToLocalPath(u)
+		if err != nil {
+			return nil, model.InvalidUsage(fmt.Errorf("file URL %q: %w", raw, err))
+		}
+		return openFile(ctx, local)
 	case "udp":
 		return openUDP(ctx, u, opts)
 	case "tcp":

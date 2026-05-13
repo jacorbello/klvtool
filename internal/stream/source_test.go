@@ -228,6 +228,31 @@ func TestOpenHTTPAuthFailureIsInvalidUsage(t *testing.T) {
 	}
 }
 
+func TestOpenHTTPCloseIdempotentAfterContextCancel(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("payload"))
+	}))
+	defer srv.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	src, err := Open(ctx, srv.URL, Options{})
+	if err != nil {
+		t.Fatalf("Open http: %v", err)
+	}
+	if _, err := io.ReadAll(src); err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	cancel()
+	time.Sleep(50 * time.Millisecond)
+	if err := src.Close(); err != nil {
+		t.Fatalf("first Close: %v", err)
+	}
+	if err := src.Close(); err != nil {
+		t.Fatalf("second Close: %v", err)
+	}
+}
+
 func TestOpenUDPUnicastRoundTrip(t *testing.T) {
 	pc, err := net.ListenPacket("udp4", "127.0.0.1:0")
 	if err != nil {

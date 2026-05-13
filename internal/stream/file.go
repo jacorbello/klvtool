@@ -4,7 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
+	"path/filepath"
+	"runtime"
+	"strings"
 
 	"github.com/jacorbello/klvtool/internal/model"
 )
@@ -16,6 +20,43 @@ type fileSource struct {
 
 func (f *fileSource) Scheme() string     { return "file" }
 func (f *fileSource) RemoteAddr() string { return f.path }
+
+// fileURLToLocalPath maps a parsed file:// URL to a host OS path.
+// On Windows, file:///C:/foo yields URL Path "/C:/foo" which must drop the
+// leading slash before os.Open. UNC paths use file://host/share/... .
+func fileURLToLocalPath(u *url.URL) (string, error) {
+	if u == nil {
+		return "", errors.New("nil file URL")
+	}
+	path := u.Path
+	path, err := url.PathUnescape(path)
+	if err != nil {
+		return "", fmt.Errorf("file URL path: %w", err)
+	}
+
+	host := u.Host
+	if host != "" && !strings.EqualFold(host, "localhost") {
+		if runtime.GOOS != "windows" {
+			return "", fmt.Errorf("file URL with host %q is only supported on Windows (UNC)", host)
+		}
+		// file://server/share -> \\server\share
+		unc := `\\` + host + strings.ReplaceAll(filepath.ToSlash(path), "/", `\`)
+		return filepath.Clean(unc), nil
+	}
+
+	if runtime.GOOS == "windows" {
+		// Drive letter: /C:/Users/... -> C:/Users/...
+		if len(path) >= 4 && path[0] == '/' && path[1] != '/' && path[2] == ':' && (path[3] == '/' || path[3] == '\\') {
+			path = path[1:]
+		}
+		return filepath.Clean(filepath.FromSlash(path)), nil
+	}
+
+	if path == "" {
+		return "", errors.New("file URL has empty path")
+	}
+	return filepath.Clean(path), nil
+}
 
 func openFile(_ context.Context, path string) (Source, error) {
 	if path == "" {

@@ -7,18 +7,29 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 
 	"github.com/jacorbello/klvtool/internal/model"
 )
 
 type httpSource struct {
 	body       io.ReadCloser
+	closeOnce  sync.Once
 	scheme     string
 	remoteAddr string
 }
 
 func (h *httpSource) Read(p []byte) (int, error) { return h.body.Read(p) }
-func (h *httpSource) Close() error               { return h.body.Close() }
+
+func (h *httpSource) Close() error {
+	var err error
+	h.closeOnce.Do(func() {
+		if h.body != nil {
+			err = h.body.Close()
+		}
+	})
+	return err
+}
 func (h *httpSource) Scheme() string             { return h.scheme }
 func (h *httpSource) RemoteAddr() string         { return h.remoteAddr }
 
@@ -67,7 +78,7 @@ func openHTTP(ctx context.Context, u *url.URL, opts Options) (Source, error) {
 	// fresh chunks won't observe ctx without an explicit body close.
 	go func() {
 		<-ctx.Done()
-		_ = resp.Body.Close()
+		_ = src.Close()
 	}()
 	return src, nil
 }
