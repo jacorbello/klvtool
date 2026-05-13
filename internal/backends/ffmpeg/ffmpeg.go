@@ -1,6 +1,7 @@
 package ffmpeg
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -23,7 +24,8 @@ type Command struct {
 	Args []string
 }
 
-// Runner executes an external command and returns its combined output.
+// Runner executes an external command and returns its stdout. Stderr is
+// captured separately and surfaced through the returned error on failure.
 type Runner func(ctx context.Context, path string, args ...string) ([]byte, error)
 
 // Backend adapts ffmpeg/ffprobe into the normalized extraction interface.
@@ -212,9 +214,30 @@ func normalizeWarning(warning string) string {
 
 func defaultRunner(ctx context.Context, path string, args ...string) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, path, args...)
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return nil, fmt.Errorf("%w: %s", err, strings.TrimSpace(string(output)))
+	// Keep stdout and stderr in distinct buffers: os/exec writes them from
+	// separate goroutines, so a future refactor that aliased these into one
+	// bytes.Buffer would introduce a data race.
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("%w: %s", err, joinStreams(stderr.String(), stdout.String()))
 	}
-	return output, nil
+	return stdout.Bytes(), nil
+}
+
+// joinStreams returns trimmed stderr and stdout concatenated for an error
+// message — stderr first since most tools put failure detail there, with
+// stdout appended after a newline when both streams are non-empty.
+func joinStreams(stderr, stdout string) string {
+	stderr = strings.TrimSpace(stderr)
+	stdout = strings.TrimSpace(stdout)
+	switch {
+	case stderr == "":
+		return stdout
+	case stdout == "":
+		return stderr
+	default:
+		return stderr + "\n" + stdout
+	}
 }

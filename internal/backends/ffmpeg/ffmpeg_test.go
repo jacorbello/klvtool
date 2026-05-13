@@ -4,12 +4,96 @@ import (
 	"context"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jacorbello/klvtool/internal/model"
 )
+
+func requireSh(t *testing.T) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("requires POSIX shell")
+	}
+	if _, err := exec.LookPath("sh"); err != nil {
+		t.Skip("sh not available on PATH")
+	}
+}
+
+func requireSleep(t *testing.T) {
+	t.Helper()
+	if _, err := exec.LookPath("sleep"); err != nil {
+		t.Skip("sleep not available on PATH")
+	}
+}
+
+func TestDefaultRunnerKeepsStdoutAndStderrSeparate(t *testing.T) {
+	requireSh(t)
+	out, err := defaultRunner(context.Background(), "sh", "-c", "printf out; printf err >&2")
+	if err != nil {
+		t.Fatalf("defaultRunner returned error: %v", err)
+	}
+	if string(out) != "out" {
+		t.Fatalf("expected stdout-only %q, got %q (stderr likely leaked)", "out", string(out))
+	}
+}
+
+func TestDefaultRunnerSurfacesStderrOnError(t *testing.T) {
+	requireSh(t)
+	_, err := defaultRunner(context.Background(), "sh", "-c", "echo boom >&2; exit 7")
+	if err == nil {
+		t.Fatal("expected error for non-zero exit")
+	}
+	if !strings.Contains(err.Error(), "boom") {
+		t.Fatalf("expected stderr in error message, got %q", err.Error())
+	}
+}
+
+func TestDefaultRunnerJoinsBothStreamsOnError(t *testing.T) {
+	requireSh(t)
+	_, err := defaultRunner(context.Background(), "sh", "-c", "printf out-detail; printf err-detail >&2; exit 3")
+	if err == nil {
+		t.Fatal("expected error for non-zero exit")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "err-detail") || !strings.Contains(msg, "out-detail") {
+		t.Fatalf("expected both stderr and stdout in error message, got %q", msg)
+	}
+	if strings.Index(msg, "err-detail") > strings.Index(msg, "out-detail") {
+		t.Fatalf("expected stderr before stdout in error message, got %q", msg)
+	}
+}
+
+func TestDefaultRunnerHonorsContextCancellation(t *testing.T) {
+	// Exec sleep directly so SIGKILL on cancel reaches the process owning
+	// the stdout/stderr pipes; via `sh -c "sleep …"` the inherited sleep
+	// keeps the pipes open and cmd.Run blocks for the full duration.
+	requireSleep(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := defaultRunner(ctx, "sleep", "5")
+	if err == nil {
+		t.Fatal("expected error from cancelled context")
+	}
+}
+
+func TestDefaultRunnerHonorsContextDeadline(t *testing.T) {
+	requireSleep(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	_, err := defaultRunner(ctx, "sleep", "5")
+	if err == nil {
+		t.Fatal("expected error from deadline")
+	}
+	if elapsed := time.Since(start); elapsed > 2*time.Second {
+		t.Fatalf("expected cancellation under 2s, took %s", elapsed)
+	}
+}
 
 func TestParseVersion(t *testing.T) {
 	if got, want := ParseVersion("ffmpeg version 7.1 Copyright"), "7.1"; got != want {

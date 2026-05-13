@@ -1,6 +1,7 @@
 package envcheck
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os/exec"
@@ -10,7 +11,8 @@ import (
 // LookPathFunc resolves a binary on PATH. It is injected for testability.
 type LookPathFunc func(file string) (string, error)
 
-// VersionRunner executes a version command and returns its combined output.
+// VersionRunner executes a version command and returns its stdout. Stderr is
+// captured separately and surfaced through the returned error on failure.
 type VersionRunner func(ctx context.Context, name string, args ...string) (string, error)
 
 // ToolHealth describes one checked executable.
@@ -117,11 +119,21 @@ func detectBackend(ctx context.Context, spec backendSpec, lookPath LookPathFunc,
 
 func defaultVersionRunner(ctx context.Context, name string, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, name, args...)
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return "", fmt.Errorf("%w: %s", err, strings.TrimSpace(string(output)))
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		detail := strings.TrimSpace(stderr.String())
+		if out := strings.TrimSpace(stdout.String()); out != "" {
+			if detail == "" {
+				detail = out
+			} else {
+				detail = detail + "\n" + out
+			}
+		}
+		return "", fmt.Errorf("%w: %s", err, detail)
 	}
-	return string(output), nil
+	return stdout.String(), nil
 }
 
 func versionArgs(toolName string) []string {
