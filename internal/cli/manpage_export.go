@@ -31,6 +31,7 @@ func SubcommandFlagSets() []SubcommandFlagSet {
 		{Def: decodeDef, FS: decodeFlagSet(&decodeFlags{})},
 		{Def: packetizeDef, FS: packetizeFlagSet(&packetizeFlags{})},
 		{Def: diagnoseDef, FS: diagnoseFlagSet(&diagnoseFlags{})},
+		{Def: recordDef, FS: recordFlagSet(&recordFlags{})},
 		{Def: completionDef, FS: nil},
 	}
 }

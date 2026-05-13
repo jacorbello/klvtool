@@ -1,19 +1,41 @@
 .TH KLVTOOL-DECODE 1 "1970-01-01" "klvtool dev" "User Commands"
 .SH "NAME"
-klvtool\-decode \- Decode MISB ST 0601 KLV records from an MPEG\-TS file.
+klvtool\-decode \- Decode MISB ST 0601 KLV records from an MPEG\-TS file or live stream.
 .SH "SYNOPSIS"
-klvtool decode \-\-input <file.ts> [\-\-format ndjson|text|csv] [\-\-pid N] [\-\-out <path>] [\-\-strict] [\-\-raw] [\-\-step] [\-\-view auto|pretty|raw] [\-\-schema <urn>] [\-\-repair\-stripped\-ul]
+klvtool decode \-\-input <path\-or\-url> [\-\-format ndjson|text|csv] [\-\-pid N] [\-\-out <path>] [\-\-strict] [\-\-raw] [\-\-step] [\-\-view auto|pretty|raw] [\-\-schema <urn>] [\-\-repair\-stripped\-ul] [\-\-record <path>] [\-\-duration <dur>] [\-\-idle\-timeout <dur>] [\-\-max\-packets <N>] [\-\-max\-records <N>] [\-\-header "K: V"] [\-\-iface <name>]
 .SH "DESCRIPTION"
-Decode MISB ST 0601 KLV metadata from an MPEG\-TS file into typed records.
+Decode MISB ST 0601 KLV metadata from an MPEG\-TS file or live stream into typed records.
+.PP
+\-\-input accepts a filesystem path (today's behavior, unchanged) or a URL: file://, udp:// (unicast or multicast), tcp://, http(s)://, rtsp://, srt://, or '\-' for stdin. File inputs flow through the ffmpeg backend; URL inputs flow through a native MPEG\-TS demuxer with no subprocess. Streaming inputs use the shared lifecycle flags (\-\-duration, \-\-idle\-timeout, \-\-max\-packets, \-\-max\-records) and SIGINT for stop semantics.
+.PP
+\-\-record path tees inbound bytes to a file alongside decoding so the raw transport can be replayed later. \-\-step is rejected for streaming inputs (it requires random\-access record buffering).
 .PP
 Use this after `klvtool inspect` to validate a likely metadata PID or to review packets in a terminal\-friendly view. The \-\-raw flag includes raw bytes per item: hex (0x...) in text and csv formats, base64 in NDJSON. The \-\-step flag enables one\-handed packet navigation in pretty text view: r=next, w=previous, d=next diagnostic, e=next error, q=quit.
 .SH "OPTIONS"
 .TP
+\fB\-\-duration\fR \fI(default 0s)\fR
+stop after this wall\-clock duration (e.g. 30s, 5m, 1h); 0 disables
+.TP
 \fB\-\-format\fR \fI(default ndjson)\fR
 output format: ndjson, text, or csv
 .TP
+\fB\-\-header\fR
+extra HTTP/RTSP request header in 'Key: Value' form (repeatable; e.g. \-header "Authorization: Bearer $TOKEN")
+.TP
+\fB\-\-idle\-timeout\fR \fI(default 0s)\fR
+stop if no inbound bytes are observed for this duration; 0 disables
+.TP
+\fB\-\-iface\fR
+egress network interface for UDP multicast joins (Linux: device name like eth0, or a local IP)
+.TP
 \fB\-\-input\fR
-MPEG\-TS input path
+MPEG\-TS input path or URL (file://, udp://, tcp://, http(s)://, rtsp://, srt://, or '\-' for stdin)
+.TP
+\fB\-\-max\-packets\fR
+stop after this many TS packets are observed; 0 disables
+.TP
+\fB\-\-max\-records\fR
+stop after this many KLV records are decoded; 0 disables
 .TP
 \fB\-\-out\fR
 write output to a file instead of stdout
@@ -23,6 +45,12 @@ limit decoding to a specific KLV stream PID (0 = all)
 .TP
 \fB\-\-raw\fR
 include raw bytes per item (hex in text/csv, base64 in NDJSON)
+.TP
+\fB\-\-record\fR
+tee inbound source bytes to this file (works for any \-\-input, including a regular file)
+.TP
+\fB\-\-record\-overwrite\fR
+allow \-\-record to overwrite an existing file (default refuses; honors O_CREATE|O_EXCL semantics)
 .TP
 \fB\-\-repair\-stripped\-ul\fR
 re\-attach the 5\-byte SMPTE category prefix that some ffmpeg builds strip from KLV data streams
@@ -127,6 +155,27 @@ Step through packets with diagnostics highlighted
 .RS 4
 .nf
 $ klvtool decode --input mission.ts --pid 257 --step
+.fi
+.RE
+.PP
+Decode 30 seconds of a live UDP multicast feed, capturing raw bytes
+.RS 4
+.nf
+$ klvtool decode --input "udp://239.0.0.1:5000?iface=eth0" --record cap.ts --duration 30s --out live.ndjson
+.fi
+.RE
+.PP
+Decode from a Bearer\-token authenticated RTSP server
+.RS 4
+.nf
+$ klvtool decode --input rtsp://host/stream --header "Authorization: Bearer $TOKEN" --out live.ndjson
+.fi
+.RE
+.PP
+Pipe ffmpeg's MPEG\-TS output through klvtool for live decode
+.RS 4
+.nf
+$ ffmpeg -i source -c copy -f mpegts - | klvtool decode --input - --out live.ndjson
 .fi
 .RE
 .SH "EXIT STATUS"

@@ -22,6 +22,7 @@ import (
 	"github.com/jacorbello/klvtool/internal/klv/specs/st0601"
 	"github.com/jacorbello/klvtool/internal/model"
 	"github.com/jacorbello/klvtool/internal/packetize"
+	"github.com/jacorbello/klvtool/internal/stream"
 )
 
 // decodeFlags holds parsed --flag values for the decode subcommand.
@@ -36,12 +37,13 @@ type decodeFlags struct {
 	view             string
 	step             bool
 	repairStrippedUL bool
+	streamFlags
 }
 
 func decodeFlagSet(v *decodeFlags) *flag.FlagSet {
 	fs := flag.NewFlagSet("decode", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
-	fs.StringVar(&v.inputPath, "input", "", "MPEG-TS input path")
+	fs.StringVar(&v.inputPath, "input", "", "MPEG-TS input path or URL (file://, udp://, tcp://, http(s)://, rtsp://, srt://, or '-' for stdin)")
 	fs.StringVar(&v.format, "format", "ndjson", "output format: ndjson, text, or csv")
 	fs.BoolVar(&v.raw, "raw", false, "include raw bytes per item (hex in text/csv, base64 in NDJSON)")
 	fs.BoolVar(&v.strict, "strict", false, "exit non-zero if any error-severity diagnostic is emitted")
@@ -51,6 +53,7 @@ func decodeFlagSet(v *decodeFlags) *flag.FlagSet {
 	fs.StringVar(&v.view, "view", string(viewAuto), "presentation mode: auto, pretty, or raw")
 	fs.BoolVar(&v.step, "step", false, "step through decoded packets interactively")
 	fs.BoolVar(&v.repairStrippedUL, "repair-stripped-ul", false, "re-attach the 5-byte SMPTE category prefix that some ffmpeg builds strip from KLV data streams")
+	registerStreamFlags(fs, &v.streamFlags, streamFlagsDecode)
 	return fs
 }
 
@@ -73,11 +76,19 @@ type DecodeCommand struct {
 	In  io.Reader
 	Out io.Writer
 	Err io.Writer
-	// Decode runs the decode pipeline. When req.Schema is non-empty, the
-	// implementation must restrict decoding to the SpecVersion registered
-	// under that URN (bypassing UL-based auto-detection).
-	Decode   func(req DecodeRequest) (DecodeResult, error)
-	Registry func() *klv.Registry
+	// Decode runs the batched decode pipeline. When req.Schema is non-empty,
+	// the implementation must restrict decoding to the SpecVersion registered
+	// under that URN (bypassing UL-based auto-detection). The default is the
+	// ffmpeg-backed pipeline used for file inputs.
+	Decode func(req DecodeRequest) (DecodeResult, error)
+	// DecodeStream is the streaming-friendly decode entry point. It receives
+	// a context (so cancellation can interrupt long-running producers) and a
+	// DecodeEmitter whose callbacks fire as records and stream diagnostics
+	// become available. The default implementation wraps Decode and replays
+	// the buffered slice through the emitter so file-mode tests that stub
+	// Decode keep working unchanged.
+	DecodeStream func(ctx context.Context, req DecodeRequest, emit DecodeEmitter) error
+	Registry     func() *klv.Registry
 	// openOut creates the output file for --out. Defaults to os.Create.
 	// Exposed for testing close-error propagation.
 	openOut     func(path string) (io.WriteCloser, error)
@@ -85,6 +96,30 @@ type DecodeCommand struct {
 	isInputTTY  func(io.Reader) bool
 	makeRaw     func(io.Reader) (func() error, error)
 }
+
+// DecodeEmitter is the set of callbacks invoked by a DecodeStream
+// implementation as records and stream-level diagnostics arrive. Returning
+// a non-nil error from any callback signals the producer to stop. When the
+// CLI has already reported the error to the user (typical for output-write
+// failures), it returns errEmitAbort so DecodeStream knows to unwind without
+// the caller re-reporting.
+type DecodeEmitter struct {
+	// Record is invoked once per decoded KLV packet, in stream order.
+	Record func(rec record.Record) error
+	// Stream is invoked for diagnostics that are not attached to any
+	// specific decoded packet (e.g. packetize recovery events on a raw
+	// stream that produced zero KLV packets).
+	Stream func(diag record.Diagnostic) error
+	// Packet is advisory and fires once per observed TS packet. It exists
+	// so streaming sources can drive --max-packets and --idle-timeout
+	// counters without threading them through the decode pipeline.
+	Packet func()
+}
+
+// errEmitAbort is returned from emitter callbacks after they've already
+// surfaced an error to the user, so DecodeStream knows to stop without the
+// outer Execute re-reporting.
+var errEmitAbort = errors.New("decode emit aborted")
 
 // DecodeResult holds decoded records plus stream-level diagnostics that
 // aren't attached to any specific decoded packet (e.g. packetize recovery
@@ -259,37 +294,66 @@ func (c *DecodeCommand) Execute(args []string) int {
 		return usageExitCode
 	}
 
-	info, err := os.Stat(inputPath)
-	if err != nil {
-		var e error
-		if os.IsNotExist(err) {
-			e = model.TSRead(fmt.Errorf("input file does not exist: %s", inputPath))
-		} else {
-			e = model.TSRead(fmt.Errorf("failed to stat input file %q: %w", inputPath, err))
+	isStreamInput := stream.IsURL(inputPath)
+	if !isStreamInput {
+		info, err := os.Stat(inputPath)
+		if err != nil {
+			var e error
+			if os.IsNotExist(err) {
+				e = model.TSRead(fmt.Errorf("input file does not exist: %s", inputPath))
+			} else {
+				e = model.TSRead(fmt.Errorf("failed to stat input file %q: %w", inputPath, err))
+			}
+			c.writeError(c.Err, e)
+			return exitCodeForError(e)
 		}
-		c.writeError(c.Err, e)
-		return exitCodeForError(e)
-	}
-	if !info.Mode().IsRegular() {
-		e := model.TSRead(fmt.Errorf("input path must be a regular file: %s", inputPath))
-		c.writeError(c.Err, e)
-		return exitCodeForError(e)
+		if !info.Mode().IsRegular() {
+			e := model.TSRead(fmt.Errorf("input path must be a regular file: %s", inputPath))
+			c.writeError(c.Err, e)
+			return exitCodeForError(e)
+		}
 	}
 
 	decode := c.Decode
 	if decode == nil {
 		decode = NewDecodeCommand().Decode
 	}
-
-	result, err := decode(DecodeRequest{
-		Path:             inputPath,
-		PID:              pid,
-		Schema:           schema,
-		RepairStrippedUL: v.repairStrippedUL,
-	})
-	if err != nil {
-		c.writeError(c.Err, err)
-		return exitCodeForError(err)
+	decodeStream := c.DecodeStream
+	if decodeStream == nil && isStreamInput {
+		// URL inputs bypass the ffmpeg-backed batched Decode entirely
+		// and run through the native MPEG-TS demux pipeline. Tests can
+		// override c.DecodeStream to inject a fake source.
+		registry := c.Registry
+		if registry == nil {
+			registry = NewDecodeCommand().Registry
+		}
+		decodeStream = newStreamingDecode(registry, nil, streamingDecodeOptions{
+			SourceOptions:   v.streamFlags.streamOptions(),
+			RecordPath:      v.streamFlags.record,
+			RecordOverwrite: v.streamFlags.recordOverwrite,
+		})
+	}
+	if decodeStream == nil {
+		// Default implementation replays the batched Decode result through
+		// the emitter. Streaming sources will plug in their own DecodeStream
+		// in a later step; this preserves byte-identical file behavior.
+		decodeStream = func(_ context.Context, req DecodeRequest, emit DecodeEmitter) error {
+			result, err := decode(req)
+			if err != nil {
+				return err
+			}
+			for _, rec := range result.Records {
+				if err := emit.Record(rec); err != nil {
+					return err
+				}
+			}
+			for _, d := range result.StreamDiagnostics {
+				if err := emit.Stream(d); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
 	}
 
 	outputTTY := c.outputTTY(c.Out)
@@ -306,6 +370,11 @@ func (c *DecodeCommand) Execute(args []string) int {
 		effectiveFormat = "text"
 	}
 	if step {
+		if isStreamInput {
+			c.writeUsage(c.Err)
+			c.writeError(c.Err, model.InvalidUsage(errors.New("--step is not supported for streaming inputs (it requires random-access record buffering)")))
+			return usageExitCode
+		}
 		if !prettyView || !outputTTY || !inputTTY {
 			c.writeUsage(c.Err)
 			c.writeError(c.Err, model.InvalidUsage(errors.New("--step requires an interactive terminal")))
@@ -345,44 +414,116 @@ func (c *DecodeCommand) Execute(args []string) int {
 		}
 	}
 
-	var errorCount int
-	if step {
-		if code, err := c.runStepMode(sink, result.Records, raw, color); err != nil {
-			c.writeError(c.Err, model.OutputWrite(err))
-			exitCode = code
-		}
-	} else {
-	records:
-		for i, rec := range result.Records {
-			switch effectiveFormat {
-			case "ndjson":
-				if err := writeNDJSON(sink, i, rec, raw); err != nil {
-					c.writeError(c.Err, model.OutputWrite(err))
-					exitCode = 1
-					break records
-				}
-			case "text":
-				if err := writeTextView(sink, i, rec, raw, color); err != nil {
-					c.writeError(c.Err, model.OutputWrite(err))
-					exitCode = 1
-					break records
-				}
-			case "csv":
-				if csvW != nil {
-					if err := writeCSVRecords(csvW, i, rec, raw); err != nil {
+	var (
+		errorCount  int
+		packetIndex int
+		stepBuf     []record.Record
+	)
+
+	emit := DecodeEmitter{
+		Record: func(rec record.Record) error {
+			if step {
+				// --step requires random access to all records, so buffer
+				// the slice and replay through runStepMode after the
+				// producer finishes. The current command's batched Decode
+				// satisfies this; non-file streaming inputs reject --step
+				// at flag-parse time (see Step 4 routing).
+				stepBuf = append(stepBuf, rec)
+			} else {
+				switch effectiveFormat {
+				case "ndjson":
+					if err := writeNDJSON(sink, packetIndex, rec, raw); err != nil {
 						c.writeError(c.Err, model.OutputWrite(err))
 						exitCode = 1
-						break records
+						return errEmitAbort
+					}
+				case "text":
+					if err := writeTextView(sink, packetIndex, rec, raw, color); err != nil {
+						c.writeError(c.Err, model.OutputWrite(err))
+						exitCode = 1
+						return errEmitAbort
+					}
+				case "csv":
+					if csvW != nil {
+						if err := writeCSVRecords(csvW, packetIndex, rec, raw); err != nil {
+							c.writeError(c.Err, model.OutputWrite(err))
+							exitCode = 1
+							return errEmitAbort
+						}
 					}
 				}
 			}
-		}
-	}
-	for _, rec := range result.Records {
-		for _, d := range rec.Diagnostics {
+			for _, d := range rec.Diagnostics {
+				if d.Severity == "error" {
+					errorCount++
+				}
+			}
+			packetIndex++
+			return nil
+		},
+		Stream: func(d record.Diagnostic) error {
+			if c.Err != nil {
+				fmt.Fprintf(c.Err, "[stream] %s %s: %s\n", colorSeverity(color, d.Severity), d.Code, d.Message) //nolint:errcheck
+			}
 			if d.Severity == "error" {
 				errorCount++
 			}
+			return nil
+		},
+		Packet: func() {},
+	}
+
+	streamCtx := context.Background()
+	var finalizeSummary func() stream.Summary
+	var counters *stream.Counters
+	if isStreamInput {
+		// Streaming inputs need explicit stop semantics — files end on
+		// EOF, streams don't. Wire the shared lifecycle so SIGINT,
+		// --duration, --idle-timeout, and --max-* limits all cancel
+		// the demux loop through one context.
+		var finalize func() stream.Summary
+		streamCtx, counters, finalize = stream.Spawn(context.Background(), v.streamFlags.stopOptions())
+		finalizeSummary = finalize
+		// Wrap emitter callbacks to update lifecycle counters. Wrapping
+		// here (rather than threading counters into newStreamingDecode)
+		// keeps the streaming-decode pipeline ignorant of lifecycle
+		// concerns — it only knows about emit.
+		origPacket := emit.Packet
+		emit.Packet = func() {
+			counters.AddPacket()
+			if origPacket != nil {
+				origPacket()
+			}
+		}
+		origRecord := emit.Record
+		emit.Record = func(rec record.Record) error {
+			if err := origRecord(rec); err != nil {
+				return err
+			}
+			counters.AddRecord()
+			return nil
+		}
+	}
+
+	if err := decodeStream(streamCtx, DecodeRequest{
+		Path:             inputPath,
+		PID:              pid,
+		Schema:           schema,
+		RepairStrippedUL: v.repairStrippedUL,
+	}, emit); err != nil {
+		if !errors.Is(err, errEmitAbort) {
+			c.writeError(c.Err, err)
+			if finalizeSummary != nil {
+				_ = finalizeSummary()
+			}
+			return exitCodeForError(err)
+		}
+	}
+
+	if step {
+		if code, err := c.runStepMode(sink, stepBuf, raw, color); err != nil {
+			c.writeError(c.Err, model.OutputWrite(err))
+			exitCode = code
 		}
 	}
 
@@ -396,18 +537,6 @@ func (c *DecodeCommand) Execute(args []string) int {
 		}
 	}
 
-	// Stream-level diagnostics (e.g. packetize recovery events on raw
-	// streams that produced zero decoded KLV packets) are reported to
-	// stderr and counted toward --strict, but not emitted as packets.
-	for _, d := range result.StreamDiagnostics {
-		if c.Err != nil {
-			fmt.Fprintf(c.Err, "[stream] %s %s: %s\n", colorSeverity(color, d.Severity), d.Code, d.Message) //nolint:errcheck
-		}
-		if d.Severity == "error" {
-			errorCount++
-		}
-	}
-
 	if closer != nil {
 		if err := closer.Close(); err != nil {
 			c.writeError(c.Err, model.OutputWrite(err))
@@ -415,7 +544,20 @@ func (c *DecodeCommand) Execute(args []string) int {
 		}
 	}
 
+	if finalizeSummary != nil && c.Err != nil {
+		// Print the run summary BEFORE the decode summary so operators
+		// see why the stream ended (signal vs duration vs idle) before
+		// the packet/error counts. The summary line goes to stderr to
+		// keep stdout clean for downstream NDJSON consumers.
+		summary := finalizeSummary()
+		fmt.Fprintln(c.Err, summary.String()) //nolint:errcheck
+		finalizeSummary = nil
+	}
+
 	if exitCode != 0 {
+		if finalizeSummary != nil {
+			_ = finalizeSummary()
+		}
 		return exitCode
 	}
 
@@ -424,8 +566,8 @@ func (c *DecodeCommand) Execute(args []string) int {
 	// failures. The label reflects that.
 	if c.Err != nil {
 		errColor := newColorizer(c.outputTTY(c.Err) && supportsANSI())
-		fmt.Fprintf(c.Err, "decoded %d packet(s), %d error diagnostic(s)\n", len(result.Records), errorCount) //nolint:errcheck
-		if pid != 0 && len(result.Records) == 0 {
+		fmt.Fprintf(c.Err, "decoded %d packet(s), %d error diagnostic(s)\n", packetIndex, errorCount) //nolint:errcheck
+		if pid != 0 && packetIndex == 0 {
 			fmt.Fprintln(c.Err, warningLine(errColor, "no KLV packets found on PID %d", pid)) //nolint:errcheck
 		}
 	}
@@ -788,9 +930,13 @@ func (c *DecodeCommand) Definition() commanddef.CommandDef { return decodeDef }
 var decodeDef = commanddef.CommandDef{
 	Name:       "klvtool-decode",
 	Subcommand: "decode",
-	Synopsis:   "Decode MISB ST 0601 KLV records from an MPEG-TS file.",
-	UsageLine:  "klvtool decode --input <file.ts> [--format ndjson|text|csv] [--pid N] [--out <path>] [--strict] [--raw] [--step] [--view auto|pretty|raw] [--schema <urn>] [--repair-stripped-ul]",
-	Description: "Decode MISB ST 0601 KLV metadata from an MPEG-TS file into typed records.\n" +
+	Synopsis:   "Decode MISB ST 0601 KLV records from an MPEG-TS file or live stream.",
+	UsageLine:  "klvtool decode --input <path-or-url> [--format ndjson|text|csv] [--pid N] [--out <path>] [--strict] [--raw] [--step] [--view auto|pretty|raw] [--schema <urn>] [--repair-stripped-ul] [--record <path>] [--duration <dur>] [--idle-timeout <dur>] [--max-packets <N>] [--max-records <N>] [--header \"K: V\"] [--iface <name>]",
+	Description: "Decode MISB ST 0601 KLV metadata from an MPEG-TS file or live stream into typed records.\n" +
+		"\n" +
+		"--input accepts a filesystem path (today's behavior, unchanged) or a URL: file://, udp:// (unicast or multicast), tcp://, http(s)://, rtsp://, srt://, or '-' for stdin. File inputs flow through the ffmpeg backend; URL inputs flow through a native MPEG-TS demuxer with no subprocess. Streaming inputs use the shared lifecycle flags (--duration, --idle-timeout, --max-packets, --max-records) and SIGINT for stop semantics.\n" +
+		"\n" +
+		"--record path tees inbound bytes to a file alongside decoding so the raw transport can be replayed later. --step is rejected for streaming inputs (it requires random-access record buffering).\n" +
 		"\n" +
 		"Use this after `klvtool inspect` to validate a likely metadata PID or to review packets in a terminal-friendly view. The --raw flag includes raw bytes per item: hex (0x...) in text and csv formats, base64 in NDJSON. The --step flag enables one-handed packet navigation in pretty text view: r=next, w=previous, d=next diagnostic, e=next error, q=quit.",
 	Examples: []commanddef.Example{
@@ -805,6 +951,18 @@ var decodeDef = commanddef.CommandDef{
 		{
 			Comment: "Step through packets with diagnostics highlighted",
 			Command: "klvtool decode --input mission.ts --pid 257 --step",
+		},
+		{
+			Comment: "Decode 30 seconds of a live UDP multicast feed, capturing raw bytes",
+			Command: "klvtool decode --input \"udp://239.0.0.1:5000?iface=eth0\" --record cap.ts --duration 30s --out live.ndjson",
+		},
+		{
+			Comment: "Decode from a Bearer-token authenticated RTSP server",
+			Command: "klvtool decode --input rtsp://host/stream --header \"Authorization: Bearer $TOKEN\" --out live.ndjson",
+		},
+		{
+			Comment: "Pipe ffmpeg's MPEG-TS output through klvtool for live decode",
+			Command: "ffmpeg -i source -c copy -f mpegts - | klvtool decode --input - --out live.ndjson",
 		},
 	},
 	OutputFormat: &commanddef.OutputDoc{

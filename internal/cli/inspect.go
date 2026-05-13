@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"io"
@@ -11,18 +12,21 @@ import (
 	"github.com/jacorbello/klvtool/internal/cli/commanddef"
 	"github.com/jacorbello/klvtool/internal/model"
 	ts "github.com/jacorbello/klvtool/internal/mpeg/ts"
+	"github.com/jacorbello/klvtool/internal/stream"
 )
 
 type inspectFlags struct {
 	inputPath string
 	view      string
+	streamFlags
 }
 
 func inspectFlagSet(v *inspectFlags) *flag.FlagSet {
 	fs := flag.NewFlagSet("inspect", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
-	fs.StringVar(&v.inputPath, "input", "", "MPEG-TS input path")
+	fs.StringVar(&v.inputPath, "input", "", "MPEG-TS input path or URL (file://, udp://, tcp://, http(s)://, rtsp://, srt://, or '-' for stdin)")
 	fs.StringVar(&v.view, "view", string(viewAuto), "presentation mode: auto, pretty, or raw")
+	registerStreamFlags(fs, &v.streamFlags, streamFlagsInspect)
 	return fs
 }
 
@@ -41,15 +45,23 @@ type InspectCommand struct {
 	Out     io.Writer
 	Err     io.Writer
 	Inspect func(path string) (ts.StreamTable, InspectStats, error)
+	// InspectStream is called for non-file inputs (UDP/RTSP/SRT/...).
+	// It snapshots PMT and per-PID counts over the run window and is
+	// driven by the shared lifecycle (--duration / --idle-timeout /
+	// --max-packets / SIGINT). Defaults to defaultInspectStream.
+	InspectStream func(ctx context.Context, src stream.Source) (ts.StreamTable, InspectStats, error)
+	// OpenSource is overridable for tests; defaults to stream.Open.
+	OpenSource streamSourceOpener
 
 	isOutputTTY func(io.Writer) bool
 }
 
 func NewInspectCommand() *InspectCommand {
 	return &InspectCommand{
-		Out:     os.Stdout,
-		Err:     os.Stderr,
-		Inspect: defaultInspect,
+		Out:           os.Stdout,
+		Err:           os.Stderr,
+		Inspect:       defaultInspect,
+		InspectStream: defaultInspectStream,
 	}
 }
 
@@ -92,32 +104,68 @@ func (c *InspectCommand) Execute(args []string) int {
 		return usageExitCode
 	}
 
-	info, err := os.Stat(inputPath)
-	if err != nil {
-		var e error
-		if os.IsNotExist(err) {
-			e = model.TSRead(fmt.Errorf("input file does not exist: %s", inputPath))
-		} else {
-			e = model.TSRead(fmt.Errorf("failed to stat input file %q: %w", inputPath, err))
+	isStreamInput := stream.IsURL(inputPath)
+	if !isStreamInput {
+		info, err := os.Stat(inputPath)
+		if err != nil {
+			var e error
+			if os.IsNotExist(err) {
+				e = model.TSRead(fmt.Errorf("input file does not exist: %s", inputPath))
+			} else {
+				e = model.TSRead(fmt.Errorf("failed to stat input file %q: %w", inputPath, err))
+			}
+			c.writeError(c.Err, e)
+			return exitCodeForError(e)
 		}
-		c.writeError(c.Err, e)
-		return exitCodeForError(e)
-	}
-	if !info.Mode().IsRegular() {
-		e := model.TSRead(fmt.Errorf("input path is not a regular file: %s", inputPath))
-		c.writeError(c.Err, e)
-		return exitCodeForError(e)
+		if !info.Mode().IsRegular() {
+			e := model.TSRead(fmt.Errorf("input path is not a regular file: %s", inputPath))
+			c.writeError(c.Err, e)
+			return exitCodeForError(e)
+		}
 	}
 
-	inspect := c.Inspect
-	if inspect == nil {
-		inspect = defaultInspect
-	}
-
-	table, stats, err := inspect(inputPath)
-	if err != nil {
-		c.writeError(c.Err, err)
-		return exitCodeForError(err)
+	var (
+		table ts.StreamTable
+		stats InspectStats
+	)
+	if isStreamInput {
+		open := c.OpenSource
+		if open == nil {
+			open = stream.Open
+		}
+		streamFn := c.InspectStream
+		if streamFn == nil {
+			streamFn = defaultInspectStream
+		}
+		ctx, _, finalize := stream.Spawn(context.Background(), v.streamFlags.stopOptions())
+		src, err := open(ctx, inputPath, v.streamFlags.streamOptions())
+		if err != nil {
+			c.writeError(c.Err, err)
+			_ = finalize()
+			return exitCodeForError(err)
+		}
+		t, s, err := streamFn(ctx, src)
+		_ = src.Close()
+		summary := finalize()
+		if c.Err != nil {
+			fmt.Fprintln(c.Err, summary.String()) //nolint:errcheck
+		}
+		if err != nil {
+			c.writeError(c.Err, err)
+			return exitCodeForError(err)
+		}
+		table, stats = t, s
+	} else {
+		inspect := c.Inspect
+		if inspect == nil {
+			inspect = defaultInspect
+		}
+		t, s, err := inspect(inputPath)
+		if err != nil {
+			c.writeError(c.Err, err)
+			return exitCodeForError(err)
+		}
+		table, stats = t, s
 	}
 
 	c.writeReport(table, stats, usePrettyView(viewMode, c.outputTTY(c.Out)))
@@ -234,14 +282,20 @@ var inspectDef = commanddef.CommandDef{
 	Name:       "klvtool-inspect",
 	Subcommand: "inspect",
 	Synopsis:   "Inspect an MPEG-TS stream inventory, packet counts, and continuity diagnostics.",
-	UsageLine:  "klvtool inspect --input <file.ts> [--view auto|pretty|raw]",
-	Description: "Inspect an MPEG-TS file and report its program / stream inventory, per-PID packet counts, PES PTS bounds, and transport-layer continuity diagnostics.\n" +
+	UsageLine:  "klvtool inspect --input <path-or-url> [--view auto|pretty|raw] [--duration <dur>] [--idle-timeout <dur>] [--max-packets <N>] [--record <path>] [--header \"K: V\"] [--iface <name>]",
+	Description: "Inspect an MPEG-TS file or live stream and report its program / stream inventory, per-PID packet counts, PES PTS bounds, and transport-layer continuity diagnostics.\n" +
 		"\n" +
-		"This is the entry point when triaging an unknown file: it surfaces likely metadata PIDs (KLV / data streams) so a follow-up `klvtool decode --pid <PID>` can target the right stream without scanning everything.",
+		"This is the entry point when triaging an unknown file: it surfaces likely metadata PIDs (KLV / data streams) so a follow-up `klvtool decode --pid <PID>` can target the right stream without scanning everything.\n" +
+		"\n" +
+		"--input also accepts URLs (udp://, tcp://, http(s)://, rtsp://, srt://, or '-' for stdin). For live sources, inspect snapshots the PMT and per-PID counts over the run window — bound the window with --duration or stop with Ctrl-C.",
 	Examples: []commanddef.Example{
 		{
 			Comment: "List streams and find likely KLV metadata PIDs",
 			Command: "klvtool inspect --input mission.ts",
+		},
+		{
+			Comment: "Snapshot a live UDP multicast feed for 10 seconds",
+			Command: "klvtool inspect --input \"udp://239.0.0.1:5000?iface=eth0\" --duration 10s",
 		},
 	},
 	ExitCodes: []commanddef.ExitCode{
@@ -379,6 +433,40 @@ func defaultInspect(path string) (ts.StreamTable, InspectStats, error) {
 	stats.Diagnostics = append(stats.Diagnostics, discoveryDiags...)
 	stats.Diagnostics = append(stats.Diagnostics, scanner.Diagnostics()...)
 	return table, stats, nil
+}
+
+// defaultInspectStream runs a single-pass MPEG-TS inspection over a
+// non-seekable Source. It populates the same StreamTable + InspectStats
+// shape as defaultInspect so the report renderer doesn't need to know
+// which path it came from. The PMT/PAT snapshot reflects whatever
+// arrived during the run window — when used against a long-running
+// stream, the table converges quickly (PSI tables are typically
+// announced every ~500 ms) and remains current as PMT updates arrive.
+func defaultInspectStream(ctx context.Context, src stream.Source) (ts.StreamTable, InspectStats, error) {
+	stats := InspectStats{
+		PacketCounts:  make(map[uint16]int64),
+		PESUnitCounts: make(map[uint16]int),
+		FirstPTS:      make(map[uint16]int64),
+		LastPTS:       make(map[uint16]int64),
+	}
+	demux := ts.NewLiveDemux(src)
+	err := demux.Run(ctx, false,
+		func(pkt ts.Packet) {
+			stats.TotalPackets++
+			stats.PacketCounts[pkt.PID]++
+		},
+		func(unit ts.PESUnit) {
+			u := unit
+			recordPESStats(&stats, &u)
+		},
+		func(d ts.Diagnostic) {
+			stats.Diagnostics = append(stats.Diagnostics, d)
+		},
+	)
+	if err != nil {
+		return ts.StreamTable{}, InspectStats{}, err
+	}
+	return demux.Table(), stats, nil
 }
 
 func recordPESStats(stats *InspectStats, unit *ts.PESUnit) {

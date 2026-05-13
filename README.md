@@ -139,6 +139,76 @@ klvtool completion fish | source
 
 To persist completions across sessions, write the output to the appropriate shell config file (e.g., `~/.bashrc`, `~/.zshrc`, or `~/.config/fish/completions/klvtool.fish`).
 
+## Streaming inputs
+
+`decode`, `inspect`, `diagnose`, and the new `record` command all accept a URL on `--input` in addition to a filesystem path. Supported schemes:
+
+| Scheme | URL form | Notes |
+|---|---|---|
+| `udp://` | `udp://host:port[?iface=eth0]` | Unicast or multicast. Multicast addresses (224.0.0.0/4) auto-join the group; the optional `iface=` query param selects the egress interface. |
+| `tcp://` | `tcp://host:port` | Plain TCP connect. |
+| `http(s)://` | `https://[user:pass@]host/path` | Long-lived GET. Use `--header "Authorization: Bearer $TOKEN"` for token-authenticated servers. |
+| `rtsp://` | `rtsp://[user:pass@]host:port/path` | Pulls an MPEG-TS-over-RTP track (payload type 33). Basic/Digest auth via URL; TCP transport preferred. |
+| `srt://` | `srt://host:port?passphrase=…&mode=caller…` | Caller-mode SRT. Query params follow the canonical ffmpeg/srt-live-transmit shape (passphrase, pbkeylen, streamid, latency). |
+| stdin | `-` | Read from `os.Stdin`. Useful for piping ffmpeg or `nc` output. |
+| `file://` | `file:///abs/path.ts` | Equivalent to passing a bare path. |
+
+Live runs are bounded by the shared stop conditions:
+
+| Flag | Effect |
+|---|---|
+| `--duration <dur>` | Wall-clock stop (`30s`, `5m`, `1h`). |
+| `--idle-timeout <dur>` | Stop after N seconds with no inbound bytes. |
+| `--max-packets <N>` | Stop after N TS packets observed. |
+| `--max-records <N>` | (`decode` only) stop after N KLV records decoded. |
+| `--max-bytes <N>` | (`record` only) stop after N bytes captured. |
+| `--record <path>` | Tee inbound raw bytes to a file for later replay (works on file inputs too — normalizes the captured stream after sync-byte recovery). |
+| `--header "K: V"` | Extra HTTP/RTSP request header, repeatable. |
+| `--iface <name>` | Egress NIC for UDP multicast joins. |
+
+Ctrl-C (SIGINT) always stops a streaming run cleanly. A summary line goes to stderr on exit:
+
+```
+stream: 12,345 TS packets, 421 KLV records, ran 30.0s, exit=signal
+```
+
+### Worked examples
+
+```bash
+# Decode 30 seconds of a UDP multicast feed; capture raw TS for replay.
+klvtool decode \
+    --input "udp://239.0.0.1:5000?iface=eth0" \
+    --record cap.ts \
+    --duration 30s \
+    --out live.ndjson
+
+# Decode from a Bearer-token authenticated HTTPS source.
+klvtool decode \
+    --input https://relay.example/stream.ts \
+    --header "Authorization: Bearer $TOKEN" \
+    --duration 1m --out live.ndjson
+
+# Decode from an RTSP server (URL-embedded Basic/Digest credentials).
+klvtool decode --input rtsp://user:pass@cam.example/stream --duration 30s
+
+# Decode an SRT caller, AES-encrypted.
+klvtool decode --input "srt://relay:9000?passphrase=$PASS&streamid=mission01" \
+    --duration 1m --out live.ndjson
+
+# Pipe ffmpeg's MPEG-TS output through klvtool for live decode.
+ffmpeg -i source.flv -c copy -f mpegts - | klvtool decode --input - --out live.ndjson
+
+# Snapshot a live feed's transport structure (PMT, per-PID counts).
+klvtool inspect --input udp://239.0.0.1:5000 --duration 10s
+
+# Capture 60 seconds of bytes with no decoding (for replay later).
+klvtool record --input udp://239.0.0.1:5000 --out cap.ts --duration 60s
+```
+
+`--step` (interactive decode) is rejected for URL inputs — it requires random-access record buffering, which a live feed cannot provide.
+
+For long-running ingest, wrap with process supervision (systemd `Restart=on-failure`, a shell loop, etc.). Auto-reconnect on mid-stream drop is intentionally out of scope for this release.
+
 ## Troubleshooting Source Issues
 
 When you are diagnosing a bad source file, the quickest path is `klvtool diagnose --input <file.ts>`, which runs the sequence below automatically. For finer control, use the commands individually in this order:

@@ -17,9 +17,11 @@ import (
 	"github.com/jacorbello/klvtool/internal/model"
 	ts "github.com/jacorbello/klvtool/internal/mpeg/ts"
 	"github.com/jacorbello/klvtool/internal/packetize"
+	"github.com/jacorbello/klvtool/internal/stream"
 )
 
 type diagnoseFlags struct {
+	streamFlags
 	inputPath        string
 	view             string
 	repairStrippedUL bool
@@ -28,9 +30,10 @@ type diagnoseFlags struct {
 func diagnoseFlagSet(v *diagnoseFlags) *flag.FlagSet {
 	fs := flag.NewFlagSet("diagnose", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
-	fs.StringVar(&v.inputPath, "input", "", "MPEG-TS input path")
+	fs.StringVar(&v.inputPath, "input", "", "MPEG-TS input path or URL (file://, udp://, tcp://, http(s)://, rtsp://, srt://, or '-' for stdin)")
 	fs.StringVar(&v.view, "view", string(viewAuto), "presentation mode: auto, pretty, or raw")
 	fs.BoolVar(&v.repairStrippedUL, "repair-stripped-ul", false, "re-attach the 5-byte SMPTE category prefix that some ffmpeg builds strip from KLV data streams")
+	registerStreamFlags(fs, &v.streamFlags, streamFlagsDiagnose)
 	return fs
 }
 
@@ -47,6 +50,9 @@ type DiagnoseCommand struct {
 	Inspect      func(path string) (ts.StreamTable, InspectStats, error)
 	VideoAnalyze func(path string, table ts.StreamTable) ([]h264.VideoReport, error)
 	Decode       func(req DecodeRequest) (DecodeResult, error)
+	// OpenSource is overridable for streaming-input tests; defaults to
+	// stream.Open. File inputs ignore this.
+	OpenSource streamSourceOpener
 
 	GOOS    string
 	Env     map[string]string
@@ -109,25 +115,28 @@ func (c *DiagnoseCommand) Execute(args []string) int {
 		return usageExitCode
 	}
 
-	info, err := os.Stat(inputPath)
-	if err != nil {
-		var e error
-		if os.IsNotExist(err) {
-			e = model.TSRead(fmt.Errorf("input file does not exist: %s", inputPath))
-		} else {
-			e = model.TSRead(fmt.Errorf("failed to stat input file %q: %w", inputPath, err))
+	isStreamInput := stream.IsURL(inputPath)
+	if !isStreamInput {
+		info, err := os.Stat(inputPath)
+		if err != nil {
+			var e error
+			if os.IsNotExist(err) {
+				e = model.TSRead(fmt.Errorf("input file does not exist: %s", inputPath))
+			} else {
+				e = model.TSRead(fmt.Errorf("failed to stat input file %q: %w", inputPath, err))
+			}
+			c.writeError(c.Err, e)
+			return exitCodeForError(e)
 		}
-		c.writeError(c.Err, e)
-		return exitCodeForError(e)
-	}
-	if !info.Mode().IsRegular() {
-		e := model.TSRead(fmt.Errorf("input path is not a regular file: %s", inputPath))
-		c.writeError(c.Err, e)
-		return exitCodeForError(e)
+		if !info.Mode().IsRegular() {
+			e := model.TSRead(fmt.Errorf("input path is not a regular file: %s", inputPath))
+			c.writeError(c.Err, e)
+			return exitCodeForError(e)
+		}
 	}
 
 	pretty := usePrettyView(viewMode, c.outputTTY(c.Out))
-	return c.run(inputPath, pretty, repairStrippedUL)
+	return c.run(inputPath, pretty, repairStrippedUL, isStreamInput, v.streamFlags)
 }
 
 type diagnoseStage string
@@ -138,7 +147,7 @@ const (
 	stageDecode  diagnoseStage = "decode"
 )
 
-func (c *DiagnoseCommand) run(inputPath string, pretty bool, repairStrippedUL bool) int {
+func (c *DiagnoseCommand) run(inputPath string, pretty bool, repairStrippedUL bool, isStreamInput bool, sf streamFlags) int {
 	w := c.Out
 	color := newColorizer(pretty && supportsANSI())
 
@@ -174,10 +183,42 @@ func (c *DiagnoseCommand) run(inputPath string, pretty bool, repairStrippedUL bo
 		}
 	}
 
-	// Stage 2: Inspect
-	stop = startSpinner(c.Err, color, pretty, "Scanning transport stream...")
-	table, stats, err := inspect(inputPath)
-	stop()
+	// Stage 2: Inspect. Streaming inputs run a bounded LiveDemux pass
+	// driven by the shared lifecycle (--duration / --idle-timeout /
+	// --max-packets / SIGINT) so the spinner doesn't hang forever
+	// against a long-lived feed.
+	var (
+		table ts.StreamTable
+		stats InspectStats
+		err   error
+	)
+	if isStreamInput {
+		open := c.OpenSource
+		if open == nil {
+			open = stream.Open
+		}
+		stop = startSpinner(c.Err, color, pretty, "Scanning transport stream (live)...")
+		ctx, _, finalize := stream.Spawn(context.Background(), sf.stopOptions())
+		src, oerr := open(ctx, inputPath, sf.streamOptions())
+		if oerr != nil {
+			_ = finalize()
+			stop()
+			c.writeStoppedAt(w, color, stageInspect)
+			_, _ = fmt.Fprintf(w, "  %s\n", oerr)
+			return exitCodeForError(oerr)
+		}
+		table, stats, err = defaultInspectStream(ctx, src)
+		_ = src.Close()
+		summary := finalize()
+		stop()
+		if c.Err != nil {
+			fmt.Fprintln(c.Err, summary.String()) //nolint:errcheck
+		}
+	} else {
+		stop = startSpinner(c.Err, color, pretty, "Scanning transport stream...")
+		table, stats, err = inspect(inputPath)
+		stop()
+	}
 	if err != nil {
 		c.writeStoppedAt(w, color, stageInspect)
 		_, _ = fmt.Fprintf(w, "  %s\n", err)
@@ -191,9 +232,11 @@ func (c *DiagnoseCommand) run(inputPath string, pretty bool, repairStrippedUL bo
 
 	c.writeTransportSection(w, color, table, stats, pretty)
 
-	// Stage 2.5: Video analysis (non-fatal — any failure is reported
-	// and the pipeline continues into KLV decode).
-	if videoAnalyze := c.VideoAnalyze; videoAnalyze != nil {
+	// Stage 2.5: Video analysis. Skipped for streaming inputs because
+	// the analyzer uses ffprobe with a seekable file. Operators can run
+	// `klvtool record --input <url> --out file.ts` to capture, then
+	// re-run diagnose against the file.
+	if videoAnalyze := c.VideoAnalyze; videoAnalyze != nil && !isStreamInput {
 		stop = startSpinner(c.Err, color, pretty, "Analyzing video bitstream...")
 		videoReports, vErr := videoAnalyze(inputPath, table)
 		stop()
@@ -203,6 +246,9 @@ func (c *DiagnoseCommand) run(inputPath string, pretty bool, repairStrippedUL bo
 		} else {
 			c.writeVideoSection(w, color, videoReports, unsupportedVideoStreams(table), pretty)
 		}
+	} else if isStreamInput {
+		_, _ = fmt.Fprintln(w)
+		_, _ = fmt.Fprintf(w, "%s%s\n", labelPrefix(color, true, "Video "), color.yellow("analysis skipped for streaming inputs (use `klvtool record` to capture, then re-run against the file)"))
 	}
 
 	// Find candidate metadata PIDs.
@@ -218,14 +264,25 @@ func (c *DiagnoseCommand) run(inputPath string, pretty bool, repairStrippedUL bo
 		return 0
 	}
 
-	// Stage 3: Decode each candidate PID.
+	// Stage 3: Decode each candidate PID. Streaming inputs re-open the
+	// source per PID and run a bounded streamingDecode; the buffered
+	// DecodeResult is small (one packet's worth of MISB records per
+	// duration window) so this is fine.
 	for _, pid := range metaPIDs {
 		stop = startSpinner(c.Err, color, pretty, fmt.Sprintf("Decoding PID 0x%04X...", pid))
-		result, err := decode(DecodeRequest{
-			Path:             inputPath,
-			PID:              int(pid),
-			RepairStrippedUL: repairStrippedUL,
-		})
+		var (
+			result DecodeResult
+			err    error
+		)
+		if isStreamInput {
+			result, err = c.runStreamingDecodeOnce(inputPath, int(pid), repairStrippedUL, sf)
+		} else {
+			result, err = decode(DecodeRequest{
+				Path:             inputPath,
+				PID:              int(pid),
+				RepairStrippedUL: repairStrippedUL,
+			})
+		}
 		stop()
 		if err != nil {
 			_, _ = fmt.Fprintln(w)
@@ -454,6 +511,44 @@ func (c *DiagnoseCommand) writeStoppedAt(w io.Writer, color colorizer, stage dia
 	_, _ = fmt.Fprintf(w, "Stopped at: %s\n", color.red(string(stage)))
 }
 
+// runStreamingDecodeOnce opens a fresh streaming source, runs a bounded
+// LiveDemux pass scoped to a single PID, and collects decoded records
+// into a DecodeResult so the existing writeDecodeSection renderer can
+// stay unchanged. Driven by the shared lifecycle.
+func (c *DiagnoseCommand) runStreamingDecodeOnce(inputPath string, pid int, repair bool, sf streamFlags) (DecodeResult, error) {
+	open := c.OpenSource
+	if open == nil {
+		open = stream.Open
+	}
+	registry := NewDecodeCommand().Registry
+	decodeFn := newStreamingDecode(registry, open, streamingDecodeOptions{
+		SourceOptions: sf.streamOptions(),
+	})
+	var result DecodeResult
+	emit := DecodeEmitter{
+		Record: func(rec record.Record) error {
+			result.Records = append(result.Records, rec)
+			return nil
+		},
+		Stream: func(d record.Diagnostic) error {
+			result.StreamDiagnostics = append(result.StreamDiagnostics, d)
+			return nil
+		},
+		Packet: func() {},
+	}
+	ctx, _, finalize := stream.Spawn(context.Background(), sf.stopOptions())
+	err := decodeFn(ctx, DecodeRequest{
+		Path:             inputPath,
+		PID:              pid,
+		RepairStrippedUL: repair,
+	}, emit)
+	summary := finalize()
+	if c.Err != nil {
+		fmt.Fprintln(c.Err, summary.String()) //nolint:errcheck
+	}
+	return result, err
+}
+
 func candidateMetadataPIDs(table ts.StreamTable) []uint16 {
 	programNums := make([]int, 0, len(table.Programs))
 	for pn := range table.Programs {
@@ -521,14 +616,20 @@ var diagnoseDef = commanddef.CommandDef{
 	Name:       "klvtool-diagnose",
 	Subcommand: "diagnose",
 	Synopsis:   "Run the full diagnostic pipeline: health check, transport inspect, video analysis, and KLV decode.",
-	UsageLine:  "klvtool diagnose --input <file.ts> [--view auto|pretty|raw] [--repair-stripped-ul]",
+	UsageLine:  "klvtool diagnose --input <path-or-url> [--view auto|pretty|raw] [--repair-stripped-ul] [--duration <dur>] [--idle-timeout <dur>] [--max-packets <N>] [--header \"K: V\"] [--iface <name>]",
 	Description: "Run a one-shot diagnostic pipeline against a single MPEG-TS file: backend health check → transport inspection → H.264 video bitstream analysis (non-fatal) → KLV decode of every likely metadata PID.\n" +
 		"\n" +
-		"This is the right entry point for triaging a fresh mission file. The output is a single consolidated report ending in either a clean run or a `Stopped at: <stage>` line that names the failing stage. Video analysis reports a playability verdict (PLAYABLE / STALLS_IN_MSE / DEGRADED) for any H.264 stream — useful for catching missing IDR frames that prevent hls.js / MSE playback.",
+		"This is the right entry point for triaging a fresh mission file. The output is a single consolidated report ending in either a clean run or a `Stopped at: <stage>` line that names the failing stage. Video analysis reports a playability verdict (PLAYABLE / STALLS_IN_MSE / DEGRADED) for any H.264 stream — useful for catching missing IDR frames that prevent hls.js / MSE playback.\n" +
+		"\n" +
+		"--input also accepts URLs (udp://, tcp://, http(s)://, rtsp://, srt://, or '-' for stdin). For live sources, diagnose runs a bounded inspect window and one decode pass per candidate PID; the video-analysis stage is skipped because it requires a seekable file (capture with `klvtool record` and re-run for video verdicts).",
 	Examples: []commanddef.Example{
 		{
 			Comment: "Triage a fresh mission file end to end",
 			Command: "klvtool diagnose --input mission.ts",
+		},
+		{
+			Comment: "Quick health check of a live UDP feed (10 seconds inspect + per-PID decode)",
+			Command: "klvtool diagnose --input udp://239.0.0.1:5000 --duration 10s",
 		},
 	},
 	Troubleshooting: []commanddef.TroubleshootingEntry{

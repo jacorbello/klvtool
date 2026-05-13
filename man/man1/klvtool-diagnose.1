@@ -2,15 +2,38 @@
 .SH "NAME"
 klvtool\-diagnose \- Run the full diagnostic pipeline: health check, transport inspect, video analysis, and KLV decode.
 .SH "SYNOPSIS"
-klvtool diagnose \-\-input <file.ts> [\-\-view auto|pretty|raw] [\-\-repair\-stripped\-ul]
+klvtool diagnose \-\-input <path\-or\-url> [\-\-view auto|pretty|raw] [\-\-repair\-stripped\-ul] [\-\-duration <dur>] [\-\-idle\-timeout <dur>] [\-\-max\-packets <N>] [\-\-header "K: V"] [\-\-iface <name>]
 .SH "DESCRIPTION"
 Run a one\-shot diagnostic pipeline against a single MPEG\-TS file: backend health check → transport inspection → H.264 video bitstream analysis (non\-fatal) → KLV decode of every likely metadata PID.
 .PP
 This is the right entry point for triaging a fresh mission file. The output is a single consolidated report ending in either a clean run or a `Stopped at: <stage>` line that names the failing stage. Video analysis reports a playability verdict (PLAYABLE / STALLS_IN_MSE / DEGRADED) for any H.264 stream — useful for catching missing IDR frames that prevent hls.js / MSE playback.
+.PP
+\-\-input also accepts URLs (udp://, tcp://, http(s)://, rtsp://, srt://, or '\-' for stdin). For live sources, diagnose runs a bounded inspect window and one decode pass per candidate PID; the video\-analysis stage is skipped because it requires a seekable file (capture with `klvtool record` and re\-run for video verdicts).
 .SH "OPTIONS"
 .TP
+\fB\-\-duration\fR \fI(default 0s)\fR
+stop after this wall\-clock duration (e.g. 30s, 5m, 1h); 0 disables
+.TP
+\fB\-\-header\fR
+extra HTTP/RTSP request header in 'Key: Value' form (repeatable; e.g. \-header "Authorization: Bearer $TOKEN")
+.TP
+\fB\-\-idle\-timeout\fR \fI(default 0s)\fR
+stop if no inbound bytes are observed for this duration; 0 disables
+.TP
+\fB\-\-iface\fR
+egress network interface for UDP multicast joins (Linux: device name like eth0, or a local IP)
+.TP
 \fB\-\-input\fR
-MPEG\-TS input path
+MPEG\-TS input path or URL (file://, udp://, tcp://, http(s)://, rtsp://, srt://, or '\-' for stdin)
+.TP
+\fB\-\-max\-packets\fR
+stop after this many TS packets are observed; 0 disables
+.TP
+\fB\-\-record\fR
+tee inbound source bytes to this file (works for any \-\-input, including a regular file)
+.TP
+\fB\-\-record\-overwrite\fR
+allow \-\-record to overwrite an existing file (default refuses; honors O_CREATE|O_EXCL semantics)
 .TP
 \fB\-\-repair\-stripped\-ul\fR
 re\-attach the 5\-byte SMPTE category prefix that some ffmpeg builds strip from KLV data streams
@@ -22,6 +45,13 @@ Triage a fresh mission file end to end
 .RS 4
 .nf
 $ klvtool diagnose --input mission.ts
+.fi
+.RE
+.PP
+Quick health check of a live UDP feed (10 seconds inspect + per\-PID decode)
+.RS 4
+.nf
+$ klvtool diagnose --input udp://239.0.0.1:5000 --duration 10s
 .fi
 .RE
 .SH "TROUBLESHOOTING"

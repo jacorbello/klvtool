@@ -25,13 +25,16 @@ Extract raw KLV/data payloads from an MPEG\-TS file and write a manifest.
 Inspect an MPEG\-TS stream inventory, packet counts, and continuity diagnostics.
 .TP
 \fBklvtool\-decode\fR(1)
-Decode MISB ST 0601 KLV records from an MPEG\-TS file.
+Decode MISB ST 0601 KLV records from an MPEG\-TS file or live stream.
 .TP
 \fBklvtool\-packetize\fR(1)
 Replay raw extraction checkpoints into KLV packet checkpoints with framing diagnostics.
 .TP
 \fBklvtool\-diagnose\fR(1)
 Run the full diagnostic pipeline: health check, transport inspect, video analysis, and KLV decode.
+.TP
+\fBklvtool\-record\fR(1)
+Capture inbound source bytes to a file with no decoding.
 .TP
 \fBklvtool\-completion\fR(1)
 Generate shell completion scripts (bash, zsh, fish).
@@ -140,6 +143,7 @@ ffmpeg, ffprobe
 \fBklvtool\-decode\fR(1),
 \fBklvtool\-extract\fR(1),
 \fBklvtool\-packetize\fR(1),
+\fBklvtool\-record\fR(1),
 \fBklvtool\-version\fR(1),
 \fBklvtool\-update\fR(1),
 \fBklvtool\-completion\fR(1)
