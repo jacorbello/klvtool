@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.4.0](https://github.com/jacorbello/klvtool/compare/v1.3.0...v1.4.0) (2026-05-13)
+
+
+### Features
+
+* detect and optionally repair ffmpeg's stripped SMPTE UL prefix ([#70](https://github.com/jacorbello/klvtool/issues/70)) ([bd35896](https://github.com/jacorbello/klvtool/commit/bd3589684a6eda5a6c8651212bd416bd3e29b1b2))
+* inbound stream processing (UDP/RTSP/SRT/TCP/HTTP/stdin) ([#74](https://github.com/jacorbello/klvtool/issues/74)) ([6b57a34](https://github.com/jacorbello/klvtool/commit/6b57a34a3f41cf91b77412df933126ebf902db5c))
+
+
+### Bug Fixes
+
+* **ffmpeg:** keep stdout and stderr separate in defaultRunner ([#71](https://github.com/jacorbello/klvtool/issues/71)) ([cdc24e6](https://github.com/jacorbello/klvtool/commit/cdc24e62e2358e1673c3ee3a2d66eadd1cd93ae3))
+* **klv:** include UL hex bytes in unknown spec resolution errors ([#75](https://github.com/jacorbello/klvtool/issues/75)) ([2c2c877](https://github.com/jacorbello/klvtool/commit/2c2c87757e2a8c2f2e7757db09c002dc7cb80beb))
+* **stream:** normalize file:// paths and idempotent HTTP body close ([#77](https://github.com/jacorbello/klvtool/issues/77)) ([8b700da](https://github.com/jacorbello/klvtool/commit/8b700dac81c0aca167b97e39eb392f2de7facd7d))
+
 ## [1.3.0](https://github.com/jacorbello/klvtool/compare/v1.2.0...v1.3.0) (2026-05-07)
 
 
