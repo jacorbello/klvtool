@@ -68,7 +68,7 @@ func TestOpenFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
-	defer src.Close()
+	defer func() { _ = src.Close() }()
 	if src.Scheme() != "file" {
 		t.Errorf("scheme = %q, want file", src.Scheme())
 	}
@@ -90,7 +90,7 @@ func TestOpenFileURL(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open file://: %v", err)
 	}
-	defer src.Close()
+	defer func() { _ = src.Close() }()
 	b, _ := io.ReadAll(src)
 	if string(b) != "ok" {
 		t.Errorf("got %q", b)
@@ -154,7 +154,7 @@ func TestOpenTCPRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 	payload := bytes.Repeat([]byte("KLVTOOL"), 8)
 	go func() {
 		c, err := ln.Accept()
@@ -171,7 +171,7 @@ func TestOpenTCPRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open tcp: %v", err)
 	}
-	defer src.Close()
+	defer func() { _ = src.Close() }()
 	if src.Scheme() != "tcp" {
 		t.Errorf("scheme = %q, want tcp", src.Scheme())
 	}
@@ -203,7 +203,7 @@ func TestOpenHTTPRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open http: %v", err)
 	}
-	defer src.Close()
+	defer func() { _ = src.Close() }()
 	if src.Scheme() != "http" {
 		t.Errorf("scheme = %q, want http", src.Scheme())
 	}
@@ -234,7 +234,7 @@ func TestOpenUDPUnicastRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	port := pc.LocalAddr().(*net.UDPAddr).Port
-	pc.Close() // free the port; udpSource will rebind
+	_ = pc.Close() // free the port; udpSource will rebind
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
@@ -242,14 +242,14 @@ func TestOpenUDPUnicastRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open udp: %v", err)
 	}
-	defer src.Close()
+	defer func() { _ = src.Close() }()
 
 	// Send a datagram to the bound port.
 	sender, err := net.Dial("udp4", "127.0.0.1:"+itoa(port))
 	if err != nil {
 		t.Fatalf("dial sender: %v", err)
 	}
-	defer sender.Close()
+	defer func() { _ = sender.Close() }()
 	want := bytes.Repeat([]byte{0x47}, 188*3) // three TS-shaped packets
 	if _, err := sender.Write(want); err != nil {
 		t.Fatalf("send: %v", err)
@@ -269,7 +269,7 @@ func TestOpenStdinReturnsStdinScheme(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer src.Close()
+	defer func() { _ = src.Close() }()
 	if src.Scheme() != "stdin" {
 		t.Errorf("scheme = %q, want stdin", src.Scheme())
 	}

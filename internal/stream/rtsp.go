@@ -142,12 +142,12 @@ func openRTSP(ctx context.Context, raw *url.URL, opts Options) (Source, error) {
 		if _, err := pw.Write(pkt.Payload); err != nil {
 			// Writer closed (consumer gone or context cancelled).
 			// Tear the client down so PLAY stops emitting.
-			src.Close()
+			_ = src.Close()
 		}
 	})
 
 	if _, err := c.Play(nil); err != nil {
-		src.Close()
+		_ = src.Close()
 		return nil, classifyRTSPError(err)
 	}
 

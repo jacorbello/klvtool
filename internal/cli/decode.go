@@ -328,9 +328,9 @@ func (c *DecodeCommand) Execute(args []string) int {
 			registry = NewDecodeCommand().Registry
 		}
 		decodeStream = newStreamingDecode(registry, nil, streamingDecodeOptions{
-			SourceOptions:   v.streamFlags.streamOptions(),
-			RecordPath:      v.streamFlags.record,
-			RecordOverwrite: v.streamFlags.recordOverwrite,
+			SourceOptions:   v.streamOptions(),
+			RecordPath:      v.record,
+			RecordOverwrite: v.recordOverwrite,
 		})
 	}
 	if decodeStream == nil {

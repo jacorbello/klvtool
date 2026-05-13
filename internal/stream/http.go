@@ -50,8 +50,8 @@ func openHTTP(ctx context.Context, u *url.URL, opts Options) (Source, error) {
 	}
 	if resp.StatusCode/100 != 2 {
 		_ = resp.Body.Close()
-		switch {
-		case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:
+		switch resp.StatusCode {
+		case http.StatusUnauthorized, http.StatusForbidden:
 			return nil, model.InvalidUsage(fmt.Errorf("http %s %s: %s", req.Method, u.String(), resp.Status))
 		default:
 			return nil, model.BackendExecution(fmt.Errorf("http %s %s: %s", req.Method, u.String(), resp.Status))
