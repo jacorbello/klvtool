@@ -1,6 +1,7 @@
 package ffmpeg
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -212,9 +213,15 @@ func normalizeWarning(warning string) string {
 
 func defaultRunner(ctx context.Context, path string, args ...string) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, path, args...)
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return nil, fmt.Errorf("%w: %s", err, strings.TrimSpace(string(output)))
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		detail := strings.TrimSpace(stderr.String())
+		if detail == "" {
+			detail = strings.TrimSpace(stdout.String())
+		}
+		return nil, fmt.Errorf("%w: %s", err, detail)
 	}
-	return output, nil
+	return stdout.Bytes(), nil
 }

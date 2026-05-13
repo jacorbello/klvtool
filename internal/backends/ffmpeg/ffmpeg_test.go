@@ -5,11 +5,38 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
 	"github.com/jacorbello/klvtool/internal/model"
 )
+
+func TestDefaultRunnerKeepsStdoutAndStderrSeparate(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("requires POSIX shell")
+	}
+	out, err := defaultRunner(context.Background(), "sh", "-c", "printf out; printf err >&2")
+	if err != nil {
+		t.Fatalf("defaultRunner returned error: %v", err)
+	}
+	if string(out) != "out" {
+		t.Fatalf("expected stdout-only %q, got %q (stderr likely leaked)", "out", string(out))
+	}
+}
+
+func TestDefaultRunnerSurfacesStderrOnError(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("requires POSIX shell")
+	}
+	_, err := defaultRunner(context.Background(), "sh", "-c", "echo boom >&2; exit 7")
+	if err == nil {
+		t.Fatal("expected error for non-zero exit")
+	}
+	if !strings.Contains(err.Error(), "boom") {
+		t.Fatalf("expected stderr in error message, got %q", err.Error())
+	}
+}
 
 func TestParseVersion(t *testing.T) {
 	if got, want := ParseVersion("ffmpeg version 7.1 Copyright"), "7.1"; got != want {
