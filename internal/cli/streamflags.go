@@ -3,6 +3,7 @@ package cli
 import (
 	"flag"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -91,9 +92,14 @@ func (h *headerFlag) String() string {
 	if h == nil || len(*h) == 0 {
 		return ""
 	}
+	keys := make([]string, 0, len(*h))
+	for k := range *h {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
 	parts := make([]string, 0, len(*h))
-	for k, vs := range *h {
-		for _, v := range vs {
+	for _, k := range keys {
+		for _, v := range (*h)[k] {
 			parts = append(parts, fmt.Sprintf("%s: %s", k, v))
 		}
 	}

@@ -124,8 +124,13 @@ func (c *Counters) MarkActivity() {
 }
 
 // Stop fires cancellation with the given reason. Safe to call multiple
-// times — the first call wins.
+// times — the first call wins. Passing ReasonRunning is rejected so a
+// programmer error doesn't produce a summary line with `exit=` and a
+// blank reason; use one of the documented terminal reasons instead.
 func (c *Counters) Stop(reason StopReason) {
+	if reason == ReasonRunning {
+		return
+	}
 	c.fire(reason)
 }
 
