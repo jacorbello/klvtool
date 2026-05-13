@@ -13,6 +13,7 @@ import (
 	"github.com/bluenviron/gortsplib/v4/pkg/base"
 	"github.com/bluenviron/gortsplib/v4/pkg/description"
 	"github.com/bluenviron/gortsplib/v4/pkg/format"
+	"github.com/bluenviron/gortsplib/v4/pkg/liberrors"
 	"github.com/jacorbello/klvtool/internal/model"
 	"github.com/pion/rtp"
 )
@@ -162,45 +163,19 @@ func openRTSP(ctx context.Context, raw *url.URL, opts Options) (Source, error) {
 }
 
 // classifyRTSPError separates auth/usage problems from transient network
-// errors so the CLI surfaces the right exit code.
+// errors so the CLI surfaces the right exit code. Uses gortsplib's typed
+// errors so the classification doesn't depend on the message wording —
+// which has shifted between gortsplib releases historically.
 func classifyRTSPError(err error) error {
 	if err == nil {
 		return nil
 	}
-	// gortsplib returns string-coded errors; we don't import its error
-	// types directly to keep coupling minimal. Match on the canonical
-	// auth-failure strings.
-	msg := err.Error()
-	if containsAny(msg, "401", "403", "unauthorized", "Unauthorized", "authentication") {
-		return model.InvalidUsage(fmt.Errorf("rtsp auth failed: %w", err))
+	var bad liberrors.ErrClientBadStatusCode
+	if errors.As(err, &bad) {
+		switch bad.Code {
+		case base.StatusUnauthorized, base.StatusForbidden:
+			return model.InvalidUsage(fmt.Errorf("rtsp auth failed: %w", err))
+		}
 	}
 	return model.BackendExecution(fmt.Errorf("rtsp: %w", err))
 }
-
-func containsAny(s string, needles ...string) bool {
-	for _, n := range needles {
-		if n == "" {
-			continue
-		}
-		if idx := indexOf(s, n); idx >= 0 {
-			return true
-		}
-	}
-	return false
-}
-
-// indexOf avoids pulling in strings just for this one call site.
-func indexOf(s, sub string) int {
-	if len(sub) == 0 {
-		return 0
-	}
-	for i := 0; i+len(sub) <= len(s); i++ {
-		if s[i:i+len(sub)] == sub {
-			return i
-		}
-	}
-	return -1
-}
-
-// keep errors import non-dead in case future wrappers need errors.Is/As.
-var _ = errors.New
