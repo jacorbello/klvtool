@@ -2,6 +2,7 @@ package packetize
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"math"
 	"slices"
@@ -108,11 +109,11 @@ func parsePacket(payload []byte, offset int, packetIndex int) (Packet, int, Diag
 
 	if offset < 0 || offset >= len(payload) {
 		diag := malformedPacketDiagnostic("packet_truncated", "payload ended before a complete packet key", offset, packetIndex)
-		return Packet{}, 0, diag, fmt.Errorf(diag.Message)
+		return Packet{}, 0, diag, errors.New(diag.Message)
 	}
 	if len(payload)-offset < keySize+1 {
 		diag := malformedPacketDiagnostic("packet_truncated", "payload ended before a complete packet key", offset, packetIndex)
-		return Packet{}, 0, diag, fmt.Errorf(diag.Message)
+		return Packet{}, 0, diag, errors.New(diag.Message)
 	}
 
 	key := append([]byte(nil), payload[offset:offset+keySize]...)
@@ -125,22 +126,22 @@ func parsePacket(payload []byte, offset int, packetIndex int) (Packet, int, Diag
 	valueStart, ok := safeAddInt(offset, keySize)
 	if !ok {
 		diag := malformedPacketDiagnostic("packet_bounds_overflow", "packet start exceeds supported bounds", offset, packetIndex)
-		return Packet{}, 0, diag, fmt.Errorf(diag.Message)
+		return Packet{}, 0, diag, errors.New(diag.Message)
 	}
 	valueStart, ok = safeAddInt(valueStart, lengthRead)
 	if !ok {
 		diag := malformedPacketDiagnostic("packet_bounds_overflow", "packet length exceeds supported bounds", offset, packetIndex)
-		return Packet{}, 0, diag, fmt.Errorf(diag.Message)
+		return Packet{}, 0, diag, errors.New(diag.Message)
 	}
 
 	valueEnd, ok := safeAddInt(valueStart, length)
 	if !ok {
 		diag := malformedPacketDiagnostic("packet_bounds_overflow", "declared value length exceeds supported bounds", offset, packetIndex)
-		return Packet{}, 0, diag, fmt.Errorf(diag.Message)
+		return Packet{}, 0, diag, errors.New(diag.Message)
 	}
 	if valueEnd > len(payload) {
 		diag := malformedPacketDiagnostic("value_out_of_range", "declared value length exceeds payload size", offset, packetIndex)
-		return Packet{}, 0, diag, fmt.Errorf(diag.Message)
+		return Packet{}, 0, diag, errors.New(diag.Message)
 	}
 
 	packet := Packet{
