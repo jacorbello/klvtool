@@ -23,7 +23,7 @@ output format: ndjson, text, or csv
 extra HTTP request header in 'Key: Value' form (repeatable; e.g. \-header "Authorization: Bearer $TOKEN"). HTTPS only — RTSP servers must embed credentials in the URL until token\-auth is wired up.
 .TP
 \fB\-\-idle\-timeout\fR \fI(default 0s)\fR
-stop if no inbound bytes are observed for this duration; 0 disables
+stop if no TS packets are observed for this duration; 0 disables
 .TP
 \fB\-\-iface\fR
 egress network interface for UDP multicast joins (Linux: device name like eth0, or a local IP)

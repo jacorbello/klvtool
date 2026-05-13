@@ -18,7 +18,7 @@ stop after this wall\-clock duration (e.g. 30s, 5m, 1h); 0 disables
 extra HTTP request header in 'Key: Value' form (repeatable; e.g. \-header "Authorization: Bearer $TOKEN"). HTTPS only — RTSP servers must embed credentials in the URL until token\-auth is wired up.
 .TP
 \fB\-\-idle\-timeout\fR \fI(default 0s)\fR
-stop if no inbound bytes are observed for this duration; 0 disables
+stop if no bytes are written for this duration; 0 disables
 .TP
 \fB\-\-iface\fR
 egress network interface for UDP multicast joins (Linux: device name like eth0, or a local IP)
@@ -27,7 +27,7 @@ egress network interface for UDP multicast joins (Linux: device name like eth0, 
 input source path or URL (file://, udp://, tcp://, http(s)://, rtsp://, srt://, or '\-' for stdin)
 .TP
 \fB\-\-max\-bytes\fR
-stop after this many bytes have been captured (record only); 0 disables
+stop after at least this many bytes have been captured (record only; may overshoot by up to one I/O buffer); 0 disables
 .TP
 \fB\-\-max\-packets\fR
 stop after this many TS packets are observed; 0 disables

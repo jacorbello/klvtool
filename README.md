@@ -158,10 +158,10 @@ Live runs are bounded by the shared stop conditions:
 | Flag | Effect |
 |---|---|
 | `--duration <dur>` | Wall-clock stop (`30s`, `5m`, `1h`). |
-| `--idle-timeout <dur>` | Stop after N seconds with no inbound bytes. |
+| `--idle-timeout <dur>` | Stop after N seconds with no observed activity. In `decode` / `inspect` / `diagnose` "activity" is one TS packet; in `record` it is one successful byte write. |
 | `--max-packets <N>` | Stop after N TS packets observed. |
 | `--max-records <N>` | (`decode` only) stop after N KLV records decoded. |
-| `--max-bytes <N>` | (`record` only) stop after N bytes captured. |
+| `--max-bytes <N>` | (`record` only) stop after at least N bytes captured. Actual file size may exceed N by up to one I/O buffer's worth (~32 KB) — the limit is checked after each write. |
 | `--record <path>` | Tee inbound raw bytes to a file for later replay (works on file inputs too — normalizes the captured stream after sync-byte recovery). |
 | `--header "K: V"` | Extra HTTPS request header, repeatable. RTSP servers must embed Basic/Digest credentials in the URL. |
 | `--iface <name>` | Egress NIC for UDP multicast joins. |
@@ -206,6 +206,8 @@ klvtool record --input udp://239.0.0.1:5000 --out cap.ts --duration 60s
 ```
 
 `--step` (interactive decode) is rejected for URL inputs — it requires random-access record buffering, which a live feed cannot provide.
+
+**Live-vs-file decode parity.** Streaming decode bypasses ffmpeg entirely, so the SMPTE UL prefix bug worked around by `--repair-stripped-ul` cannot fire on URL inputs. If you `--record` a live stream and replay the captured file later, the file-mode decode runs through ffmpeg again and may need `--repair-stripped-ul` to recover the same records — even though the live decode produced them cleanly. Add the flag on replay if you see `unknown_spec` errors against the captured file.
 
 For long-running ingest, wrap with process supervision (systemd `Restart=on-failure`, a shell loop, etc.). Auto-reconnect on mid-stream drop is intentionally out of scope for this release.
 
