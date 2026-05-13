@@ -43,7 +43,7 @@ func TestValueJSONMarshaling(t *testing.T) {
 		{"int", IntValue(-42), `-42`},
 		{"uint", UintValue(99), `99`},
 		{"float", FloatValue(3.5), `3.5`},
-		{"string", StringValue("REAPER"), `"REAPER"`},
+		{"string", StringValue("PLATFORM-1"), `"PLATFORM-1"`},
 		{"bool_true", BoolValue(true), `true`},
 		{"bool_false", BoolValue(false), `false`},
 		{"bytes_base64", BytesValue{0x01, 0x02, 0xff}, `"AQL/"`},
