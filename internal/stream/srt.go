@@ -23,15 +23,17 @@ func (s *srtSource) RemoteAddr() string         { return s.remoteAddr }
 
 // openSRT connects to a Secure Reliable Transport endpoint and returns
 // its byte stream as a Source. URL query params follow the canonical
-// ffmpeg/srt-live-transmit shape: passphrase, pbkeylen, streamid, mode,
-// latency, etc. — gosrt's Config.UnmarshalURL handles them.
+// ffmpeg/srt-live-transmit shape: passphrase, pbkeylen, streamid,
+// latency, etc. — gosrt's Config.UnmarshalURL handles those. The
+// `mode=` query param is NOT part of gosrt's config (mode is a
+// connection-time choice between Dial and Listen), so we parse it
+// here and dispatch.
 //
 // Mode defaults to caller (we connect to a listening server). Set
 // "?mode=listener" to wait for an incoming caller; the listener binds
 // the URL's host:port and accepts the first incoming caller.
 func openSRT(ctx context.Context, raw *url.URL, _ Options) (Source, error) {
 	cfg := srt.DefaultConfig()
-	// UnmarshalURL accepts the full srt:// URL and fills cfg from query.
 	address, err := cfg.UnmarshalURL(raw.String())
 	if err != nil {
 		return nil, model.InvalidUsage(fmt.Errorf("srt URL %q: %w", raw.String(), err))
