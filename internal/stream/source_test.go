@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -234,22 +235,29 @@ func TestOpenHTTPCloseIdempotentAfterContextCancel(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	src, err := Open(ctx, srv.URL, Options{})
-	if err != nil {
-		t.Fatalf("Open http: %v", err)
-	}
-	if _, err := io.ReadAll(src); err != nil {
-		t.Fatalf("read: %v", err)
-	}
-	cancel()
-	time.Sleep(50 * time.Millisecond)
-	if err := src.Close(); err != nil {
-		t.Fatalf("first Close: %v", err)
-	}
-	if err := src.Close(); err != nil {
-		t.Fatalf("second Close: %v", err)
+	// Run cancel and Close concurrently in a loop so -race actually has
+	// a chance to catch a torn close. sync.Once is the load-bearing
+	// guarantee here; a serial cancel→sleep→Close pattern would let the
+	// goroutine's Close finish before the consumer's, defeating the test.
+	for i := 0; i < 50; i++ {
+		ctx, cancel := context.WithCancel(context.Background())
+		src, err := Open(ctx, srv.URL, Options{})
+		if err != nil {
+			cancel()
+			t.Fatalf("iter %d: Open http: %v", i, err)
+		}
+		if _, err := io.ReadAll(src); err != nil {
+			cancel()
+			t.Fatalf("iter %d: read: %v", i, err)
+		}
+		var wg sync.WaitGroup
+		wg.Add(2)
+		go func() { defer wg.Done(); cancel() }()
+		go func() { defer wg.Done(); _ = src.Close() }()
+		wg.Wait()
+		if err := src.Close(); err != nil {
+			t.Fatalf("iter %d: trailing Close: %v", i, err)
+		}
 	}
 }
 
