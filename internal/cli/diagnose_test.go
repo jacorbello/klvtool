@@ -141,7 +141,7 @@ func TestDiagnoseHappyPath(t *testing.T) {
 	cmd.Inspect = func(string) (ts.StreamTable, InspectStats, error) {
 		return metadataStreamTable(), metadataInspectStats(), nil
 	}
-	cmd.Decode = func(path string, pid int, schema string) (DecodeResult, error) {
+	cmd.Decode = func(req DecodeRequest) (DecodeResult, error) {
 		return cleanDecodeResult(), nil
 	}
 
@@ -208,7 +208,7 @@ func TestDiagnoseInspectFails(t *testing.T) {
 		return ts.StreamTable{}, InspectStats{}, fmt.Errorf("sync lost")
 	}
 	decodeCalled := false
-	cmd.Decode = func(string, int, string) (DecodeResult, error) {
+	cmd.Decode = func(DecodeRequest) (DecodeResult, error) {
 		decodeCalled = true
 		return DecodeResult{}, nil
 	}
@@ -239,7 +239,7 @@ func TestDiagnoseNoMetadataPIDs(t *testing.T) {
 		return noMetadataStreamTable(), metadataInspectStats(), nil
 	}
 	decodeCalled := false
-	cmd.Decode = func(string, int, string) (DecodeResult, error) {
+	cmd.Decode = func(DecodeRequest) (DecodeResult, error) {
 		decodeCalled = true
 		return DecodeResult{}, nil
 	}
@@ -269,7 +269,7 @@ func TestDiagnoseDecodeWithDiagnostics(t *testing.T) {
 	cmd.Inspect = func(string) (ts.StreamTable, InspectStats, error) {
 		return metadataStreamTable(), metadataInspectStats(), nil
 	}
-	cmd.Decode = func(string, int, string) (DecodeResult, error) {
+	cmd.Decode = func(DecodeRequest) (DecodeResult, error) {
 		return decodeResultWithDiagnostics(), nil
 	}
 
@@ -299,7 +299,7 @@ func TestDiagnoseDecodeFails(t *testing.T) {
 	cmd.Inspect = func(string) (ts.StreamTable, InspectStats, error) {
 		return metadataStreamTable(), metadataInspectStats(), nil
 	}
-	cmd.Decode = func(string, int, string) (DecodeResult, error) {
+	cmd.Decode = func(DecodeRequest) (DecodeResult, error) {
 		return DecodeResult{}, fmt.Errorf("decode failed")
 	}
 
@@ -405,7 +405,7 @@ func TestDiagnosePrettyModeShowsHints(t *testing.T) {
 	cmd.Inspect = func(string) (ts.StreamTable, InspectStats, error) {
 		return metadataStreamTable(), metadataInspectStats(), nil
 	}
-	cmd.Decode = func(string, int, string) (DecodeResult, error) {
+	cmd.Decode = func(DecodeRequest) (DecodeResult, error) {
 		return cleanDecodeResult(), nil
 	}
 
@@ -434,7 +434,7 @@ func TestDiagnoseRawModeOmitsHints(t *testing.T) {
 	cmd.Inspect = func(string) (ts.StreamTable, InspectStats, error) {
 		return metadataStreamTable(), metadataInspectStats(), nil
 	}
-	cmd.Decode = func(string, int, string) (DecodeResult, error) {
+	cmd.Decode = func(DecodeRequest) (DecodeResult, error) {
 		return cleanDecodeResult(), nil
 	}
 
@@ -464,8 +464,8 @@ func TestDiagnoseDecodesCorrectPID(t *testing.T) {
 		return metadataStreamTable(), metadataInspectStats(), nil
 	}
 	var decodedPID int
-	cmd.Decode = func(_ string, pid int, _ string) (DecodeResult, error) {
-		decodedPID = pid
+	cmd.Decode = func(req DecodeRequest) (DecodeResult, error) {
+		decodedPID = req.PID
 		return cleanDecodeResult(), nil
 	}
 
@@ -523,7 +523,7 @@ func TestDiagnoseVideoSectionPlayable(t *testing.T) {
 	cmd.VideoAnalyze = func(_ string, _ ts.StreamTable) ([]h264.VideoReport, error) {
 		return playableVideoReports(), nil
 	}
-	cmd.Decode = func(string, int, string) (DecodeResult, error) {
+	cmd.Decode = func(DecodeRequest) (DecodeResult, error) {
 		return cleanDecodeResult(), nil
 	}
 
@@ -555,7 +555,7 @@ func TestDiagnoseVideoSectionStallsInMSE(t *testing.T) {
 	cmd.VideoAnalyze = func(_ string, _ ts.StreamTable) ([]h264.VideoReport, error) {
 		return stallsVideoReports(), nil
 	}
-	cmd.Decode = func(string, int, string) (DecodeResult, error) {
+	cmd.Decode = func(DecodeRequest) (DecodeResult, error) {
 		return cleanDecodeResult(), nil
 	}
 
@@ -594,7 +594,7 @@ func TestDiagnoseVideoAnalyzeErrorIsNonFatal(t *testing.T) {
 	cmd.VideoAnalyze = func(_ string, _ ts.StreamTable) ([]h264.VideoReport, error) {
 		return nil, fmt.Errorf("boom")
 	}
-	cmd.Decode = func(string, int, string) (DecodeResult, error) {
+	cmd.Decode = func(DecodeRequest) (DecodeResult, error) {
 		return cleanDecodeResult(), nil
 	}
 
@@ -623,7 +623,7 @@ func TestDiagnoseH265StreamShowsNotSupportedNotice(t *testing.T) {
 	}
 	// Use the real default so the H.265 notice path is exercised end-to-end.
 	cmd.VideoAnalyze = defaultVideoAnalyze
-	cmd.Decode = func(string, int, string) (DecodeResult, error) {
+	cmd.Decode = func(DecodeRequest) (DecodeResult, error) {
 		return cleanDecodeResult(), nil
 	}
 
@@ -665,7 +665,7 @@ func TestDiagnoseBareDIFieldsDoNotPanic(t *testing.T) {
 	cmd.Inspect = func(string) (ts.StreamTable, InspectStats, error) {
 		return metadataStreamTable(), metadataInspectStats(), nil
 	}
-	cmd.Decode = func(string, int, string) (DecodeResult, error) {
+	cmd.Decode = func(DecodeRequest) (DecodeResult, error) {
 		return cleanDecodeResult(), nil
 	}
 	code := cmd.Execute([]string{"--input", input})

@@ -33,7 +33,7 @@ func TestDecodeRejectsNonExistentInput(t *testing.T) {
 	cmd := &DecodeCommand{
 		Out: nil,
 		Err: &stderr,
-		Decode: func(path string, pid int, schema string) (DecodeResult, error) {
+		Decode: func(req DecodeRequest) (DecodeResult, error) {
 			t.Fatal("decode should not be called for non-existent input")
 			return DecodeResult{}, nil
 		},
@@ -58,7 +58,7 @@ func TestDecodeRejectsDirectory(t *testing.T) {
 	cmd := &DecodeCommand{
 		Out: nil,
 		Err: &stderr,
-		Decode: func(path string, pid int, schema string) (DecodeResult, error) {
+		Decode: func(req DecodeRequest) (DecodeResult, error) {
 			t.Fatal("decode should not be called for directory input")
 			return DecodeResult{}, nil
 		},
@@ -158,7 +158,7 @@ func testRegistry() *klv.Registry {
 
 // fakeDecodePayloads returns a single synthetic decoded record for tests that
 // need to exercise the writers without going through ffmpeg.
-func fakeDecodePayloads(_ string, _ int, _ string) (DecodeResult, error) {
+func fakeDecodePayloads(_ DecodeRequest) (DecodeResult, error) {
 	rec := record.Record{
 		Schema:      "urn:misb:KLV:bin:0601.19",
 		LSVersion:   19,
@@ -396,7 +396,7 @@ func TestDecodeCommandStepSkipsToDiagnosticAndQuits(t *testing.T) {
 	cmd := &DecodeCommand{
 		Out: out,
 		Err: errBuf,
-		Decode: func(_ string, _ int, _ string) (DecodeResult, error) {
+		Decode: func(_ DecodeRequest) (DecodeResult, error) {
 			return DecodeResult{
 				Records: []record.Record{
 					{
@@ -517,7 +517,7 @@ func TestDecodeCommandStepUsesSingleKeyNextAndPrevious(t *testing.T) {
 	cmd := &DecodeCommand{
 		Out: out,
 		Err: errBuf,
-		Decode: func(_ string, _ int, _ string) (DecodeResult, error) {
+		Decode: func(_ DecodeRequest) (DecodeResult, error) {
 			return DecodeResult{
 				Records: []record.Record{
 					{Schema: "urn:misb:KLV:bin:0601.19", Items: []record.Item{{Tag: 2, Name: "Packet Zero", Value: record.StringValue("zero")}}},
@@ -731,7 +731,7 @@ func TestDecodeCommandRejectsInvalidFormat(t *testing.T) {
 	cmd := &DecodeCommand{
 		Out: &bytes.Buffer{},
 		Err: errBuf,
-		Decode: func(_ string, _ int, _ string) (DecodeResult, error) {
+		Decode: func(_ DecodeRequest) (DecodeResult, error) {
 			t.Fatal("decode should not run with invalid format")
 			return DecodeResult{}, nil
 		},
@@ -752,7 +752,7 @@ func TestDecodeCommandCSVZeroPacketsEmitsHeader(t *testing.T) {
 		Out:      out,
 		Err:      errBuf,
 		Registry: testRegistry,
-		Decode: func(_ string, _ int, _ string) (DecodeResult, error) {
+		Decode: func(_ DecodeRequest) (DecodeResult, error) {
 			return DecodeResult{Records: nil}, nil
 		},
 	}
@@ -878,8 +878,8 @@ func TestDecodeCommandAcceptsRegisteredSchema(t *testing.T) {
 		Out:      &bytes.Buffer{},
 		Err:      &bytes.Buffer{},
 		Registry: testRegistry,
-		Decode: func(_ string, _ int, schema string) (DecodeResult, error) {
-			gotSchema = schema
+		Decode: func(req DecodeRequest) (DecodeResult, error) {
+			gotSchema = req.Schema
 			return DecodeResult{}, nil
 		},
 	}
@@ -889,6 +889,48 @@ func TestDecodeCommandAcceptsRegisteredSchema(t *testing.T) {
 	}
 	if gotSchema != "urn:misb:KLV:bin:0601.19" {
 		t.Errorf("schema = %q", gotSchema)
+	}
+}
+
+// TestDecodeCommandPlumbsRepairStrippedULFlag verifies the
+// --repair-stripped-ul flag reaches the Decode callback.
+func TestDecodeCommandPlumbsRepairStrippedULFlag(t *testing.T) {
+	var got DecodeRequest
+	cmd := &DecodeCommand{
+		Out:      &bytes.Buffer{},
+		Err:      &bytes.Buffer{},
+		Registry: testRegistry,
+		Decode: func(req DecodeRequest) (DecodeResult, error) {
+			got = req
+			return DecodeResult{}, nil
+		},
+	}
+	code := cmd.Execute([]string{"--input", tempInputFile(t), "--repair-stripped-ul"})
+	if code != 0 {
+		t.Fatalf("exit code = %d", code)
+	}
+	if !got.RepairStrippedUL {
+		t.Fatal("expected RepairStrippedUL=true to reach the Decode callback")
+	}
+}
+
+func TestDecodeCommandRepairStrippedULDefaultsFalse(t *testing.T) {
+	var got DecodeRequest
+	cmd := &DecodeCommand{
+		Out:      &bytes.Buffer{},
+		Err:      &bytes.Buffer{},
+		Registry: testRegistry,
+		Decode: func(req DecodeRequest) (DecodeResult, error) {
+			got = req
+			return DecodeResult{}, nil
+		},
+	}
+	code := cmd.Execute([]string{"--input", tempInputFile(t)})
+	if code != 0 {
+		t.Fatalf("exit code = %d", code)
+	}
+	if got.RepairStrippedUL {
+		t.Fatal("expected RepairStrippedUL=false by default")
 	}
 }
 
@@ -902,7 +944,7 @@ func TestDecodeCommandRejectsStrayPositionalArgs(t *testing.T) {
 
 // fakeDecodeWithRaw returns a record with Raw bytes populated so --raw
 // behavior can be verified.
-func fakeDecodeWithRaw(_ string, _ int, _ string) (DecodeResult, error) {
+func fakeDecodeWithRaw(_ DecodeRequest) (DecodeResult, error) {
 	rec := record.Record{
 		Schema:    "urn:misb:KLV:bin:0601.19",
 		LSVersion: 19,
@@ -943,8 +985,8 @@ func TestDecodeCommandSchemaPassedToDecode(t *testing.T) {
 		Out:      &bytes.Buffer{},
 		Err:      &bytes.Buffer{},
 		Registry: testRegistry,
-		Decode: func(_ string, _ int, schema string) (DecodeResult, error) {
-			gotSchema = schema
+		Decode: func(req DecodeRequest) (DecodeResult, error) {
+			gotSchema = req.Schema
 			return DecodeResult{}, nil
 		},
 	}
@@ -967,7 +1009,7 @@ func TestDecodeCommandStreamDiagnosticsReported(t *testing.T) {
 		Out:      out,
 		Err:      errBuf,
 		Registry: testRegistry,
-		Decode: func(_ string, _ int, _ string) (DecodeResult, error) {
+		Decode: func(_ DecodeRequest) (DecodeResult, error) {
 			return DecodeResult{
 				Records: nil,
 				StreamDiagnostics: []record.Diagnostic{
@@ -1002,7 +1044,7 @@ func TestDecodeCommandStreamErrorStrictFails(t *testing.T) {
 		Out:      &bytes.Buffer{},
 		Err:      &bytes.Buffer{},
 		Registry: testRegistry,
-		Decode: func(_ string, _ int, _ string) (DecodeResult, error) {
+		Decode: func(_ DecodeRequest) (DecodeResult, error) {
 			return DecodeResult{
 				StreamDiagnostics: []record.Diagnostic{
 					{Severity: "error", Code: "packetize_invalid_ber_length", Message: "length overflow"},
@@ -1280,7 +1322,7 @@ func TestDecodeWarnsPIDNoMatch(t *testing.T) {
 	cmd := &DecodeCommand{
 		Out: &stdout,
 		Err: &stderr,
-		Decode: func(path string, pid int, schema string) (DecodeResult, error) {
+		Decode: func(req DecodeRequest) (DecodeResult, error) {
 			return DecodeResult{Records: nil}, nil
 		},
 	}
@@ -1309,7 +1351,7 @@ func TestDecodeNilStderrStreamDiagnosticsDoNotPanic(t *testing.T) {
 	cmd := &DecodeCommand{
 		Out: &bytes.Buffer{},
 		Err: nil,
-		Decode: func(_ string, _ int, _ string) (DecodeResult, error) {
+		Decode: func(_ DecodeRequest) (DecodeResult, error) {
 			return DecodeResult{
 				StreamDiagnostics: []record.Diagnostic{
 					{Severity: "error", Code: "packetize_bad", Message: "something broke"},

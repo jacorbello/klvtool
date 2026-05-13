@@ -13,13 +13,16 @@ import (
 	"github.com/jacorbello/klvtool/internal/cli/commanddef"
 	"github.com/jacorbello/klvtool/internal/envcheck"
 	"github.com/jacorbello/klvtool/internal/h264"
+	"github.com/jacorbello/klvtool/internal/klv/record"
 	"github.com/jacorbello/klvtool/internal/model"
 	ts "github.com/jacorbello/klvtool/internal/mpeg/ts"
+	"github.com/jacorbello/klvtool/internal/packetize"
 )
 
 type diagnoseFlags struct {
-	inputPath string
-	view      string
+	inputPath        string
+	view             string
+	repairStrippedUL bool
 }
 
 func diagnoseFlagSet(v *diagnoseFlags) *flag.FlagSet {
@@ -27,6 +30,7 @@ func diagnoseFlagSet(v *diagnoseFlags) *flag.FlagSet {
 	fs.SetOutput(io.Discard)
 	fs.StringVar(&v.inputPath, "input", "", "MPEG-TS input path")
 	fs.StringVar(&v.view, "view", string(viewAuto), "presentation mode: auto, pretty, or raw")
+	fs.BoolVar(&v.repairStrippedUL, "repair-stripped-ul", false, "re-attach the 5-byte SMPTE category prefix that some ffmpeg builds strip from KLV data streams")
 	return fs
 }
 
@@ -42,7 +46,7 @@ type DiagnoseCommand struct {
 	Detect       func(context.Context, string, map[string]string) envcheck.Report
 	Inspect      func(path string) (ts.StreamTable, InspectStats, error)
 	VideoAnalyze func(path string, table ts.StreamTable) ([]h264.VideoReport, error)
-	Decode       func(path string, pid int, schema string) (DecodeResult, error)
+	Decode       func(req DecodeRequest) (DecodeResult, error)
 
 	GOOS    string
 	Env     map[string]string
@@ -92,7 +96,7 @@ func (c *DiagnoseCommand) Execute(args []string) int {
 		c.writeError(c.Err, model.InvalidUsage(fmt.Errorf("unsupported arguments: %v", fs.Args())))
 		return usageExitCode
 	}
-	inputPath, view := v.inputPath, v.view
+	inputPath, view, repairStrippedUL := v.inputPath, v.view, v.repairStrippedUL
 	if strings.TrimSpace(inputPath) == "" {
 		c.writeUsage(c.Err)
 		c.writeError(c.Err, model.InvalidUsage(fmt.Errorf("input path is required")))
@@ -123,7 +127,7 @@ func (c *DiagnoseCommand) Execute(args []string) int {
 	}
 
 	pretty := usePrettyView(viewMode, c.outputTTY(c.Out))
-	return c.run(inputPath, pretty)
+	return c.run(inputPath, pretty, repairStrippedUL)
 }
 
 type diagnoseStage string
@@ -134,7 +138,7 @@ const (
 	stageDecode  diagnoseStage = "decode"
 )
 
-func (c *DiagnoseCommand) run(inputPath string, pretty bool) int {
+func (c *DiagnoseCommand) run(inputPath string, pretty bool, repairStrippedUL bool) int {
 	w := c.Out
 	color := newColorizer(pretty && supportsANSI())
 
@@ -217,7 +221,11 @@ func (c *DiagnoseCommand) run(inputPath string, pretty bool) int {
 	// Stage 3: Decode each candidate PID.
 	for _, pid := range metaPIDs {
 		stop = startSpinner(c.Err, color, pretty, fmt.Sprintf("Decoding PID 0x%04X...", pid))
-		result, err := decode(inputPath, int(pid), "")
+		result, err := decode(DecodeRequest{
+			Path:             inputPath,
+			PID:              int(pid),
+			RepairStrippedUL: repairStrippedUL,
+		})
 		stop()
 		if err != nil {
 			_, _ = fmt.Fprintln(w)
@@ -396,6 +404,32 @@ func (c *DiagnoseCommand) writeDecodeSection(w io.Writer, color colorizer, pid u
 	_, _ = fmt.Fprintf(w, "  diagnostics: %s, %s\n",
 		countLabel(color, errors, "error"),
 		countLabel(color, warnings, "warning"))
+
+	// Highlight the stripped-UL finding inline so it isn't lost in the
+	// per-packet diagnostic firehose. Resolve the lifted codes via the
+	// helper so the match stays in sync if liftPacketizeDiagnostics ever
+	// changes its prefix scheme.
+	strippedWarnCode := liftedPacketizeCode(packetize.DiagnosticStrippedULPrefix)
+	strippedInfoCode := liftedPacketizeCode(packetize.DiagnosticStrippedULRepaired)
+	for _, d := range allDiagnostics(result) {
+		switch d.Code {
+		case strippedWarnCode:
+			_, _ = fmt.Fprintf(w, "  %s %s\n", color.yellow("!"), d.Message)
+		case strippedInfoCode:
+			_, _ = fmt.Fprintf(w, "  %s %s\n", color.green("✓"), d.Message)
+		}
+	}
+}
+
+// allDiagnostics flattens per-record and stream-level diagnostics so the
+// renderer can scan them once without duplicating the iteration logic.
+func allDiagnostics(result DecodeResult) []record.Diagnostic {
+	var out []record.Diagnostic
+	for _, rec := range result.Records {
+		out = append(out, rec.Diagnostics...)
+	}
+	out = append(out, result.StreamDiagnostics...)
+	return out
 }
 
 func countLabel(color colorizer, n int, singular string) string {
@@ -487,7 +521,7 @@ var diagnoseDef = commanddef.CommandDef{
 	Name:       "klvtool-diagnose",
 	Subcommand: "diagnose",
 	Synopsis:   "Run the full diagnostic pipeline: health check, transport inspect, video analysis, and KLV decode.",
-	UsageLine:  "klvtool diagnose --input <file.ts> [--view auto|pretty|raw]",
+	UsageLine:  "klvtool diagnose --input <file.ts> [--view auto|pretty|raw] [--repair-stripped-ul]",
 	Description: "Run a one-shot diagnostic pipeline against a single MPEG-TS file: backend health check → transport inspection → H.264 video bitstream analysis (non-fatal) → KLV decode of every likely metadata PID.\n" +
 		"\n" +
 		"This is the right entry point for triaging a fresh mission file. The output is a single consolidated report ending in either a clean run or a `Stopped at: <stage>` line that names the failing stage. Video analysis reports a playability verdict (PLAYABLE / STALLS_IN_MSE / DEGRADED) for any H.264 stream — useful for catching missing IDR frames that prevent hls.js / MSE playback.",
@@ -522,6 +556,11 @@ var diagnoseDef = commanddef.CommandDef{
 			Symptom:     "Decode succeeds but reports many error diagnostics",
 			LikelyCause: "Likely a non-compliant or pre-1.x sensor: structural validation against ST 0601 fails on individual tags but framing is intact.",
 			Action:      "Inspect the diagnostic codes (`tag_decode_error`, `unknown_tag`, `validation_failed`). If a vendor-specific spec is in use, try `--schema <urn>` to override auto-detection. If results are still poor, capture an offending packet's bytes via `--raw` and escalate with the diagnostic context.",
+		},
+		{
+			Symptom:     "Every decoded packet reports `unknown_spec` and a `stripped_ul_prefix` warning fires",
+			LikelyCause: "Some ffmpeg builds strip the first 5 bytes (the SMPTE Groups category prefix `06 0e 2b 34 02`) from KLV packets when extracting via `-c copy -f data`. The remaining 11-byte UL stub doesn't match any registered MISB spec, so every packet is rejected.",
+			Action:      "Re-run with `--repair-stripped-ul` to re-attach the prefix in memory before decode. If you prefer to fix upstream, use an ffmpeg build that preserves the full UL or pre-process the .ts so the data PID is delivered with intact Universal Labels.",
 		},
 		{
 			Symptom:     "Video verdict `STALLS_IN_MSE`",
