@@ -58,5 +58,16 @@ func openHTTP(ctx context.Context, u *url.URL, opts Options) (Source, error) {
 		}
 	}
 	scheme := strings.ToLower(u.Scheme)
-	return &httpSource{body: resp.Body, scheme: scheme, remoteAddr: u.Host}, nil
+	src := &httpSource{body: resp.Body, scheme: scheme, remoteAddr: u.Host}
+	// Symmetric with TCP/UDP/RTSP: close the body when ctx fires so a
+	// stalled Read in the consumer unblocks even if the consumer
+	// doesn't call Close itself (e.g. lifecycle cancel via signal /
+	// duration / counter limit). The HTTP request's ctx already plumbs
+	// down to the transport, but a long-lived chunked body without
+	// fresh chunks won't observe ctx without an explicit body close.
+	go func() {
+		<-ctx.Done()
+		_ = resp.Body.Close()
+	}()
+	return src, nil
 }
