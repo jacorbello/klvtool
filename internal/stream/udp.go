@@ -11,11 +11,14 @@ import (
 	"golang.org/x/net/ipv4"
 )
 
-// udpReadBufSize is the size of the per-datagram receive buffer. MPEG-TS
-// over UDP traditionally ships 7×188 = 1316-byte payloads, but some
-// encoders use other multiples or a full 1500-byte MTU. 2048 covers all
-// real-world variants with headroom.
-const udpReadBufSize = 2048
+// udpReadBufSize matches the maximum IPv4 datagram size. MPEG-TS over
+// UDP typically ships 7×188 = 1316-byte payloads, but encoders may
+// emit larger datagrams (jumbo frames, RTP-wrapped TS with extension
+// headers) and Linux's recvfrom silently truncates without surfacing
+// an error. A 65535-byte buffer means no real-world MPEG-TS-over-UDP
+// shape will be truncated — the cost is a per-Read allocation that's
+// rounded back down by the GC immediately.
+const udpReadBufSize = 65535
 
 type udpSource struct {
 	conn       *net.UDPConn
