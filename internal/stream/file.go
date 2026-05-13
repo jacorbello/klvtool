@@ -24,6 +24,11 @@ func (f *fileSource) RemoteAddr() string { return f.path }
 // fileURLToLocalPath maps a parsed file:// URL to a host OS path.
 // On Windows, file:///C:/foo yields URL Path "/C:/foo" which must drop the
 // leading slash before os.Open. UNC paths use file://host/share/... .
+//
+// Scope: this helper is reachable only through stream.Open's file branch
+// (e.g. the record subcommand). The ffmpeg-backed paths in decode, inspect,
+// and diagnose hand the raw file:// string to ffmpeg, which dereferences it
+// natively — they do not flow through here.
 func fileURLToLocalPath(u *url.URL) (string, error) {
 	if u == nil {
 		return "", errors.New("nil file URL")
@@ -37,7 +42,7 @@ func fileURLToLocalPath(u *url.URL) (string, error) {
 	host := u.Host
 	if host != "" && !strings.EqualFold(host, "localhost") {
 		if runtime.GOOS != "windows" {
-			return "", fmt.Errorf("file URL with host %q is only supported on Windows (UNC)", host)
+			return "", fmt.Errorf("file URL with non-empty host %q is only supported on Windows (UNC server name)", host)
 		}
 		// file://server/share -> \\server\share
 		unc := `\\` + host + strings.ReplaceAll(filepath.ToSlash(path), "/", `\`)
