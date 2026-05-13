@@ -3,6 +3,7 @@ package ts
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 )
 
@@ -131,7 +132,17 @@ func (d *LiveDemux) Run(
 			// Reader closed mid-stream (typical when context cancels and
 			// the source closes the underlying socket) — treat as a clean
 			// stop, not an error, when the context has been cancelled.
+			// Surface the underlying error via onDiag first so a real
+			// corruption that happens to coincide with Ctrl-C isn't
+			// silently dropped from the run summary.
 			if ctx.Err() != nil {
+				if onDiag != nil && !errors.Is(err, io.EOF) {
+					onDiag(Diagnostic{
+						Severity: "warning",
+						Code:     "scanner_error_at_cancel",
+						Message:  fmt.Sprintf("scanner returned %v after context cancel", err),
+					})
+				}
 				flush()
 				drainDiagnostics()
 				return nil
