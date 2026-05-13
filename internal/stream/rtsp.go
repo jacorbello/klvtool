@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"sync"
+	"sync/atomic"
 
 	"github.com/bluenviron/gortsplib/v4"
 	"github.com/bluenviron/gortsplib/v4/pkg/base"
@@ -15,13 +17,19 @@ import (
 	"github.com/pion/rtp"
 )
 
+// rtspSource is touched from three goroutines: the gortsplib OnPacketRTP
+// callback that writes RTP payload bytes into the pipe, the ctx-watcher
+// that closes the source when the lifecycle cancels, and the consumer's
+// defer src.Close(). Close must be idempotent and the closed flag must
+// be read race-free from the callback path — hence sync.Once + atomic.
 type rtspSource struct {
 	client     *gortsplib.Client
 	pr         *io.PipeReader
 	pw         *io.PipeWriter
 	scheme     string
 	remoteAddr string
-	closed     bool
+	closed     atomic.Bool
+	closeOnce  sync.Once
 }
 
 func (r *rtspSource) Read(p []byte) (int, error) {
@@ -32,19 +40,18 @@ func (r *rtspSource) Read(p []byte) (int, error) {
 }
 
 func (r *rtspSource) Close() error {
-	if r.closed {
-		return nil
-	}
-	r.closed = true
-	if r.pw != nil {
-		_ = r.pw.Close()
-	}
-	if r.client != nil {
-		r.client.Close()
-	}
-	if r.pr != nil {
-		_ = r.pr.Close()
-	}
+	r.closeOnce.Do(func() {
+		r.closed.Store(true)
+		if r.pw != nil {
+			_ = r.pw.Close()
+		}
+		if r.client != nil {
+			r.client.Close()
+		}
+		if r.pr != nil {
+			_ = r.pr.Close()
+		}
+	})
 	return nil
 }
 
@@ -123,7 +130,7 @@ func openRTSP(ctx context.Context, raw *url.URL, opts Options) (Source, error) {
 	// in pkt.Payload. Writing into the pipe blocks until the demuxer
 	// reads — that's the desired backpressure.
 	c.OnPacketRTP(chosen, &format.MPEGTS{}, func(pkt *rtp.Packet) {
-		if src.closed {
+		if src.closed.Load() {
 			return
 		}
 		if _, err := pw.Write(pkt.Payload); err != nil {
