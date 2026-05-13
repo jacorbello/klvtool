@@ -463,10 +463,12 @@ func defaultInspectStream(ctx context.Context, src stream.Source) (ts.StreamTabl
 			stats.Diagnostics = append(stats.Diagnostics, d)
 		},
 	)
-	if err != nil {
-		return ts.StreamTable{}, InspectStats{}, err
-	}
-	return demux.Table(), stats, nil
+	// Return whatever was accumulated even on error — defaultInspect's
+	// file path is similarly resilient (it carries discoveryDiags +
+	// scanner diagnostics through to the report). An operator who Ctrl-Cs
+	// or hits idle-timeout mid-run still wants to see the PMT and per-PID
+	// counts that accumulated before the failure.
+	return demux.Table(), stats, err
 }
 
 func recordPESStats(stats *InspectStats, unit *ts.PESUnit) {
