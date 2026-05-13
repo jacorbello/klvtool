@@ -343,6 +343,124 @@ func TestParserAbstainsFromDetectionWhenAnyFullULIsPresent(t *testing.T) {
 	}
 }
 
+// TestParserRepairDoesNotInjectIntoValueBytes is the adversarial case. A
+// well-formed stripped packet whose value bytes happen to contain the same
+// 11-byte sequence as the UL tail must NOT have the SMPTE prefix injected
+// into the value — the repair has to advance past each packet using its
+// declared BER length, not just blindly scan for the next tail.
+func TestParserRepairDoesNotInjectIntoValueBytes(t *testing.T) {
+	tail := fullST0601UL[5:]
+	// Packet 1: value = the 11-byte tail itself + 1 byte of trailing data
+	// (length = 12). If the repair loop forgets to skip the value, it will
+	// find the tail bytes inside packet 1's value and inject a synthetic
+	// prefix mid-stream.
+	pkt1 := append([]byte{}, tail...)
+	pkt1 = append(pkt1, 0x0c) // BER length = 12
+	pkt1 = append(pkt1, tail...)
+	pkt1 = append(pkt1, 0x77)
+	// Packet 2: a normal stripped 3-byte payload.
+	pkt2 := append([]byte{}, tail...)
+	pkt2 = append(pkt2, 0x03, 0xaa, 0xbb, 0xcc)
+
+	payload := append(pkt1, pkt2...)
+
+	parser := NewParser()
+	stream, err := parser.Parse(Request{
+		Mode: ModeBestEffort,
+		Record: extract.RawPayloadRecord{
+			RecordID: "klv-001",
+			Payload:  payload,
+		},
+		KnownULs:         [][]byte{fullST0601UL},
+		RepairStrippedUL: true,
+	})
+	if err != nil {
+		t.Fatalf("parse returned error: %v", err)
+	}
+	if stream.ParsedCount != 2 {
+		t.Fatalf("expected 2 parsed packets, got %d — repair likely injected into value bytes (diags: %+v)", stream.ParsedCount, stream.Diagnostics)
+	}
+	if got := stream.Packets[0].Length; got != 12 {
+		t.Fatalf("packet 0: expected length 12, got %d (value-byte collision corrupted framing)", got)
+	}
+	if !bytes.Equal(stream.Packets[0].Value, append(append([]byte{}, tail...), 0x77)) {
+		t.Fatalf("packet 0: value mutated by repair: %x", stream.Packets[0].Value)
+	}
+	if got := stream.Packets[1].Length; got != 3 {
+		t.Fatalf("packet 1: expected length 3, got %d", got)
+	}
+}
+
+// TestParserDetectionAbstainsOnSingleTailNoStride covers the false-positive
+// risk: a tiny payload that's exactly one bare tail (or one tail followed by
+// nonsense) shouldn't trip detection — we need either multiple stubs or a
+// validated packet structure to be confident this is the strip pattern and
+// not random coincidence.
+func TestParserDetectionAbstainsOnSingleTailNoStride(t *testing.T) {
+	tail := fullST0601UL[5:]
+	// One bare tail, no length byte after it. Could be coincidence.
+	parser := NewParser()
+	stream, err := parser.Parse(Request{
+		Mode: ModeBestEffort,
+		Record: extract.RawPayloadRecord{
+			RecordID: "klv-001",
+			Payload:  tail,
+		},
+		KnownULs: [][]byte{fullST0601UL},
+	})
+	if err != nil {
+		t.Fatalf("parse returned error: %v", err)
+	}
+	if got := diagCount(stream.Diagnostics, DiagnosticStrippedULPrefix); got != 0 {
+		t.Fatalf("expected detection to abstain on single-tail payload, got %d diagnostic(s)", got)
+	}
+}
+
+// TestParserDetectionIgnoresOrphanTailAtTruncation: a clean stripped stream
+// followed by an orphan tail with no BER length / value (simulating a
+// transport cut mid-packet) must not count the orphan as a repaired packet.
+func TestParserDetectionIgnoresOrphanTailAtTruncation(t *testing.T) {
+	payload := makeStrippedKLV(3)
+	payload = append(payload, fullST0601UL[5:]...) // orphan tail, no length
+
+	parser := NewParser()
+	stream, err := parser.Parse(Request{
+		Mode: ModeBestEffort,
+		Record: extract.RawPayloadRecord{
+			RecordID: "klv-001",
+			Payload:  payload,
+		},
+		KnownULs:         [][]byte{fullST0601UL},
+		RepairStrippedUL: true,
+	})
+	if err != nil {
+		t.Fatalf("parse returned error: %v", err)
+	}
+	if stream.ParsedCount != 3 {
+		t.Fatalf("expected 3 parsed packets, got %d — orphan tail was repaired (diags: %+v)", stream.ParsedCount, stream.Diagnostics)
+	}
+}
+
+// TestParserDetectionAbstainsWhenKnownULsEmpty documents that callers can
+// safely leave KnownULs nil to disable the probe entirely.
+func TestParserDetectionAbstainsWhenKnownULsEmpty(t *testing.T) {
+	parser := NewParser()
+	stream, err := parser.Parse(Request{
+		Mode: ModeBestEffort,
+		Record: extract.RawPayloadRecord{
+			RecordID: "klv-001",
+			Payload:  makeStrippedKLV(3),
+		},
+		// KnownULs unset.
+	})
+	if err != nil {
+		t.Fatalf("parse returned error: %v", err)
+	}
+	if got := diagCount(stream.Diagnostics, DiagnosticStrippedULPrefix); got != 0 {
+		t.Fatalf("expected no detection when KnownULs is empty, got %d", got)
+	}
+}
+
 func TestParserRejectsOverflowingBERLengthWithoutPanic(t *testing.T) {
 	parser := NewParser()
 	payload := append(bytes.Repeat([]byte{0x06}, 16), []byte{0x88, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}...)
