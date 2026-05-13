@@ -406,14 +406,16 @@ func (c *DiagnoseCommand) writeDecodeSection(w io.Writer, color colorizer, pid u
 		countLabel(color, warnings, "warning"))
 
 	// Highlight the stripped-UL finding inline so it isn't lost in the
-	// per-packet diagnostic firehose. Both the warning (always emitted
-	// when detected) and the info (emitted only when --repair-stripped-ul
-	// is set) carry a packetize_ prefix from liftPacketizeDiagnostics.
+	// per-packet diagnostic firehose. Resolve the lifted codes via the
+	// helper so the match stays in sync if liftPacketizeDiagnostics ever
+	// changes its prefix scheme.
+	strippedWarnCode := liftedPacketizeCode(packetize.DiagnosticStrippedULPrefix)
+	strippedInfoCode := liftedPacketizeCode(packetize.DiagnosticStrippedULRepaired)
 	for _, d := range allDiagnostics(result) {
 		switch d.Code {
-		case "packetize_" + packetize.DiagnosticStrippedULPrefix:
+		case strippedWarnCode:
 			_, _ = fmt.Fprintf(w, "  %s %s\n", color.yellow("!"), d.Message)
-		case "packetize_" + packetize.DiagnosticStrippedULRepaired:
+		case strippedInfoCode:
 			_, _ = fmt.Fprintf(w, "  %s %s\n", color.green("✓"), d.Message)
 		}
 	}

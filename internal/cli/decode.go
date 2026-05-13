@@ -859,6 +859,18 @@ var decodeDef = commanddef.CommandDef{
 	},
 }
 
+// packetizeDiagnosticPrefix is prepended to packetize.Diagnostic codes when
+// they're lifted into the per-record diagnostic stream. Consumers that need
+// to match a specific lifted code should call liftedPacketizeCode rather
+// than hand-concatenating the prefix.
+const packetizeDiagnosticPrefix = "packetize_"
+
+// liftedPacketizeCode returns the record-layer diagnostic code that
+// liftPacketizeDiagnostics produces for a given packetize code.
+func liftedPacketizeCode(code string) string {
+	return packetizeDiagnosticPrefix + code
+}
+
 // liftPacketizeDiagnostics converts packetize.Diagnostic entries into
 // record.Diagnostic entries so CLI reporting (counters, --strict, NDJSON
 // output) treats them the same as KLV-layer diagnostics.
@@ -870,7 +882,7 @@ func liftPacketizeDiagnostics(in []packetize.Diagnostic) []record.Diagnostic {
 	for _, d := range in {
 		out = append(out, record.Diagnostic{
 			Severity: d.Severity,
-			Code:     "packetize_" + d.Code,
+			Code:     liftedPacketizeCode(d.Code),
 			Message:  d.Message,
 		})
 	}
