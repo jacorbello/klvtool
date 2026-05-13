@@ -1,4 +1,4 @@
-.PHONY: fmt lint test test-integration test-data build man man-check
+.PHONY: fmt lint test test-integration test-streaming test-data build man man-check
 
 GO ?= go
 GOLANGCI_LINT ?= golangci-lint
@@ -34,6 +34,14 @@ test: $(GOCACHE)
 
 test-integration: $(GOCACHE)
 	GOCACHE=$(GOCACHE) $(GO) test ./integration -v
+
+# Streaming tests cover the URL-input pipeline (UDP/TCP/HTTP loopbacks,
+# the live demuxer, the stream-decode wiring). They run fast — no
+# external network access required — so they're appropriate for the
+# normal `make test` path. This target exists to run them in isolation
+# while iterating on streaming code.
+test-streaming: $(GOCACHE)
+	GOCACHE=$(GOCACHE) $(GO) test ./internal/stream ./internal/mpeg/ts -v
 
 test-data:
 	@if [ -f $(SAMPLE_TS) ] && echo "$(SAMPLE_SHA256)  $(SAMPLE_TS)" | sha256sum -c --quiet 2>/dev/null; then \

@@ -1,0 +1,81 @@
+.TH KLVTOOL-RECORD 1 "1970-01-01" "klvtool dev" "User Commands"
+.SH "NAME"
+klvtool\-record \- Capture inbound source bytes to a file with no decoding.
+.SH "SYNOPSIS"
+klvtool record \-\-input <path\-or\-url> \-\-out <path> [\-\-duration <dur>] [\-\-idle\-timeout <dur>] [\-\-max\-bytes <N>] [\-\-record\-overwrite] [\-\-header "K: V"] [\-\-iface <name>]
+.SH "DESCRIPTION"
+Capture bytes from a path or URL source to a regular file with no MPEG\-TS demuxing, PSI parsing, or KLV decoding involved.
+.PP
+`record` is the streaming counterpart to letting another tool dump a file: it understands udp://, tcp://, http(s)://, rtsp://, srt://, and '\-' (stdin) the same way the other streaming\-aware commands do, and it accepts the shared `\-\-duration`, `\-\-idle\-timeout`, and `\-\-max\-bytes` stop conditions. The captured file can be replayed later with the file\-based commands.
+.PP
+Use `\-\-input file.ts` to copy a regular file (useful for normalization after sync\-byte recovery).
+.SH "OPTIONS"
+.TP
+\fB\-\-duration\fR \fI(default 0s)\fR
+stop after this wall\-clock duration (e.g. 30s, 5m, 1h); 0 disables
+.TP
+\fB\-\-header\fR
+extra HTTP request header in 'Key: Value' form (repeatable; e.g. \-header "Authorization: Bearer $TOKEN"). HTTPS only — RTSP servers must embed credentials in the URL until token\-auth is wired up.
+.TP
+\fB\-\-idle\-timeout\fR \fI(default 0s)\fR
+stop if no bytes are written for this duration; 0 disables
+.TP
+\fB\-\-iface\fR
+egress network interface for UDP multicast joins (Linux: device name like eth0, or a local IP)
+.TP
+\fB\-\-input\fR
+input source path or URL (file://, udp://, tcp://, http(s)://, rtsp://, srt://, or '\-' for stdin)
+.TP
+\fB\-\-max\-bytes\fR
+stop after at least this many bytes have been captured (record only; may overshoot by up to one I/O buffer); 0 disables
+.TP
+\fB\-\-max\-packets\fR
+stop after this many TS packets are observed; 0 disables
+.TP
+\fB\-\-out\fR
+destination file for captured bytes (required)
+.TP
+\fB\-\-record\fR
+tee inbound source bytes to this file (works for any \-\-input, including a regular file)
+.TP
+\fB\-\-record\-overwrite\fR
+allow \-\-record to overwrite an existing file (default refuses; honors O_CREATE|O_EXCL semantics)
+.SH "EXAMPLES"
+Capture 30 seconds of a multicast UDP feed
+.RS 4
+.nf
+$ klvtool record --input "udp://239.0.0.1:5000?iface=eth0" --out cap.ts --duration 30s
+.fi
+.RE
+.PP
+Capture from a Bearer\-token authenticated HTTPS source
+.RS 4
+.nf
+$ klvtool record --input https://relay/stream --out cap.ts --header "Authorization: Bearer $TOKEN" --duration 1m
+.fi
+.RE
+.PP
+Pipe ffmpeg's MPEG\-TS output through klvtool for byte capture
+.RS 4
+.nf
+$ ffmpeg -i source.flv -c copy -f mpegts - | klvtool record --input - --out cap.ts --max-bytes 104857600
+.fi
+.RE
+.SH "EXIT STATUS"
+.TP
+\fB0\fR
+clean stop — captured bytes through duration / idle / max\-bytes / SIGINT / EOF
+.TP
+\fB1\fR
+source open failure, destination write failure, or stream interrupted mid\-run
+.TP
+\fB2\fR
+invalid usage (missing flags, malformed URL)
+.SH "ENVIRONMENT"
+.TP
+\fBNO_COLOR\fR
+disable ANSI color in any error output
+.SH "SEE ALSO"
+\fBklvtool\fR(1),
+\fBklvtool\-decode\fR(1),
+\fBklvtool\-inspect\fR(1)

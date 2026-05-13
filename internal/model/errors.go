@@ -18,6 +18,7 @@ const (
 	CodeTSRead            Code = "ts_read_failure"
 	CodeKLVDecode         Code = "klv_decode_failure"
 	CodeKLVSpec           Code = "klv_spec_unknown"
+	CodeStreamInterrupted Code = "stream_interrupted"
 )
 
 // Error classifies a failure with a stable code and optional wrapped cause.
@@ -104,4 +105,8 @@ func KLVDecode(err error) *Error {
 
 func KLVSpec(err error) *Error {
 	return NewError(CodeKLVSpec, err)
+}
+
+func StreamInterrupted(err error) *Error {
+	return NewError(CodeStreamInterrupted, err)
 }

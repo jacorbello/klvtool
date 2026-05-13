@@ -22,6 +22,7 @@ type RootCommand struct {
 	Decode     *DecodeCommand
 	Packetize  *PacketizeCommand
 	Diagnose   *DiagnoseCommand
+	Record     *RecordCommand
 	Completion *CompletionCommand
 	VersionCmd *VersionCommand
 	Update     *UpdateCommand
@@ -39,6 +40,7 @@ func NewRootCommand() *RootCommand {
 		Decode:     NewDecodeCommand(),
 		Packetize:  NewPacketizeCommand(),
 		Diagnose:   NewDiagnoseCommand(),
+		Record:     NewRecordCommand(),
 		Completion: NewCompletionCommand(),
 		VersionCmd: NewVersionCommand(),
 		Update:     NewUpdateCommand(),
@@ -85,6 +87,9 @@ func (c *RootCommand) Execute(args []string) int {
 	if len(args) > 0 && args[0] == "diagnose" {
 		return c.diagnoseCommand().Execute(args[1:])
 	}
+	if len(args) > 0 && args[0] == "record" {
+		return c.recordCommand().Execute(args[1:])
+	}
 	if len(args) > 0 && args[0] == "completion" {
 		return c.completionCommand().Execute(args[1:])
 	}
@@ -126,6 +131,7 @@ func (c *RootCommand) SubcommandDefs() []commanddef.CommandDef {
 		c.decodeCommand().Definition(),
 		c.packetizeCommand().Definition(),
 		c.diagnoseCommand().Definition(),
+		c.recordCommand().Definition(),
 		c.completionCommand().Definition(),
 	}
 }
@@ -202,6 +208,7 @@ var rootDef = commanddef.CommandDef{
 		{Name: "klvtool-decode", Section: 1},
 		{Name: "klvtool-extract", Section: 1},
 		{Name: "klvtool-packetize", Section: 1},
+		{Name: "klvtool-record", Section: 1},
 		{Name: "klvtool-version", Section: 1},
 		{Name: "klvtool-update", Section: 1},
 		{Name: "klvtool-completion", Section: 1},
@@ -305,6 +312,20 @@ func (c *RootCommand) diagnoseCommand() *DiagnoseCommand {
 	d.Out = c.Out
 	d.Err = c.Err
 	return d
+}
+
+func (c *RootCommand) recordCommand() *RecordCommand {
+	if c == nil {
+		return NewRecordCommand()
+	}
+	rec := c.Record
+	if rec == nil {
+		rec = NewRecordCommand()
+		c.Record = rec
+	}
+	rec.Out = c.Out
+	rec.Err = c.Err
+	return rec
 }
 
 func (c *RootCommand) completionCommand() *CompletionCommand {
