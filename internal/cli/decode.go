@@ -957,8 +957,8 @@ var decodeDef = commanddef.CommandDef{
 			Command: "klvtool decode --input \"udp://239.0.0.1:5000?iface=eth0\" --record cap.ts --duration 30s --out live.ndjson",
 		},
 		{
-			Comment: "Decode from a Bearer-token authenticated RTSP server",
-			Command: "klvtool decode --input rtsp://host/stream --header \"Authorization: Bearer $TOKEN\" --out live.ndjson",
+			Comment: "Decode from an RTSP server with URL-embedded credentials",
+			Command: "klvtool decode --input rtsp://user:pass@host:554/stream --out live.ndjson",
 		},
 		{
 			Comment: "Pipe ffmpeg's MPEG-TS output through klvtool for live decode",

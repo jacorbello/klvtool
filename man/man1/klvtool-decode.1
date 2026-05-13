@@ -20,7 +20,7 @@ stop after this wall\-clock duration (e.g. 30s, 5m, 1h); 0 disables
 output format: ndjson, text, or csv
 .TP
 \fB\-\-header\fR
-extra HTTP/RTSP request header in 'Key: Value' form (repeatable; e.g. \-header "Authorization: Bearer $TOKEN")
+extra HTTP request header in 'Key: Value' form (repeatable; e.g. \-header "Authorization: Bearer $TOKEN"). HTTPS only — RTSP servers must embed credentials in the URL until token\-auth is wired up.
 .TP
 \fB\-\-idle\-timeout\fR \fI(default 0s)\fR
 stop if no inbound bytes are observed for this duration; 0 disables
@@ -165,10 +165,10 @@ $ klvtool decode --input "udp://239.0.0.1:5000?iface=eth0" --record cap.ts --dur
 .fi
 .RE
 .PP
-Decode from a Bearer\-token authenticated RTSP server
+Decode from an RTSP server with URL\-embedded credentials
 .RS 4
 .nf
-$ klvtool decode --input rtsp://host/stream --header "Authorization: Bearer $TOKEN" --out live.ndjson
+$ klvtool decode --input rtsp://user:pass@host:554/stream --out live.ndjson
 .fi
 .RE
 .PP

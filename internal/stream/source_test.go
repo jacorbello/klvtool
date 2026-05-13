@@ -122,6 +122,23 @@ func TestOpenRTSPInvalidURLIsUsageError(t *testing.T) {
 	}
 }
 
+func TestOpenRTSPRejectsHeaders(t *testing.T) {
+	// gortsplib's public client API can't forward custom request headers
+	// today, so accepting --header on rtsp:// would silently no-op and
+	// fail auth. Verify the call site rejects it with InvalidUsage
+	// instead of dialing and confusing the operator.
+	_, err := Open(context.Background(), "rtsp://example.com/x", Options{
+		Headers: map[string][]string{"Authorization": {"Bearer t"}},
+	})
+	var me *model.Error
+	if !errors.As(err, &me) || me.Code != model.CodeInvalidUsage {
+		t.Fatalf("want CodeInvalidUsage, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "--header") {
+		t.Errorf("error should mention --header, got: %v", err)
+	}
+}
+
 func TestOpenSRTRejectsUnknownMode(t *testing.T) {
 	// mode=bogus must be a usage error; we don't want to dial first and
 	// then complain.

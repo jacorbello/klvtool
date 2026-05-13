@@ -57,7 +57,7 @@ func registerStreamFlags(fs *flag.FlagSet, s *streamFlags, mode streamFlagMode) 
 		// "10M" style suffixes through a flag.Value implementation.
 		fs.Int64Var(&s.maxBytes, "max-bytes", 0, "stop after this many bytes have been captured (record only); 0 disables")
 	}
-	fs.Var(&s.headers, "header", "extra HTTP/RTSP request header in 'Key: Value' form (repeatable; e.g. -header \"Authorization: Bearer $TOKEN\")")
+	fs.Var(&s.headers, "header", "extra HTTP request header in 'Key: Value' form (repeatable; e.g. -header \"Authorization: Bearer $TOKEN\"). HTTPS only — RTSP servers must embed credentials in the URL until token-auth is wired up.")
 	fs.StringVar(&s.iface, "iface", "", "egress network interface for UDP multicast joins (Linux: device name like eth0, or a local IP)")
 }
 

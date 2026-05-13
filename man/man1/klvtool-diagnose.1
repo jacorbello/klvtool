@@ -15,7 +15,7 @@ This is the right entry point for triaging a fresh mission file. The output is a
 stop after this wall\-clock duration (e.g. 30s, 5m, 1h); 0 disables
 .TP
 \fB\-\-header\fR
-extra HTTP/RTSP request header in 'Key: Value' form (repeatable; e.g. \-header "Authorization: Bearer $TOKEN")
+extra HTTP request header in 'Key: Value' form (repeatable; e.g. \-header "Authorization: Bearer $TOKEN"). HTTPS only — RTSP servers must embed credentials in the URL until token\-auth is wired up.
 .TP
 \fB\-\-idle\-timeout\fR \fI(default 0s)\fR
 stop if no inbound bytes are observed for this duration; 0 disables

@@ -148,7 +148,7 @@ To persist completions across sessions, write the output to the appropriate shel
 | `udp://` | `udp://host:port[?iface=eth0]` | Unicast or multicast. Multicast addresses (224.0.0.0/4) auto-join the group; the optional `iface=` query param selects the egress interface. |
 | `tcp://` | `tcp://host:port` | Plain TCP connect. |
 | `http(s)://` | `https://[user:pass@]host/path` | Long-lived GET. Use `--header "Authorization: Bearer $TOKEN"` for token-authenticated servers. |
-| `rtsp://` | `rtsp://[user:pass@]host:port/path` | Pulls an MPEG-TS-over-RTP track (payload type 33). Basic/Digest auth via URL; TCP transport preferred. |
+| `rtsp://` | `rtsp://[user:pass@]host:port/path` | Pulls an MPEG-TS-over-RTP track (payload type 33). Basic/Digest auth via URL only; `--header` is rejected for `rtsp://` until per-request header forwarding is wired into gortsplib. TCP transport preferred. |
 | `srt://` | `srt://host:port?passphrase=…&mode=caller…` | Caller-mode SRT. Query params follow the canonical ffmpeg/srt-live-transmit shape (passphrase, pbkeylen, streamid, latency). |
 | stdin | `-` | Read from `os.Stdin`. Useful for piping ffmpeg or `nc` output. |
 | `file://` | `file:///abs/path.ts` | Equivalent to passing a bare path. |
@@ -163,7 +163,7 @@ Live runs are bounded by the shared stop conditions:
 | `--max-records <N>` | (`decode` only) stop after N KLV records decoded. |
 | `--max-bytes <N>` | (`record` only) stop after N bytes captured. |
 | `--record <path>` | Tee inbound raw bytes to a file for later replay (works on file inputs too — normalizes the captured stream after sync-byte recovery). |
-| `--header "K: V"` | Extra HTTP/RTSP request header, repeatable. |
+| `--header "K: V"` | Extra HTTPS request header, repeatable. RTSP servers must embed Basic/Digest credentials in the URL. |
 | `--iface <name>` | Egress NIC for UDP multicast joins. |
 
 Ctrl-C (SIGINT) always stops a streaming run cleanly. A summary line goes to stderr on exit:

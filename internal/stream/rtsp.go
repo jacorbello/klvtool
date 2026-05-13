@@ -63,14 +63,19 @@ func (r *rtspSource) RemoteAddr() string { return r.remoteAddr }
 // bytes into an io.Reader the demuxer can consume.
 //
 // Authentication follows the URL convention: rtsp://user:pass@host:port/path
-// for Basic / Digest. Bearer-token servers are handled by passing
-// "Authorization: Bearer <token>" via opts.Headers — gortsplib forwards
-// custom headers on DESCRIBE/SETUP/PLAY.
+// for Basic / Digest. Bearer-token / custom-header authentication is NOT
+// yet supported — gortsplib's public client API does not currently
+// expose per-request header injection, so opts.Headers cannot be
+// forwarded. Until that's wired up, --header is rejected for rtsp://
+// URLs at the call site so operators don't get silent auth failures.
 //
 // TCP and UDP transports are both supported; gortsplib chooses based on
 // what the server offers. We pick TCP if the server allows it (better
 // reliability across NAT and firewalls).
 func openRTSP(ctx context.Context, raw *url.URL, opts Options) (Source, error) {
+	if len(opts.Headers) > 0 {
+		return nil, model.InvalidUsage(fmt.Errorf("rtsp:// inputs do not support --header yet; embed Basic/Digest credentials in the URL (rtsp://user:pass@host:port/path) or open an issue if you need Bearer-token auth"))
+	}
 	parsed, err := base.ParseURL(raw.String())
 	if err != nil {
 		return nil, model.InvalidUsage(fmt.Errorf("rtsp URL %q: %w", raw.String(), err))
@@ -152,12 +157,6 @@ func openRTSP(ctx context.Context, raw *url.URL, opts Options) (Source, error) {
 		<-ctx.Done()
 		_ = src.Close()
 	}()
-
-	_ = opts // opts.Headers is reserved for Bearer/custom headers — wired in
-	// once gortsplib exposes per-request header injection on the public
-	// client API. The current API doesn't accept extra request headers
-	// on DESCRIBE/SETUP/PLAY without a fork; users needing token-auth
-	// today should embed credentials in the URL.
 
 	return src, nil
 }
