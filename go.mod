@@ -1,12 +1,12 @@
 module github.com/jacorbello/klvtool
 
-go 1.24.0
+go 1.25.0
 
 require (
 	github.com/bluenviron/gortsplib/v4 v4.15.0
 	github.com/datarhei/gosrt v0.9.0
 	github.com/pion/rtp v1.8.20
-	golang.org/x/net v0.47.0
+	golang.org/x/net v0.55.0
 )
 
 require (
@@ -19,6 +19,6 @@ require (
 	github.com/pion/sdp/v3 v3.0.14 // indirect
 	github.com/pion/srtp/v3 v3.0.6 // indirect
 	github.com/pion/transport/v3 v3.0.7 // indirect
-	golang.org/x/crypto v0.45.0 // indirect
-	golang.org/x/sys v0.38.0 // indirect
+	golang.org/x/crypto v0.51.0 // indirect
+	golang.org/x/sys v0.45.0 // indirect
 )
